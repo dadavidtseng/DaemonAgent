@@ -1,28 +1,29 @@
 //----------------------------------------------------------------------------------------------------
-// Entity.cpp
+// Player.hpp
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
-#include "Game/Entity.hpp"
+#pragma once
+//----------------------------------------------------------------------------------------------------
+#include "Game/Gameplay/Entity.hpp"
 
 //----------------------------------------------------------------------------------------------------
-Entity::Entity(Game* owner)
-    : m_game(owner)
+class Camera;
+
+//----------------------------------------------------------------------------------------------------
+class Player : public Entity
 {
-}
+public:
+    explicit Player(Game* owner);
+    ~Player() override;
 
-//----------------------------------------------------------------------------------------------------
-Entity::~Entity()
-{
-}
+    void Update(float deltaSeconds) override;
+    void Render() const override;
+    void UpdateFromKeyBoard();
+    void UpdateFromController();
 
-//----------------------------------------------------------------------------------------------------
-Mat44 Entity::GetModelToWorldTransform() const
-{
-    Mat44 m2w;
+    Camera* GetCamera() const;
 
-    m2w.SetTranslation3D(m_position);
-    m2w.Append(m_orientation.GetAsMatrix_IFwd_JLeft_KUp());
-
-    return m2w;
-}
+private:
+    Camera* m_worldCamera = nullptr;
+};

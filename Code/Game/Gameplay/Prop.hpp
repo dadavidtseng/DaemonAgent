@@ -1,29 +1,32 @@
 //----------------------------------------------------------------------------------------------------
-// Player.hpp
+// Prop.hpp
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
 #pragma once
 //----------------------------------------------------------------------------------------------------
-#include "Game/Entity.hpp"
+#include "Game/Gameplay/Entity.hpp"
+//----------------------------------------------------------------------------------------------------
+#include "Engine/Renderer/VertexUtils.hpp"
+
+//-Forward-Declaration--------------------------------------------------------------------------------
+class Texture;
+struct Vertex_PCU;
 
 //----------------------------------------------------------------------------------------------------
-class Camera;
-
-//----------------------------------------------------------------------------------------------------
-class Player : public Entity
+class Prop : public Entity
 {
 public:
-    explicit Player(Game* owner);
-    ~Player() override;
+    explicit Prop(Game* owner, Texture const* texture = nullptr);
 
     void Update(float deltaSeconds) override;
     void Render() const override;
-    void UpdateFromKeyBoard();
-    void UpdateFromController();
 
-    Camera* GetCamera() const;
+    void InitializeLocalVertsForCube();
+    void InitializeLocalVertsForSphere();
+    void InitializeLocalVertsForGrid();
 
 private:
-    Camera* m_worldCamera = nullptr;
+    std::vector<Vertex_PCU> m_vertexes;
+    Texture const*          m_texture = nullptr;
 };

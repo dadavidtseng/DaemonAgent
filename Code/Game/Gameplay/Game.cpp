@@ -8,8 +8,14 @@
 #define NOMINMAX
 #endif
 //----------------------------------------------------------------------------------------------------
-#include "Game/Game.hpp"
-
+#include "Game/Gameplay/Game.hpp"
+//----------------------------------------------------------------------------------------------------
+#include "Game/Framework/App.hpp"
+#include "Game/Framework/GameCommon.hpp"
+#include "Game/Gameplay/Player.hpp"
+#include "Game/Gameplay/Prop.hpp"
+//----------------------------------------------------------------------------------------------------
+#include "Engine/Audio/AudioSystem.hpp"
 #include "Engine/Core/Clock.hpp"
 #include "Engine/Core/DevConsole.hpp"
 #include "Engine/Core/EngineCommon.hpp"
@@ -18,21 +24,11 @@
 #include "Engine/Input/InputSystem.hpp"
 #include "Engine/Math/RandomNumberGenerator.hpp"
 #include "Engine/Platform/Window.hpp"
-#include "Engine/Renderer/BitmapFont.hpp"
 #include "Engine/Renderer/DebugRenderSystem.hpp"
 #include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Resource/ResourceSubsystem.hpp"
-#include "Engine/Scripting/ScriptSubsystem.hpp"
-#include "Engine/Scripting/ModuleLoader.hpp"
-#include "Game/Player.hpp"
-#include "Game/Prop.hpp"
-#include "Game/Framework/App.hpp"
-#include "Game/Framework/GameCommon.hpp"
-
-#include <fstream>
-#include <sstream>
-
-#include "Engine/Audio/AudioSystem.hpp"
+#include "Engine/Script/ModuleLoader.hpp"
+#include "Engine/Script/ScriptSubsystem.hpp"
 
 //----------------------------------------------------------------------------------------------------
 Game::Game()
