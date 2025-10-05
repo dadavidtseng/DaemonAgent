@@ -5,6 +5,9 @@
 //----------------------------------------------------------------------------------------------------
 #include "Game/Framework/App.hpp"
 //----------------------------------------------------------------------------------------------------
+#include "Game/Framework/GameCommon.hpp"
+#include "Game/Gameplay/Game.hpp"
+//----------------------------------------------------------------------------------------------------
 #include "Engine/Audio/AudioScriptInterface.hpp"
 #include "Engine/Audio/AudioSystem.hpp"
 #include "Engine/Core/Clock.hpp"
@@ -21,9 +24,8 @@
 #include "Engine/Renderer/DebugRenderSystem.hpp"
 #include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Resource/ResourceSubsystem.hpp"
-#include "Engine/Scripting/ScriptSubsystem.hpp"
-#include "Game/Game.hpp"
-#include "Game/Framework/GameCommon.hpp"
+#include "Engine/Script/ScriptSubsystem.hpp"
+//----------------------------------------------------------------------------------------------------
 #include "ThirdParty/json/json.hpp"
 
 //----------------------------------------------------------------------------------------------------

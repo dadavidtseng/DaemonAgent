@@ -5,12 +5,13 @@
 //----------------------------------------------------------------------------------------------------
 #include "Game/Framework/GameScriptInterface.hpp"
 //----------------------------------------------------------------------------------------------------
-#include "Game/Game.hpp"
-#include "Game/Player.hpp"
 #include "Game/Framework/App.hpp"
 #include "Game/Framework/GameCommon.hpp"
+#include "Game/Gameplay/Game.hpp"
+#include "Game/Gameplay/Player.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Engine/Core/ErrorWarningAssert.hpp"
+#include "Engine/Script/ScriptTypeExtractor.hpp"
 
 //----------------------------------------------------------------------------------------------------
 GameScriptInterface::GameScriptInterface(Game* game)

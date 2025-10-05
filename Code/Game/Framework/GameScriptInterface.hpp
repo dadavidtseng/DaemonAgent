@@ -5,8 +5,7 @@
 //----------------------------------------------------------------------------------------------------
 #pragma once
 //----------------------------------------------------------------------------------------------------
-#include "Engine/Scripting/IScriptableObject.hpp"
-#include "Engine/Scripting/ScriptTypeExtractor.hpp"
+#include "Engine/Script/IScriptableObject.hpp"
 
 //-Forward-Declaration--------------------------------------------------------------------------------
 class Game;
