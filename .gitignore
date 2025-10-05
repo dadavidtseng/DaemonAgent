@@ -231,9 +231,6 @@ docs/_build/
 .gitattributes.bak
 .gitignore.bak
 
-# GitHub specific
-.github/workflows/
-
 # GitLab CI
 .gitlab-ci.yml
 
