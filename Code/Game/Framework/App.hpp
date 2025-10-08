@@ -10,6 +10,7 @@
 #include "Engine/Audio/AudioScriptInterface.hpp"
 #include "Engine/Core/EventSystem.hpp"
 #include "Engine/Input/InputScriptInterface.hpp"
+#include "Engine/Renderer/CameraScriptInterface.hpp"
 #include "Engine/Renderer/RendererScriptInterface.hpp"
 
 //-Forward-Declaration--------------------------------------------------------------------------------
@@ -45,9 +46,10 @@ private:
     void UpdateCursorMode();
     void SetupScriptingBindings();
 
-    Camera*                               m_devConsoleCamera = nullptr;
-    std::shared_ptr<GameScriptInterface>  m_gameScriptInterface;
-    std::shared_ptr<InputScriptInterface> m_inputScriptInterface;
-    std::shared_ptr<AudioScriptInterface> m_audioScriptInterface;
+    Camera*                                  m_devConsoleCamera = nullptr;
+    std::shared_ptr<GameScriptInterface>     m_gameScriptInterface;
+    std::shared_ptr<InputScriptInterface>    m_inputScriptInterface;
+    std::shared_ptr<AudioScriptInterface>    m_audioScriptInterface;
+    std::shared_ptr<CameraScriptInterface>   m_cameraScriptInterface;
     std::shared_ptr<RendererScriptInterface> m_rendererScriptInterface;
 };

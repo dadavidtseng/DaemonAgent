@@ -19,6 +19,7 @@
 #include "Engine/Core/LogSubsystem.hpp"
 #include "Engine/Input/InputSystem.hpp"
 #include "Engine/Platform/Window.hpp"
+#include "Engine/Renderer/CameraScriptInterface.hpp"
 #include "Engine/Renderer/DebugRenderSystem.hpp"
 #include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Resource/ResourceSubsystem.hpp"
@@ -34,11 +35,13 @@ Game* g_game = nullptr;       // Created and owned by the App
 //----------------------------------------------------------------------------------------------------
 STATIC bool App::m_isQuitting = false;
 
+//----------------------------------------------------------------------------------------------------
 App::App()
 {
     GEngine::Get().Construct();
 }
 
+//----------------------------------------------------------------------------------------------------
 App::~App()
 {
     GEngine::Get().Destruct();
@@ -218,7 +221,8 @@ std::any App::OnGarbageCollection(std::vector<std::any> const& args)
 void App::UpdateCursorMode()
 {
     bool const doesWindowHasFocus   = GetActiveWindow() == g_window->GetWindowHandle();
-    bool const shouldUsePointerMode = !doesWindowHasFocus || g_devConsole->IsOpen() || g_game->IsAttractMode();
+    // bool const shouldUsePointerMode = !doesWindowHasFocus || g_devConsole->IsOpen() || g_game->IsAttractMode();
+    bool const shouldUsePointerMode = !doesWindowHasFocus || g_devConsole->IsOpen();
 
     if (shouldUsePointerMode == true)
     {
@@ -240,6 +244,7 @@ void App::SetupScriptingBindings()
 
     // Initialize hot-reload system (now integrated into ScriptSubsystem)
     std::string projectRoot = "C:/p4/Personal/SD/ProtogameJS3D/";
+
     if (g_scriptSubsystem->InitializeHotReload(projectRoot))
     {
         DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings) Hot-reload system initialized successfully"));
@@ -257,6 +262,9 @@ void App::SetupScriptingBindings()
 
     m_audioScriptInterface = std::make_shared<AudioScriptInterface>(g_audio);
     g_scriptSubsystem->RegisterScriptableObject("audio", m_audioScriptInterface);
+
+    m_cameraScriptInterface = std::make_shared<CameraScriptInterface>();
+    g_scriptSubsystem->RegisterScriptableObject("cameraInterface", m_cameraScriptInterface);
 
     m_rendererScriptInterface = std::make_shared<RendererScriptInterface>(g_renderer);
     g_scriptSubsystem->RegisterScriptableObject("renderer", m_rendererScriptInterface);
