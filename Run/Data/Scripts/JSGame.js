@@ -11,6 +11,7 @@ import {RendererSystem} from './components/RendererSystem.js';
 // === Phase 4: Entity classes (matching C++ structure) ===
 import {PlayerEntity} from './entities/PlayerEntity.js';
 import {PropEntity} from './entities/PropEntity.js';
+import {NewFeatureSystem} from "./components/NewFeatureSystem";
 
 /**
  * JSGame - Game system coordinator
@@ -66,7 +67,7 @@ export class JSGame
         // === Phase 4: Entity instances ===
         this.playerEntity = new PlayerEntity(this.engine);
         this.propEntity = new PropEntity(this.engine, this.rendererSystem);  // Pass rendererSystem
-
+// this.newFeature = new NewFeatureSystem();
         console.log('JSGame: All component instances created (Phase 4 with Entity structure)');
     }
 
@@ -95,7 +96,7 @@ export class JSGame
 
         // === Phase 4: Renderer system (priority: 100) - renders LAST ===
         this.engine.registerSystem(null, this.rendererSystem);  // Priority: 100
-
+// this.engine.registerSystem(null, this.newFeature);
         console.log('(JSGame::registerGameSystems)(end) - All systems registered (PropEntity ENABLED)');
     }
 

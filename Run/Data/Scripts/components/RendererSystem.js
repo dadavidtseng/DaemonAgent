@@ -75,32 +75,38 @@ export class RendererSystem extends Subsystem {
             [4, 5, 1, 4, 1, 0]
         ];
 
-        // Add all vertices
+        const colors = [
+            [255, 0, 0],     // Front: Red
+            [0, 255, 255],   // Back: Cyan
+            [0, 255, 0],     // Left: Green
+            [255, 0, 255],   // Right: Magenta
+            [0, 0, 255],     // Top: Blue
+            [255, 255, 0]    // Bottom: Yellow
+        ];
+
+        // Build vertex array in JavaScript (36 vertices * 9 values = 324 elements)
+        const vertexArray = [];
         faces.forEach((face, faceIndex) => {
-            const colors = [
-                [255, 0, 0],     // Front: Red
-                [0, 255, 255],   // Back: Cyan
-                [0, 255, 0],     // Left: Green
-                [255, 0, 255],   // Right: Magenta
-                [0, 0, 255],     // Top: Blue
-                [255, 255, 0]    // Bottom: Yellow
-            ];
+            const color = colors[faceIndex];
 
             face.forEach((cornerIndex, vertIndex) => {
                 const corner = corners[cornerIndex];
-                const color = colors[faceIndex];
 
                 // UV coordinates (simple mapping)
                 const u = (vertIndex % 3) === 0 ? 0 : (vertIndex % 3) === 1 ? 1 : 0.5;
                 const v = vertIndex < 3 ? 0 : 1;
 
-                renderer.addVertex(
-                    corner.x, corner.y, corner.z,  // position
-                    color[0], color[1], color[2], 255,  // color + alpha
-                    u, v  // UV
+                // Add vertex data: x, y, z, r, g, b, a, u, v
+                vertexArray.push(
+                    corner.x, corner.y, corner.z,      // position
+                    color[0], color[1], color[2], 255, // color + alpha
+                    u, v                                // UV
                 );
             });
         });
+
+        // Submit all vertices in single call (36x speedup)
+        renderer.addVertexBatch(vertexArray);
 
         return handle;
     }
@@ -111,6 +117,9 @@ export class RendererSystem extends Subsystem {
      * Matches C++ Prop::InitializeLocalVertsForSphere()
      */
     createSphereVertexArray(radius = 0.5, numSlices = 32, numStacks = 16) {
+        console.log('=== createSphereVertexArray START ===');
+        console.log(`RendererSystem: Creating sphere with radius=${radius}, slices=${numSlices}, stacks=${numStacks}`);
+
         const handle = renderer.createVertexArrayCPP();
         console.log('RendererSystem: Created vertex array handle =', handle);
 
@@ -120,9 +129,16 @@ export class RendererSystem extends Subsystem {
         const uvWidth = uvMaxX - uvMinX;
         const uvHeight = uvMaxY - uvMinY;
 
-        const center = { x: 0, y: 0, z: 0 }; // Local space, center at origin
-        const color = [255, 255, 255]; // White
+        const centerX = 0, centerY = 0, centerZ = 0; // Local space, center at origin
+        const r = 255, g = 255, b = 255, a = 255; // White
 
+        // Pre-allocate array for performance: 6 vertices per quad * 9 values per vertex
+        const totalValues = numSlices * numStacks * 6 * 9;
+        const vertexArray = new Array(totalValues);
+        console.log(`RendererSystem: Pre-allocated array with ${totalValues} values`);
+        let idx = 0;
+
+        console.log('RendererSystem: Starting vertex generation loop...');
         // Generate sphere using latitude-longitude method
         for (let stackIndex = 0; stackIndex < numStacks; stackIndex++) {
             const phi1 = Math.PI * (stackIndex / numStacks);
@@ -130,55 +146,81 @@ export class RendererSystem extends Subsystem {
             const v1 = stackIndex / numStacks;
             const v2 = (stackIndex + 1) / numStacks;
 
+            const sinPhi1 = Math.sin(phi1);
+            const cosPhi1 = Math.cos(phi1);
+            const sinPhi2 = Math.sin(phi2);
+            const cosPhi2 = Math.cos(phi2);
+
             for (let sliceIndex = 0; sliceIndex < numSlices; sliceIndex++) {
                 const theta1 = 2.0 * Math.PI * (sliceIndex / numSlices);
                 const theta2 = 2.0 * Math.PI * ((sliceIndex + 1) / numSlices);
                 const u1 = sliceIndex / numSlices;
                 const u2 = (sliceIndex + 1) / numSlices;
 
-                // Calculate quad vertices
-                const bottomLeft = {
-                    x: center.x + radius * Math.sin(phi1) * Math.cos(theta1),
-                    y: center.y + radius * Math.sin(phi1) * Math.sin(theta1),
-                    z: center.z + radius * Math.cos(phi1)
-                };
+                const cosTheta1 = Math.cos(theta1);
+                const sinTheta1 = Math.sin(theta1);
+                const cosTheta2 = Math.cos(theta2);
+                const sinTheta2 = Math.sin(theta2);
 
-                const bottomRight = {
-                    x: center.x + radius * Math.sin(phi1) * Math.cos(theta2),
-                    y: center.y + radius * Math.sin(phi1) * Math.sin(theta2),
-                    z: center.z + radius * Math.cos(phi1)
-                };
+                // Calculate quad vertices (avoid object allocations)
+                const blX = centerX + radius * sinPhi1 * cosTheta1;
+                const blY = centerY + radius * sinPhi1 * sinTheta1;
+                const blZ = centerZ + radius * cosPhi1;
 
-                const topRight = {
-                    x: center.x + radius * Math.sin(phi2) * Math.cos(theta2),
-                    y: center.y + radius * Math.sin(phi2) * Math.sin(theta2),
-                    z: center.z + radius * Math.cos(phi2)
-                };
+                const brX = centerX + radius * sinPhi1 * cosTheta2;
+                const brY = centerY + radius * sinPhi1 * sinTheta2;
+                const brZ = centerZ + radius * cosPhi1;
 
-                const topLeft = {
-                    x: center.x + radius * Math.sin(phi2) * Math.cos(theta1),
-                    y: center.y + radius * Math.sin(phi2) * Math.sin(theta1),
-                    z: center.z + radius * Math.cos(phi2)
-                };
+                const trX = centerX + radius * sinPhi2 * cosTheta2;
+                const trY = centerY + radius * sinPhi2 * sinTheta2;
+                const trZ = centerZ + radius * cosPhi2;
 
-                // Calculate UV coordinates for this quad
-                const uvBL = { u: uvMinX + uvWidth * u1, v: uvMinY + uvHeight * v1 };
-                const uvBR = { u: uvMinX + uvWidth * u2, v: uvMinY + uvHeight * v1 };
-                const uvTR = { u: uvMinX + uvWidth * u2, v: uvMinY + uvHeight * v2 };
-                const uvTL = { u: uvMinX + uvWidth * u1, v: uvMinY + uvHeight * v2 };
+                const tlX = centerX + radius * sinPhi2 * cosTheta1;
+                const tlY = centerY + radius * sinPhi2 * sinTheta1;
+                const tlZ = centerZ + radius * cosPhi2;
 
-                // Add quad as two triangles (6 vertices)
-                // Triangle 1: BL, BR, TL
-                renderer.addVertex(bottomLeft.x, bottomLeft.y, bottomLeft.z, color[0], color[1], color[2], 255, uvBL.u, uvBL.v);
-                renderer.addVertex(bottomRight.x, bottomRight.y, bottomRight.z, color[0], color[1], color[2], 255, uvBR.u, uvBR.v);
-                renderer.addVertex(topLeft.x, topLeft.y, topLeft.z, color[0], color[1], color[2], 255, uvTL.u, uvTL.v);
+                // Calculate UV coordinates (avoid object allocations)
+                const uvBLu = uvMinX + uvWidth * u1;
+                const uvBLv = uvMinY + uvHeight * v1;
+                const uvBRu = uvMinX + uvWidth * u2;
+                const uvBRv = uvMinY + uvHeight * v1;
+                const uvTRu = uvMinX + uvWidth * u2;
+                const uvTRv = uvMinY + uvHeight * v2;
+                const uvTLu = uvMinX + uvWidth * u1;
+                const uvTLv = uvMinY + uvHeight * v2;
 
-                // Triangle 2: BR, TR, TL
-                renderer.addVertex(bottomRight.x, bottomRight.y, bottomRight.z, color[0], color[1], color[2], 255, uvBR.u, uvBR.v);
-                renderer.addVertex(topRight.x, topRight.y, topRight.z, color[0], color[1], color[2], 255, uvTR.u, uvTR.v);
-                renderer.addVertex(topLeft.x, topLeft.y, topLeft.z, color[0], color[1], color[2], 255, uvTL.u, uvTL.v);
+                // Triangle 1: BL, BR, TL (9 values * 3 vertices = 27 values)
+                vertexArray[idx++] = blX; vertexArray[idx++] = blY; vertexArray[idx++] = blZ;
+                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
+                vertexArray[idx++] = uvBLu; vertexArray[idx++] = uvBLv;
+
+                vertexArray[idx++] = brX; vertexArray[idx++] = brY; vertexArray[idx++] = brZ;
+                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
+                vertexArray[idx++] = uvBRu; vertexArray[idx++] = uvBRv;
+
+                vertexArray[idx++] = tlX; vertexArray[idx++] = tlY; vertexArray[idx++] = tlZ;
+                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
+                vertexArray[idx++] = uvTLu; vertexArray[idx++] = uvTLv;
+
+                // Triangle 2: BR, TR, TL (9 values * 3 vertices = 27 values)
+                vertexArray[idx++] = brX; vertexArray[idx++] = brY; vertexArray[idx++] = brZ;
+                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
+                vertexArray[idx++] = uvBRu; vertexArray[idx++] = uvBRv;
+
+                vertexArray[idx++] = trX; vertexArray[idx++] = trY; vertexArray[idx++] = trZ;
+                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
+                vertexArray[idx++] = uvTRu; vertexArray[idx++] = uvTRv;
+
+                vertexArray[idx++] = tlX; vertexArray[idx++] = tlY; vertexArray[idx++] = tlZ;
+                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
+                vertexArray[idx++] = uvTLu; vertexArray[idx++] = uvTLv;
             }
         }
+        console.log('RendererSystem: Vertex generation complete, submitting to C++...');
+
+
+        // Submit all vertices in single call (batch API)
+        renderer.addVertexBatch(vertexArray);
 
         const totalVertices = numSlices * numStacks * 6;
         console.log(`RendererSystem: Added ${totalVertices} vertices for sphere`);
@@ -194,90 +236,213 @@ export class RendererSystem extends Subsystem {
     createGridVertexArray(gridLineLength = 100.0) {
         console.log('=== createGridVertexArray START ===');
         console.log(`RendererSystem: Creating grid with lineLength=${gridLineLength}`);
-
         const handle = renderer.createVertexArrayCPP();
-        console.log('RendererSystem: Created vertex array handle =', handle);
-
         const halfLength = gridLineLength / 2.0;
+        console.log('RendererSystem: Created vertex array handle =', handle);
+        // Pre-calculate array size: 100 lines × 2 (X and Y) × 36 vertices/box × 9 values/vertex
+        const numLines = Math.floor(gridLineLength);
+        const verticesPerBox = 36;
+        const valuesPerVertex = 9;
+        const totalValues = numLines * 2 * verticesPerBox * valuesPerVertex;
 
-        // Helper function to add box vertices (matching AddVertsForAABB3D)
-        const addBoxVertices = (minX, minY, minZ, maxX, maxY, maxZ, colorR, colorG, colorB) => {
-            // Define 8 corners
-            const fbl = { x: maxX, y: minY, z: minZ };
-            const fbr = { x: maxX, y: maxY, z: minZ };
-            const ftl = { x: maxX, y: minY, z: maxZ };
-            const ftr = { x: maxX, y: maxY, z: maxZ };
-            const bbl = { x: minX, y: maxY, z: minZ };
-            const bbr = { x: minX, y: minY, z: minZ };
-            const btl = { x: minX, y: maxY, z: maxZ };
-            const btr = { x: minX, y: minY, z: maxZ };
+        // Pre-allocate array for better performance
+        const vertexArray = new Array(totalValues);
+        let idx = 0;
 
-            // Helper to add quad (6 vertices = 2 triangles)
-            const addQuad = (bl, br, tl, tr) => {
-                // Triangle 1: BL, BR, TL
-                renderer.addVertex(bl.x, bl.y, bl.z, colorR, colorG, colorB, 255, 0, 0);
-                renderer.addVertex(br.x, br.y, br.z, colorR, colorG, colorB, 255, 1, 0);
-                renderer.addVertex(tl.x, tl.y, tl.z, colorR, colorG, colorB, 255, 0, 1);
-                // Triangle 2: BR, TR, TL
-                renderer.addVertex(br.x, br.y, br.z, colorR, colorG, colorB, 255, 1, 0);
-                renderer.addVertex(tr.x, tr.y, tr.z, colorR, colorG, colorB, 255, 1, 1);
-                renderer.addVertex(tl.x, tl.y, tl.z, colorR, colorG, colorB, 255, 0, 1);
-            };
+        // Optimized inline box generation (no object allocations)
+        const addBox = (minX, minY, minZ, maxX, maxY, maxZ, r, g, b) => {
+            // Define corners inline (no object allocations)
+            // Front face corners
+            const fbl_x = maxX, fbl_y = minY, fbl_z = minZ;
+            const fbr_x = maxX, fbr_y = maxY, fbr_z = minZ;
+            const ftl_x = maxX, ftl_y = minY, ftl_z = maxZ;
+            const ftr_x = maxX, ftr_y = maxY, ftr_z = maxZ;
+            // Back face corners
+            const bbl_x = minX, bbl_y = maxY, bbl_z = minZ;
+            const bbr_x = minX, bbr_y = minY, bbr_z = minZ;
+            const btl_x = minX, btl_y = maxY, btl_z = maxZ;
+            const btr_x = minX, btr_y = minY, btr_z = maxZ;
 
-            // Add 6 faces
-            addQuad(fbl, fbr, ftl, ftr); // Front
-            addQuad(bbl, bbr, btl, btr); // Back
-            addQuad(bbr, fbl, btr, ftl); // Left
-            addQuad(fbr, bbl, ftr, btl); // Right
-            addQuad(ftl, ftr, btr, btl); // Top
-            addQuad(bbr, bbl, fbl, fbr); // Bottom
+            // Front face (2 triangles = 6 vertices × 9 values = 54 values)
+            vertexArray[idx++] = fbl_x; vertexArray[idx++] = fbl_y; vertexArray[idx++] = fbl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = fbr_x; vertexArray[idx++] = fbr_y; vertexArray[idx++] = fbr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = ftl_x; vertexArray[idx++] = ftl_y; vertexArray[idx++] = ftl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = fbr_x; vertexArray[idx++] = fbr_y; vertexArray[idx++] = fbr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = ftr_x; vertexArray[idx++] = ftr_y; vertexArray[idx++] = ftr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = ftl_x; vertexArray[idx++] = ftl_y; vertexArray[idx++] = ftl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            // Back face (54 values)
+            vertexArray[idx++] = bbl_x; vertexArray[idx++] = bbl_y; vertexArray[idx++] = bbl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = bbr_x; vertexArray[idx++] = bbr_y; vertexArray[idx++] = bbr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = btl_x; vertexArray[idx++] = btl_y; vertexArray[idx++] = btl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = bbr_x; vertexArray[idx++] = bbr_y; vertexArray[idx++] = bbr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = btr_x; vertexArray[idx++] = btr_y; vertexArray[idx++] = btr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = btl_x; vertexArray[idx++] = btl_y; vertexArray[idx++] = btl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            // Left face (54 values)
+            vertexArray[idx++] = bbr_x; vertexArray[idx++] = bbr_y; vertexArray[idx++] = bbr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = fbl_x; vertexArray[idx++] = fbl_y; vertexArray[idx++] = fbl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = btr_x; vertexArray[idx++] = btr_y; vertexArray[idx++] = btr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = fbl_x; vertexArray[idx++] = fbl_y; vertexArray[idx++] = fbl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = ftl_x; vertexArray[idx++] = ftl_y; vertexArray[idx++] = ftl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = btr_x; vertexArray[idx++] = btr_y; vertexArray[idx++] = btr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            // Right face (54 values)
+            vertexArray[idx++] = fbr_x; vertexArray[idx++] = fbr_y; vertexArray[idx++] = fbr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = bbl_x; vertexArray[idx++] = bbl_y; vertexArray[idx++] = bbl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = ftr_x; vertexArray[idx++] = ftr_y; vertexArray[idx++] = ftr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = bbl_x; vertexArray[idx++] = bbl_y; vertexArray[idx++] = bbl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = btl_x; vertexArray[idx++] = btl_y; vertexArray[idx++] = btl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = ftr_x; vertexArray[idx++] = ftr_y; vertexArray[idx++] = ftr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            // Top face (54 values)
+            vertexArray[idx++] = ftl_x; vertexArray[idx++] = ftl_y; vertexArray[idx++] = ftl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = ftr_x; vertexArray[idx++] = ftr_y; vertexArray[idx++] = ftr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = btr_x; vertexArray[idx++] = btr_y; vertexArray[idx++] = btr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = ftr_x; vertexArray[idx++] = ftr_y; vertexArray[idx++] = ftr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = btl_x; vertexArray[idx++] = btl_y; vertexArray[idx++] = btl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = btr_x; vertexArray[idx++] = btr_y; vertexArray[idx++] = btr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            // Bottom face (54 values)
+            vertexArray[idx++] = bbr_x; vertexArray[idx++] = bbr_y; vertexArray[idx++] = bbr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = bbl_x; vertexArray[idx++] = bbl_y; vertexArray[idx++] = bbl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = fbl_x; vertexArray[idx++] = fbl_y; vertexArray[idx++] = fbl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = bbl_x; vertexArray[idx++] = bbl_y; vertexArray[idx++] = bbl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+
+            vertexArray[idx++] = fbr_x; vertexArray[idx++] = fbr_y; vertexArray[idx++] = fbr_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+
+            vertexArray[idx++] = fbl_x; vertexArray[idx++] = fbl_y; vertexArray[idx++] = fbl_z;
+            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
         };
 
         // Generate grid lines
         for (let i = -Math.floor(halfLength); i < Math.floor(halfLength); i++) {
-            let lineWidth = 0.05;
-            if (i === 0) lineWidth = 0.3; // Thicker center lines
-
+            const lineWidth = (i === 0) ? 0.3 : 0.05;
             const halfWidth = lineWidth / 2.0;
 
-            // X-axis line (along X direction)
-            const boundsX = {
-                minX: -halfLength,
-                minY: -halfWidth + i,
-                minZ: -halfWidth,
-                maxX: halfLength,
-                maxY: halfWidth + i,
-                maxZ: halfWidth
-            };
+            // Color selection
+            const isColored = (i % 5 === 0);
+            const colorX_r = isColored ? 255 : 64;
+            const colorX_g = isColored ? 0 : 64;
+            const colorX_b = isColored ? 0 : 64;
+            const colorY_r = isColored ? 0 : 64;
+            const colorY_g = isColored ? 255 : 64;
+            const colorY_b = isColored ? 0 : 64;
 
-            // Y-axis line (along Y direction)
-            const boundsY = {
-                minX: -halfWidth + i,
-                minY: -halfLength,
-                minZ: -halfWidth,
-                maxX: halfWidth + i,
-                maxY: halfLength,
-                maxZ: halfWidth
-            };
+            // X-axis line
+            addBox(-halfLength, -halfWidth + i, -halfWidth,
+                   halfLength, halfWidth + i, halfWidth,
+                   colorX_r, colorX_g, colorX_b);
 
-            // Color logic: every 5th line is colored, others are dark grey
-            let colorX = [64, 64, 64]; // DARK_GREY
-            let colorY = [64, 64, 64]; // DARK_GREY
-
-            if (i % 5 === 0) {
-                colorX = [255, 0, 0];   // RED
-                colorY = [0, 255, 0];   // GREEN
-            }
-
-            // Add both lines
-            addBoxVertices(boundsX.minX, boundsX.minY, boundsX.minZ, boundsX.maxX, boundsX.maxY, boundsX.maxZ, colorX[0], colorX[1], colorX[2]);
-            addBoxVertices(boundsY.minX, boundsY.minY, boundsY.minZ, boundsY.maxX, boundsY.maxY, boundsY.maxZ, colorY[0], colorY[1], colorY[2]);
+            // Y-axis line
+            addBox(-halfWidth + i, -halfLength, -halfWidth,
+                   halfWidth + i, halfLength, halfWidth,
+                   colorY_r, colorY_g, colorY_b);
         }
 
-        const numLines = Math.floor(gridLineLength);
-        const verticesPerBox = 36; // 6 faces * 6 vertices per face
+        // Submit all vertices in single call
+        renderer.addVertexBatch(vertexArray);
         const totalVertices = numLines * 2 * verticesPerBox;
-        console.log(`RendererSystem: Added ${totalVertices} vertices for grid (${numLines} lines)`);
+        console.log(`RendererSystem: Successfully added ${totalVertices} vertices for grid (${numLines} lines)`);
         console.log('=== createGridVertexArray END ===');
         return handle;
     }

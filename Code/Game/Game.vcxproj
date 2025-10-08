@@ -314,7 +314,6 @@
     <ClCompile Include="Gameplay\Entity.cpp" />
     <ClCompile Include="Gameplay\Game.cpp" />
     <ClCompile Include="Gameplay\Player.cpp" />
-    <ClCompile Include="Gameplay\Prop.cpp" />
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
   <!-- Header Files -->
@@ -327,7 +326,6 @@
     <ClInclude Include="Gameplay\Entity.hpp" />
     <ClInclude Include="Gameplay\Game.hpp" />
     <ClInclude Include="Gameplay\Player.hpp" />
-    <ClInclude Include="Gameplay\Prop.hpp" />
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
   <!-- Documentation -->
