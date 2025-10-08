@@ -1,5 +1,5 @@
 //----------------------------------------------------------------------------------------------------
-// CppBridgeSystem.mjs - C++ Engine Bridge System Component
+// CppBridgeSystem.js - C++ Engine Bridge System Component
 //----------------------------------------------------------------------------------------------------
 
 /**
@@ -18,7 +18,7 @@
 
 export class CppBridgeSystem {
     constructor(engine) {
-        // SystemComponent pattern (id, priority, config)
+        // Subsystem pattern (id, priority, config)
         this.id = 'cppBridge';
         this.priority = 0;
         this.enabled = true;

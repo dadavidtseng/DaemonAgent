@@ -1,4 +1,4 @@
-// InputSystemCommon.mjs
+// InputSystemCommon.js
 // Phase 4 ES6 Module version of InputSystemCommon.js
 
 /**
@@ -6,12 +6,19 @@
  * Provides named constants for all keyboard and mouse input codes used by the InputSystem.
  *
  * Usage:
- * import { KEYCODE_SPACE, KEYCODE_F1, KEYCODE } from './InputSystemCommon.mjs';
+ * import { KEYCODE_SPACE, KEYCODE_F1, KEYCODE } from './InputSystemCommon.js';
  */
 
 export const KEYCODE_F1 = 112;
 export const KEYCODE_ESC = 27;
 export const KEYCODE_SPACE = 32;
+export const KEYCODE_P = 80;
+
+// WASD Keys (exported for entity behaviors)
+export const KEYCODE_W = 87;
+export const KEYCODE_A = 65;
+export const KEYCODE_S = 83;
+export const KEYCODE_D = 68;
 
 export const KEYCODE = {
     // Number Keys (0-9)
@@ -105,6 +112,10 @@ export const KEYCODE = {
 globalThis.KEYCODE_F1 = KEYCODE_F1;
 globalThis.KEYCODE_ESC = KEYCODE_ESC;
 globalThis.KEYCODE_SPACE = KEYCODE_SPACE;
+globalThis.KEYCODE_W = KEYCODE_W;
+globalThis.KEYCODE_A = KEYCODE_A;
+globalThis.KEYCODE_S = KEYCODE_S;
+globalThis.KEYCODE_D = KEYCODE_D;
 globalThis.KEYCODE = KEYCODE;
 
 console.log('InputSystemCommon: ES6 module loaded (Phase 4)');

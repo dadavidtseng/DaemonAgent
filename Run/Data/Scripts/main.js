@@ -1,5 +1,5 @@
 //----------------------------------------------------------------------------------------------------
-// main.mjs - JavaScript Framework Entry Point (Phase 4 ES6 Modules)
+// main.js - JavaScript Framework Entry Point (Phase 4 ES6 Modules)
 //----------------------------------------------------------------------------------------------------
 
 /**
@@ -12,19 +12,19 @@
  * - Sets up global references for C++ bridge and hot-reload
  *
  * Loading Order:
- * 1. C++ loads main.mjs (ES6 module - this file)
- *    ↳ Imports InputSystemCommon.mjs (key code constants)
- *    ↳ Imports JSEngine.mjs
- *    ↳ Imports JSGame.mjs
- *       ↳ Imports InputSystem.mjs, AudioSystem.mjs
- *       ↳ Imports CppBridgeSystem.mjs, CubeSpawner.mjs, PropMover.mjs, CameraShaker.mjs
+ * 1. C++ loads main.js (ES6 module - this file)
+ *    ↳ Imports InputSystemCommon.js (key code constants)
+ *    ↳ Imports JSEngine.js
+ *    ↳ Imports JSGame.js
+ *       ↳ Imports InputSystem.js, AudioSystem.js
+ *       ↳ Imports CppBridgeSystem.js, CubeSpawner.js, PropMover.js, CameraShaker.js
  */
 
-import './InputSystemCommon.mjs'; // Global key code constants
-import { JSEngine } from './JSEngine.mjs';
-import { JSGame } from './JSGame.mjs';
+import './InputSystemCommon.js'; // Global key code constants
+import { JSEngine } from './JSEngine.js';
+import { JSGame } from './JSGame.js';
 
-console.log('(main.mjs)(start) - Phase 4 ES6 Module Entry Point');
+console.log('(main.js)(start) - Phase 4 ES6 Module Entry Point');
 
 // Create JSEngine instance
 const jsEngineInstance = new JSEngine();
@@ -60,7 +60,7 @@ console.log('Input system status:', jsGameInstance.isInputEnabled() ? 'ENABLED' 
 console.log('Audio system status:', jsGameInstance.isAudioEnabled() ? 'ENABLED' : 'DISABLED');
 console.log('Hot-reload system status:', jsEngineInstance.hotReloadEnabled ? 'AVAILABLE (C++)' : 'NOT AVAILABLE');
 
-console.log('(main.mjs)(end) - JavaScript framework initialized');
+console.log('(main.js)(end) - JavaScript framework initialized');
 
 // Export for potential future use
 export { jsEngineInstance, jsGameInstance };

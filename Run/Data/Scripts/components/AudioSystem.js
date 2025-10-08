@@ -1,11 +1,11 @@
-// AudioSystem.mjs
-// Phase 4 ES6 Module version using SystemComponent pattern
+// AudioSystem.js
+// Phase 4 ES6 Module version using Subsystem pattern
 
-import { SystemComponent } from '../core/SystemComponent.mjs';
+import { Subsystem } from '../core/Subsystem.js';
 
 /**
  * AudioSystem - JavaScript wrapper for AudioScriptInterface
- * Phase 4 ES6 Module using SystemComponent pattern
+ * Phase 4 ES6 Module using Subsystem pattern
  *
  * Features:
  * - Sound loading and caching
@@ -13,7 +13,7 @@ import { SystemComponent } from '../core/SystemComponent.mjs';
  * - Volume and playback state management
  * - FMOD integration through C++ AudioScriptInterface
  */
-export class AudioSystem extends SystemComponent {
+export class AudioSystem extends Subsystem {
     constructor() {
         super('audioSystem', 5, { enabled: true });
 

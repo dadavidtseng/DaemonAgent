@@ -1,9 +1,9 @@
 //----------------------------------------------------------------------------------------------------
-// SystemComponent.mjs - Abstract base class for all game systems
+// Subsystem.js - Abstract base class for all game systems
 //----------------------------------------------------------------------------------------------------
 
 /**
- * SystemComponent - Abstract base class for all game systems
+ * Subsystem - Abstract base class for all game systems
  * Following Starship ECS pattern (like InputComponent base class)
  *
  * All systems must extend this class and implement:
@@ -12,10 +12,15 @@
  *
  * Design Philosophy:
  * - Each system = separate file (AI agent can edit independently)
- * - JSGame.mjs coordinates systems, doesn't contain system logic
- * - JSEngine.mjs executes registered systems
+ * - JSGame.js coordinates systems, doesn't contain system logic
+ * - JSEngine.js executes registered systems
  */
-export class SystemComponent {
+export class Subsystem
+{
+    id;
+    priority;
+    enabled;
+    data;
     /**
      * @param {string} id - Unique system identifier
      * @param {number} priority - Execution priority (0-100, lower = earlier)
@@ -23,17 +28,17 @@ export class SystemComponent {
      */
     constructor(id, priority = 50, config = {}) {
         // Prevent direct instantiation of abstract base class
-        if (new.target === SystemComponent) {
-            throw new Error('SystemComponent is abstract and cannot be instantiated directly. Extend it instead.');
+        if (new.target === Subsystem) {
+            throw new Error('Subsystem is abstract and cannot be instantiated directly. Extend it instead.');
         }
 
         // Validate required parameters
         if (!id || typeof id !== 'string') {
-            throw new Error('SystemComponent requires a valid string id');
+            throw new Error('Subsystem requires a valid string id');
         }
 
         if (typeof priority !== 'number') {
-            throw new Error('SystemComponent priority must be a number');
+            throw new Error('Subsystem priority must be a number');
         }
 
         // Core properties
@@ -89,8 +94,8 @@ export class SystemComponent {
             id: this.id,
             priority: this.priority,
             enabled: this.enabled,
-            hasUpdate: this.update !== SystemComponent.prototype.update,
-            hasRender: this.render !== SystemComponent.prototype.render,
+            hasUpdate: this.update !== Subsystem.prototype.update,
+            hasRender: this.render !== Subsystem.prototype.render,
             dataKeys: Object.keys(this.data)
         };
     }
@@ -114,6 +119,6 @@ export class SystemComponent {
     }
 }
 
-// Make SystemComponent available for import
+// Make Subsystem available for import
 // No globalThis registration - clean ES6 module pattern
-console.log('SystemComponent: Base class loaded (ECS architecture)');
+console.log('Subsystem: Base class loaded (ECS architecture)');

@@ -1,5 +1,5 @@
 //----------------------------------------------------------------------------------------------------
-// JSEngine.mjs - Core JavaScript Engine Framework
+// JSEngine.js - Core JavaScript Engine Framework
 //----------------------------------------------------------------------------------------------------
 
 /**
@@ -15,7 +15,7 @@
  * - This file is CORE INFRASTRUCTURE - rarely edited
  * - Systems register with JSEngine and execute every frame
  * - Priority-based execution (0-100, lower = earlier)
- * - Dual pattern support: legacy config objects + SystemComponent instances
+ * - Dual pattern support: legacy config objects + Subsystem instances
  */
 
 export class JSEngine {
@@ -54,13 +54,13 @@ export class JSEngine {
      * - LEGACY: registerSystem('systemId', {update, render, priority, enabled, data})
      * - NEW: registerSystem(null, systemComponentInstance) where instance.id is used
      *
-     * @param {string|null} id - Unique system identifier (legacy) or null (new SystemComponent pattern)
-     * @param {Object|SystemComponent} configOrComponent - Config object (legacy) or SystemComponent instance (new)
+     * @param {string|null} id - Unique system identifier (legacy) or null (new Subsystem pattern)
+     * @param {Object|Subsystem} configOrComponent - Config object (legacy) or Subsystem instance (new)
      */
     registerSystem(id, configOrComponent = {}) {
         let system;
 
-        // NEW PATTERN: SystemComponent instance (Phase 3.5)
+        // NEW PATTERN: Subsystem instance (Phase 3.5)
         // Detect by checking for id, priority properties and update/render methods
         const isComponentInstance = configOrComponent &&
                                    typeof configOrComponent === 'object' &&
@@ -69,7 +69,7 @@ export class JSEngine {
                                    typeof configOrComponent.update === 'function';
 
         if (isComponentInstance) {
-            // SystemComponent instance pattern
+            // Subsystem instance pattern
             const component = configOrComponent;
             system = {
                 id: component.id,
@@ -220,7 +220,13 @@ export class JSEngine {
                     // Pass both gameDeltaSeconds and systemDeltaSeconds to allow systems to choose
                     system.update(gameDeltaSeconds, systemDeltaSeconds);
                 } catch (error) {
-                    console.log(`JSEngine: Error in system '${system.id}' update:`, error);
+                    // Enhanced error logging with multiple fallbacks
+                    if (error instanceof Error) {
+                        console.log(`JSEngine: Error in system '${system.id}' update: ${error.message}`);
+                        console.log(`Stack: ${error.stack}`);
+                    } else {
+                        console.log(`JSEngine: Error in system '${system.id}' update: ${JSON.stringify(error)}`);
+                    }
                 }
             }
         }
@@ -241,7 +247,13 @@ export class JSEngine {
                 try {
                     system.render();
                 } catch (error) {
-                    console.log(`JSEngine: Error in system '${system.id}' render:`, error);
+                    // Enhanced error logging with multiple fallbacks
+                    if (error instanceof Error) {
+                        console.log(`JSEngine: Error in system '${system.id}' render: ${error.message}`);
+                        console.log(`Stack: ${error.stack}`);
+                    } else {
+                        console.log(`JSEngine: Error in system '${system.id}' render: ${JSON.stringify(error)}`);
+                    }
                 }
             }
         }

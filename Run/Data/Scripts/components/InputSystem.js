@@ -1,20 +1,20 @@
-// InputSystem.mjs
-// Phase 4 ES6 Module version using SystemComponent pattern
+// InputSystem.js
+// Phase 4 ES6 Module version using Subsystem pattern
 
-import {SystemComponent} from '../core/SystemComponent.mjs';
-import AudioSystem from "./AudioSystem.mjs";
-import {KEYCODE_F1, KEYCODE_SPACE} from '../InputSystemCommon.mjs';
+import {Subsystem} from '../core/Subsystem.js';
+import AudioSystem from "./AudioSystem.js";
+import {KEYCODE_F1, KEYCODE_SPACE, KEYCODE_P} from '../InputSystemCommon.js';
 
 /**
  * InputSystem - Handles all input-related functionality
- * Phase 4 ES6 Module using SystemComponent pattern
+ * Phase 4 ES6 Module using Subsystem pattern
  *
  * Features:
  * - F1 key debugging toggle
  * - Spacebar game state transitions
  * - Audio system integration
  */
-export class InputSystem extends SystemComponent
+export class InputSystem extends Subsystem
 {
     constructor()
     {
@@ -50,12 +50,11 @@ export class InputSystem extends SystemComponent
             console.log('InputSystem: F1 pressed, shouldRender =', shouldRender);
         }
 
-        if(this.wasKeyJustPressed(KEYCODE_SPACE))
+        if (typeof game !== 'undefined')
         {
-            if (typeof game !== 'undefined')
+            if (game.gameState === 'ATTRACT')
             {
-                // If in ATTRACT mode and spacebar was just pressed, switch to GAME mode
-                if (game.gameState === 'ATTRACT')
+                if (this.wasKeyJustPressed(KEYCODE_SPACE))
                 {
                     // Play click sound effect when changing from ATTRACT to GAME
                     if (this.audioSystem)
@@ -70,7 +69,22 @@ export class InputSystem extends SystemComponent
                     game.gameState = 'GAME';
                 }
             }
+
+            if (game.gameState === 'GAME')
+            {
+                if (this.wasKeyJustPressed(KEYCODE_ESC))
+                {
+                    game.gameState = 'ATTRACT';
+                }
+
+                if (this.wasKeyJustPressed(KEYCODE_P))
+                {
+                    game.pauseGameClock();
+                }
+            }
         }
+
+
     }
 
     wasKeyJustPressed(keyCode)

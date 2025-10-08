@@ -1,15 +1,16 @@
 //----------------------------------------------------------------------------------------------------
-// JSGame.mjs - Game System Coordinator (Phase 4 ES6 Module Architecture)
+// JSGame.js - Game System Coordinator (Phase 4 ES6 Module Architecture)
 //----------------------------------------------------------------------------------------------------
 
 
-import {CppBridgeSystem} from './components/CppBridgeSystem.mjs';
-import {InputSystem} from './components/InputSystem.mjs';
-import {AudioSystem} from './components/AudioSystem.mjs';
-import {CubeSpawner} from './components/CubeSpawner.mjs';
-import {PropMover} from './components/PropMover.mjs';
-import {CameraShaker} from './components/CameraShaker.mjs';
-import {NewFeatureSystem} from './components/NewFeatureSystem.mjs';
+import {CppBridgeSystem} from './components/CppBridgeSystem.js';
+import {InputSystem} from './components/InputSystem.js';
+import {AudioSystem} from './components/AudioSystem.js';
+import {RendererSystem} from './components/RendererSystem.js';
+
+// === Phase 4: Entity classes (matching C++ structure) ===
+import {PlayerEntity} from './entities/PlayerEntity.js';
+import {PropEntity} from './entities/PropEntity.js';
 
 /**
  * JSGame - Game system coordinator
@@ -44,7 +45,7 @@ export class JSGame
 
     /**
      * Create all component system instances
-     * Phase 4: Pure ES6 Module imports with SystemComponent pattern
+     * Phase 4: Pure ES6 Module imports with Subsystem pattern
      */
     createComponentInstances()
     {
@@ -59,18 +60,19 @@ export class JSGame
         // Input system (priority: 10)
         this.inputSystem = new InputSystem();
 
-        // Game logic systems (priorities: 20, 30, 40)
-        this.cubeSpawner = new CubeSpawner(this.engine);
-        this.propMover = new PropMover(this.engine);
-        this.cameraShaker = new CameraShaker(this.engine);
+        // === Phase 4: Renderer system (priority: 100) - must create BEFORE PropEntity ===
+        this.rendererSystem = new RendererSystem();
 
-        this.newFeature = new NewFeatureSystem();
-        console.log('JSGame: All component instances created (Phase 4 ES6)');
+        // === Phase 4: Entity instances ===
+        this.playerEntity = new PlayerEntity(this.engine);
+        this.propEntity = new PropEntity(this.engine, this.rendererSystem);  // Pass rendererSystem
+
+        console.log('JSGame: All component instances created (Phase 4 with Entity structure)');
     }
 
     /**
      * Register all game systems with the engine
-     * Phase 4: Pure SystemComponent pattern (no legacy delegation)
+     * Phase 4: Pure Subsystem pattern (no legacy delegation)
      */
     registerGameSystems()
     {
@@ -80,18 +82,21 @@ export class JSGame
             return;
         }
 
-        console.log('(JSGame::registerGameSystems)(start) - Phase 4 Pure ES6 Module pattern');
+        console.log('(JSGame::registerGameSystems)(start) - Phase 4 Entity Structure');
 
-        // Register all systems using SystemComponent pattern (null, componentInstance)
+        // Register all systems using Subsystem pattern (null, componentInstance)
         this.engine.registerSystem(null, this.cppBridge);       // Priority: 0
         this.engine.registerSystem(null, this.audioSystem);     // Priority: 5
         this.engine.registerSystem(null, this.inputSystem);     // Priority: 10
-        this.engine.registerSystem(null, this.cubeSpawner);     // Priority: 20
-        this.engine.registerSystem(null, this.propMover);       // Priority: 30
-        this.engine.registerSystem(null, this.cameraShaker);    // Priority: 40
 
-        this.engine.registerSystem(null, this.newFeature);
-        console.log('(JSGame::registerGameSystems)(end) - All systems registered with SystemComponent pattern');
+        // === Phase 4: Entity systems ===
+        this.engine.registerSystem(null, this.playerEntity);    // Priority: 11 (DISABLED)
+        this.engine.registerSystem(null, this.propEntity);      // Priority: 15 (ENABLED - renders props)
+
+        // === Phase 4: Renderer system (priority: 100) - renders LAST ===
+        this.engine.registerSystem(null, this.rendererSystem);  // Priority: 100
+
+        console.log('(JSGame::registerGameSystems)(end) - All systems registered (PropEntity ENABLED)');
     }
 
     // ============================================================================
