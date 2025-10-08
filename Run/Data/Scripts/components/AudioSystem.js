@@ -1,17 +1,24 @@
 // AudioSystem.js
-// Phase 4 ES6 Module version using Subsystem pattern
+// Phase 4.5 ES6 Module version using Subsystem pattern + Event System
 
 import { Subsystem } from '../core/Subsystem.js';
+import { EventTypes } from '../core/EventTypes.js';
 
 /**
  * AudioSystem - JavaScript wrapper for AudioScriptInterface
- * Phase 4 ES6 Module using Subsystem pattern
+ * Phase 4.5 ES6 Module using Subsystem pattern + Event System (DIP)
  *
  * Features:
  * - Sound loading and caching
  * - Basic and advanced playback control
  * - Volume and playback state management
  * - FMOD integration through C++ AudioScriptInterface
+ * - Event-based state change audio (Dependency Inversion)
+ *
+ * Architecture:
+ * - Subscribes to GameStateChanged events
+ * - NO dependency on InputSystem (loose coupling)
+ * - Plays audio in response to events
  */
 export class AudioSystem extends Subsystem {
     constructor() {
@@ -21,8 +28,55 @@ export class AudioSystem extends Subsystem {
         this.activeSounds = new Map(); // Track active playback IDs
         this.isInitialized = false;
 
-        console.log('AudioSystem: Module loaded (Phase 4 ES6)');
+        console.log('AudioSystem: Module loaded (Phase 4.5 ES6 + Event System)');
         this.initialize();
+
+        // ✅ DEPENDENCY INVERSION: Subscribe to events instead of being called directly
+        this.subscribeToEvents();
+    }
+
+    /**
+     * Subscribe to event system (Dependency Inversion)
+     */
+    subscribeToEvents() {
+        if (typeof globalThis.eventBus === 'undefined') {
+            console.warn('AudioSystem: EventBus not available, skipping event subscription');
+            return;
+        }
+
+        // Subscribe to GameStateChanged events
+        globalThis.eventBus.subscribe(
+            EventTypes.GAME_STATE_CHANGED,
+            this.onGameStateChanged.bind(this),
+            10  // Priority: 10 (play audio early in event handler chain)
+        );
+
+        console.log('AudioSystem: Subscribed to GameStateChanged events');
+    }
+
+    /**
+     * Handle GameStateChanged event (event-driven audio)
+     * @param {GameStateChangedEvent} event - Game state change event
+     */
+    onGameStateChanged(event) {
+        console.log('XXXAudioSystem: GameStateChanged event received:', event.toString());
+
+        // Play click sound when entering GAME state from ATTRACT
+        if (event.isEnteringGame()) {
+            console.log('AudioSystem: Playing state transition sound (ATTRACT → GAME)');
+
+            const clickSound = this.createOrGetSound("Data/Audio/TestSound.mp3", "Sound2D");
+            if (clickSound !== null && clickSound !== undefined) {
+                this.startSound(clickSound);
+                console.log('AudioSystem: Click sound played successfully');
+            } else {
+                console.warn('AudioSystem: Failed to play click sound (sound not loaded)');
+            }
+        }
+
+        // Future: Add more state transition sounds
+        // if (event.isLeavingGame()) { ... }
+        // if (event.isPauseToggle()) { ... }
     }
 
     /**

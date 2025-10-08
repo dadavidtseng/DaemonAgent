@@ -1,18 +1,26 @@
 // InputSystem.js
-// Phase 4 ES6 Module version using Subsystem pattern
+// Phase 4.5 ES6 Module version using Subsystem pattern + Event System
 
 import {Subsystem} from '../core/Subsystem.js';
-import AudioSystem from "./AudioSystem.js";
-import {KEYCODE_F1, KEYCODE_SPACE, KEYCODE_P} from '../InputSystemCommon.js';
+import {KEYCODE_F1, KEYCODE_SPACE, KEYCODE_P, KEYCODE_ESC} from '../InputSystemCommon.js';
+import {GameState} from "../JSGame.js";
+import {jsGameInstance} from "../main.js";
+import {EventTypes} from "../core/EventTypes.js";
+import {GameStateChangedEvent} from "../events/GameStateChangedEvent.js";
 
 /**
  * InputSystem - Handles all input-related functionality
- * Phase 4 ES6 Module using Subsystem pattern
+ * Phase 4.5 ES6 Module using Subsystem pattern + Event System (DIP)
  *
  * Features:
  * - F1 key debugging toggle
  * - Spacebar game state transitions
- * - Audio system integration
+ * - Event-based communication (NO direct AudioSystem dependency)
+ *
+ * Architecture:
+ * - Emits GameStateChangedEvent when state transitions occur
+ * - AudioSystem subscribes to events independently
+ * - Dependency Inversion Principle (DIP) achieved
  */
 export class InputSystem extends Subsystem
 {
@@ -20,10 +28,9 @@ export class InputSystem extends Subsystem
     {
         super('inputSystem', 10, {enabled: true});
 
-        this.audioSystem = new AudioSystem();
         this.logTimer = 0;
 
-        console.log('InputSystem: Module loaded (Phase 4 ES6)');
+        console.log('InputSystem: Module loaded (Phase 4.5 ES6 + Event System)');
     }
 
     /**
@@ -35,56 +42,69 @@ export class InputSystem extends Subsystem
     {
         // Accumulate time for logging
         this.logTimer += systemDelta;
-        // console.log('XXXXXXXX WORKS!!!');
+
         // Periodic logging (every 300ms)
         if (this.logTimer >= 300)
         {
-            console.log('MODIFY InputSystem HandleInput');
-
+            console.log('InputSystem: HandleInput active');
             this.logTimer = 0;
         }
 
+        // F1 key: Toggle rendering debug mode
         if (this.wasKeyJustPressed(KEYCODE_F1))
         {
-            shouldRender = !shouldRender;
-            console.log('InputSystem: F1 pressed, shouldRender =', shouldRender);
+            globalThis.shouldRender = !globalThis.shouldRender;
+            console.log('InputSystem: F1 pressed, shouldRender =', globalThis.shouldRender);
         }
 
+        // Game state transitions
         if (typeof jsGameInstance !== 'undefined')
         {
-            if (jsGameInstance.gameState === 'ATTRACT')
+            if (jsGameInstance.gameState === GameState.ATTRACT)
             {
+                // SPACE: ATTRACT → GAME transition
                 if (this.wasKeyJustPressed(KEYCODE_SPACE))
                 {
-                    // Play click sound effect when changing from ATTRACT to GAME
-                    if (this.audioSystem)
-                    {
-                        const clickSound = this.audioSystem.createOrGetSound("Data/Audio/TestSound.mp3", "Sound2D");
-                        if (clickSound !== null && clickSound !== undefined)
-                        {
-                            this.audioSystem.startSound(clickSound);
-                        }
-                    }
+                    const oldState = jsGameInstance.gameState;
+                    const newState = GameState.GAME;
 
-                    jsGameInstance.gameState = 'GAME';
+                    // Change game state
+                    jsGameInstance.setGameState(newState);
+
+                    // ✅ DEPENDENCY INVERSION: Emit event instead of calling AudioSystem directly
+                    // AudioSystem will subscribe to this event and play sound
+                    const event = new GameStateChangedEvent(oldState, newState, 'InputSystem');
+                    globalThis.eventBus.emit(EventTypes.GAME_STATE_CHANGED, event);
+
+                    console.log('InputSystem: Emitted GameStateChangedEvent (ATTRACT → GAME)');
                 }
             }
 
-            if (jsGameInstance.gameState === 'GAME')
+            if (jsGameInstance.gameState === GameState.GAME)
             {
+                // ESC: GAME → ATTRACT transition
                 if (this.wasKeyJustPressed(KEYCODE_ESC))
                 {
-                    jsGameInstance.gameState = 'ATTRACT';
+                    const oldState = jsGameInstance.gameState;
+                    const newState = GameState.ATTRACT;
+
+                    // Change game state
+                    jsGameInstance.setGameState(newState);
+
+                    // ✅ DEPENDENCY INVERSION: Emit event
+                    const event = new GameStateChangedEvent(oldState, newState, 'InputSystem');
+                    globalThis.eventBus.emit(EventTypes.GAME_STATE_CHANGED, event);
+
+                    console.log('InputSystem: Emitted GameStateChangedEvent (GAME → ATTRACT)');
                 }
 
+                // P: Pause game clock
                 if (this.wasKeyJustPressed(KEYCODE_P))
                 {
                     jsGameInstance.pauseGameClock();
                 }
             }
         }
-
-
     }
 
     wasKeyJustPressed(keyCode)
