@@ -1,0 +1,51 @@
+{
+    "subsystems": {
+        "audio": {
+            "enabled": true,
+            "description": "Audio subsystem using FMOD",
+            "config": {
+                "maxChannels": 128
+            }
+        },
+        "input": {
+            "enabled": true,
+            "description": "Input subsystem for keyboard, mouse, and gamepad",
+            "config": {
+                "enableController": true,
+                "enableMouse": true,
+                "enableKeyboard": true
+            }
+        },
+        "script": {
+            "enabled": true,
+            "description": "Script subsystem using V8 JavaScript engine",
+            "config": {
+                "enableDebugging": true,
+                "heapSizeLimit": 256,
+                "enableConsoleOutput": true,
+                "enableHotReload": true,
+                "enableInspector": true,
+                "inspectorPort": 9229,
+                "inspectorHost": "127.0.0.1",
+                "waitForDebugger": false
+            }
+        },
+        "network": {
+            "enabled": false,
+            "description": "Network subsystem (not yet implemented)",
+            "config": {}
+        }
+    },
+    "core": {
+        "description": "Core subsystems that are always enabled",
+        "subsystems": [
+            "LogSubsystem",
+            "EventSystem",
+            "JobSystem",
+            "Window",
+            "Renderer",
+            "DevConsole",
+            "ResourceSubsystem"
+        ]
+    }
+}
