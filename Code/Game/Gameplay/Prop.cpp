@@ -13,6 +13,7 @@
 #include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Renderer/VertexUtils.hpp"
 //----------------------------------------------------------------------------------------------------
+#include "Engine/Core/EngineCommon.hpp"
 #include "ThirdParty/stb/stb_image.h"
 
 //----------------------------------------------------------------------------------------------------

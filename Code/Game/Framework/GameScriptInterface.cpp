@@ -10,6 +10,7 @@
 #include "Game/Gameplay/Game.hpp"
 #include "Game/Gameplay/Player.hpp"
 //----------------------------------------------------------------------------------------------------
+#include "Engine/Core/Clock.hpp"
 #include "Engine/Core/ErrorWarningAssert.hpp"
 #include "Engine/Script/ScriptTypeExtractor.hpp"
 
@@ -21,26 +22,33 @@ GameScriptInterface::GameScriptInterface(Game* game)
     {
         ERROR_AND_DIE("GameScriptInterface: Game pointer cannot be null")
     }
+
+    GameScriptInterface::InitializeMethodRegistry();
 }
 
 //----------------------------------------------------------------------------------------------------
 std::vector<ScriptMethodInfo> GameScriptInterface::GetAvailableMethods() const
 {
     return {
+        ScriptMethodInfo("pauseGameClock",
+                         "Pause game clock",
+                         {},
+                         "void"),
+
         ScriptMethodInfo("appRequestQuit",
                          "Request quit to app",
                          {},
                          "void"),
 
-        ScriptMethodInfo("createCube",
-                         "在指定位置創建一個立方體",
-                         {"float", "float", "float"},
-                         "string"),
-
-        ScriptMethodInfo("moveProp",
-                         "移動指定索引的道具到新位置",
-                         {"int", "float", "float", "float"},
-                         "string"),
+        // ScriptMethodInfo("createCube",
+        //                  "在指定位置創建一個立方體",
+        //                  {"float", "float", "float"},
+        //                  "string"),
+        //
+        // ScriptMethodInfo("moveProp",
+        //                  "移動指定索引的道具到新位置",
+        //                  {"int", "float", "float", "float"},
+        //                  "string"),
 
         ScriptMethodInfo("getPlayerPosition",
                          "取得玩家目前位置",
@@ -99,18 +107,22 @@ ScriptMethodResult GameScriptInterface::CallMethod(String const&     methodName,
 {
     try
     {
+        if (methodName == "pauseGameClock")
+        {
+            return ExecutePauseGameClock(args);
+        }
         if (methodName == "appRequestQuit")
         {
             return ExecuteAppRequestQuit(args);
         }
-        else if (methodName == "createCube")
-        {
-            return ExecuteCreateCube(args);
-        }
-        else if (methodName == "moveProp")
-        {
-            return ExecuteMoveProp(args);
-        }
+        // else if (methodName == "createCube")
+        // {
+        //     return ExecuteCreateCube(args);
+        // }
+        // else if (methodName == "moveProp")
+        // {
+        //     return ExecuteMoveProp(args);
+        // }
         else if (methodName == "getPlayerPosition")
         {
             return ExecuteGetPlayerPosition(args);
@@ -213,6 +225,26 @@ bool GameScriptInterface::SetProperty(const String& propertyName, const std::any
     return false;
 }
 
+void GameScriptInterface::InitializeMethodRegistry()
+{
+}
+
+ScriptMethodResult GameScriptInterface::ExecutePauseGameClock(ScriptArgs const& args)
+{
+    auto result = ScriptTypeExtractor::ValidateArgCount(args, 0, "pauseGameClock");
+    if (!result.success) return result;
+
+    try
+    {
+        m_game->GetClock()->TogglePause();
+        return ScriptMethodResult::Success();
+    }
+    catch (const std::exception& e)
+    {
+        return ScriptMethodResult::Error("PauseGameClock: " + String(e.what()));
+    }
+}
+
 ScriptMethodResult GameScriptInterface::ExecuteAppRequestQuit(ScriptArgs const& args)
 {
     auto result = ScriptTypeExtractor::ValidateArgCount(args, 0, "appRequestQuit");
@@ -229,49 +261,49 @@ ScriptMethodResult GameScriptInterface::ExecuteAppRequestQuit(ScriptArgs const& 
     }
 }
 
-//----------------------------------------------------------------------------------------------------
-ScriptMethodResult GameScriptInterface::ExecuteCreateCube(const ScriptArgs& args)
-{
-    auto result = ScriptTypeExtractor::ValidateArgCount(args, 3, "createCube");
-    if (!result.success) return result;
-
-    try
-    {
-        Vec3 position = ScriptTypeExtractor::ExtractVec3(args, 0);
-        m_game->CreateCube(position);
-        return ScriptMethodResult::Success(String("立方體創建成功，位置: (" +
-            std::to_string(position.x) + ", " +
-            std::to_string(position.y) + ", " +
-            std::to_string(position.z) + ")"));
-    }
-    catch (const std::exception& e)
-    {
-        return ScriptMethodResult::Error("創建立方體失敗: " + String(e.what()));
-    }
-}
-
-//----------------------------------------------------------------------------------------------------
-ScriptMethodResult GameScriptInterface::ExecuteMoveProp(const ScriptArgs& args)
-{
-    auto result = ScriptTypeExtractor::ValidateArgCount(args, 4, "moveProp");
-    if (!result.success) return result;
-
-    try
-    {
-        int  propIndex   = ScriptTypeExtractor::ExtractInt(args[0]);
-        Vec3 newPosition = ScriptTypeExtractor::ExtractVec3(args, 1);
-        m_game->MoveProp(propIndex, newPosition);
-        return ScriptMethodResult::Success(String("道具 " + std::to_string(propIndex) +
-            " 移動成功，新位置: (" +
-            std::to_string(newPosition.x) + ", " +
-            std::to_string(newPosition.y) + ", " +
-            std::to_string(newPosition.z) + ")"));
-    }
-    catch (const std::exception& e)
-    {
-        return ScriptMethodResult::Error("移動道具失敗: " + String(e.what()));
-    }
-}
+// //----------------------------------------------------------------------------------------------------
+// ScriptMethodResult GameScriptInterface::ExecuteCreateCube(const ScriptArgs& args)
+// {
+//     auto result = ScriptTypeExtractor::ValidateArgCount(args, 3, "createCube");
+//     if (!result.success) return result;
+//
+//     try
+//     {
+//         Vec3 position = ScriptTypeExtractor::ExtractVec3(args, 0);
+//         m_game->CreateCube(position);
+//         return ScriptMethodResult::Success(String("立方體創建成功，位置: (" +
+//             std::to_string(position.x) + ", " +
+//             std::to_string(position.y) + ", " +
+//             std::to_string(position.z) + ")"));
+//     }
+//     catch (const std::exception& e)
+//     {
+//         return ScriptMethodResult::Error("創建立方體失敗: " + String(e.what()));
+//     }
+// }
+//
+// //----------------------------------------------------------------------------------------------------
+// ScriptMethodResult GameScriptInterface::ExecuteMoveProp(const ScriptArgs& args)
+// {
+//     auto result = ScriptTypeExtractor::ValidateArgCount(args, 4, "moveProp");
+//     if (!result.success) return result;
+//
+//     try
+//     {
+//         int  propIndex   = ScriptTypeExtractor::ExtractInt(args[0]);
+//         Vec3 newPosition = ScriptTypeExtractor::ExtractVec3(args, 1);
+//         m_game->MoveProp(propIndex, newPosition);
+//         return ScriptMethodResult::Success(String("道具 " + std::to_string(propIndex) +
+//             " 移動成功，新位置: (" +
+//             std::to_string(newPosition.x) + ", " +
+//             std::to_string(newPosition.y) + ", " +
+//             std::to_string(newPosition.z) + ")"));
+//     }
+//     catch (const std::exception& e)
+//     {
+//         return ScriptMethodResult::Error("移動道具失敗: " + String(e.what()));
+//     }
+// }
 
 //----------------------------------------------------------------------------------------------------
 ScriptMethodResult GameScriptInterface::ExecuteGetPlayerPosition(const ScriptArgs& args)

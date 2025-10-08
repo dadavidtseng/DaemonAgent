@@ -26,9 +26,12 @@ public:
 private:
     Game* m_game;
 
+    void InitializeMethodRegistry() override;
+
+    ScriptMethodResult ExecutePauseGameClock(ScriptArgs const& args);
     ScriptMethodResult ExecuteAppRequestQuit(ScriptArgs const& args);
-    ScriptMethodResult ExecuteCreateCube(ScriptArgs const& args);
-    ScriptMethodResult ExecuteMoveProp(ScriptArgs const& args);
+    // ScriptMethodResult ExecuteCreateCube(ScriptArgs const& args);
+    // ScriptMethodResult ExecuteMoveProp(ScriptArgs const& args);
     ScriptMethodResult ExecuteGetPlayerPosition(ScriptArgs const& args);
     ScriptMethodResult ExecuteMovePlayerCamera(ScriptArgs const& args);
     ScriptMethodResult ExecuteRender(ScriptArgs const& args);

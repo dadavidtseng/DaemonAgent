@@ -37,8 +37,9 @@ Game::Game()
 
     SpawnPlayer();
     InitPlayer();
-    SpawnProps();
-    InitProps();
+    // Phase 4: Prop logic moved to JavaScript
+    // SpawnProps();
+    // InitProps();
 
     m_screenCamera = new Camera();
 
@@ -64,8 +65,6 @@ Game::Game()
     DebugAddWorldText("Z-Up", transform, 0.25f, Vec2(1.f, 0.f), -1.f, Rgba8::BLUE);
 
     DAEMON_LOG(LogGame, eLogVerbosity::Log, "(Game::Game)(end)");
-
-    ExecuteJavaScriptFile("Data/Scripts/test_scripts.js");
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -73,10 +72,10 @@ Game::~Game()
 {
     DAEMON_LOG(LogGame, eLogVerbosity::Log, "(Game::~Game)(start)");
 
-    m_props.clear();
+    // Phase 4: Prop logic moved to JavaScript
+    // m_props.clear();
 
     GAME_SAFE_RELEASE(m_gameClock);
-
     GAME_SAFE_RELEASE(m_player);
     GAME_SAFE_RELEASE(m_screenCamera);
 
@@ -432,15 +431,15 @@ void Game::UpdateFromKeyBoard()
         {
             ValidatePhase3ModuleSystem();
         }
-        if (g_input->WasKeyJustPressed(KEYCODE_ESC))
-        {
-            m_gameState = eGameState::ATTRACT;
-        }
+        // if (g_input->WasKeyJustPressed(KEYCODE_ESC))
+        // {
+        //     m_gameState = eGameState::ATTRACT;
+        // }
 
-        if (g_input->WasKeyJustPressed(KEYCODE_P))
-        {
-            m_gameClock->TogglePause();
-        }
+        // if (g_input->WasKeyJustPressed(KEYCODE_P))
+        // {
+        //     m_gameClock->TogglePause();
+        // }
 
         if (g_input->WasKeyJustPressed(KEYCODE_O))
         {
@@ -579,25 +578,26 @@ void Game::UpdateEntities(float const gameDeltaSeconds, float const systemDeltaS
         m_player->Update(systemDeltaSeconds);
     }
 
-    for (Prop* prop : m_props)
-    {
-        if (prop)
-        {
-            prop->Update(gameDeltaSeconds);
-        }
-    }
-
-    m_props[0]->m_orientation.m_pitchDegrees += 30.f * gameDeltaSeconds;
-    m_props[0]->m_orientation.m_rollDegrees += 30.f * gameDeltaSeconds;
-
-    float const time       = static_cast<float>(m_gameClock->GetTotalSeconds());
-    float const colorValue = (sinf(time) + 1.0f) * 0.5f * 255.0f;
-
-    m_props[1]->m_color.r = static_cast<unsigned char>(colorValue);
-    m_props[1]->m_color.g = static_cast<unsigned char>(colorValue);
-    m_props[1]->m_color.b = static_cast<unsigned char>(colorValue);
-
-    m_props[2]->m_orientation.m_yawDegrees += 45.f * gameDeltaSeconds;
+    // Phase 4: Prop update logic moved to JavaScript
+    // for (Prop* prop : m_props)
+    // {
+    //     if (prop)
+    //     {
+    //         prop->Update(gameDeltaSeconds);
+    //     }
+    // }
+    //
+    // m_props[0]->m_orientation.m_pitchDegrees += 30.f * gameDeltaSeconds;
+    // m_props[0]->m_orientation.m_rollDegrees += 30.f * gameDeltaSeconds;
+    //
+    // float const time       = static_cast<float>(m_gameClock->GetTotalSeconds());
+    // float const colorValue = (sinf(time) + 1.0f) * 0.5f * 255.0f;
+    //
+    // m_props[1]->m_color.r = static_cast<unsigned char>(colorValue);
+    // m_props[1]->m_color.g = static_cast<unsigned char>(colorValue);
+    // m_props[1]->m_color.b = static_cast<unsigned char>(colorValue);
+    //
+    // m_props[2]->m_orientation.m_yawDegrees += 45.f * gameDeltaSeconds;
 
     DebugAddScreenText(Stringf("GameTime:   %.2f", m_gameClock->GetTotalSeconds()), m_screenCamera->GetOrthographicTopRight() - Vec2(500.f, 20.f), 20.f, Vec2::ZERO, 0.f, Rgba8::WHITE, Rgba8::WHITE);
     DebugAddScreenText(Stringf("SystemTime: %.2f", Clock::GetSystemClock().GetTotalSeconds()), m_screenCamera->GetOrthographicTopRight() - Vec2(500.f, 40.f), 20.f, Vec2::ZERO, 0.f, Rgba8::WHITE, Rgba8::WHITE);
@@ -629,10 +629,11 @@ void Game::RenderEntities() const
     g_renderer->SetModelConstants(m_player->GetModelToWorldTransform());
     m_player->Render();
 
-    for (Prop* prop : m_props)
-    {
-        prop->Render();
-    }
+    // Phase 4: Prop rendering moved to JavaScript
+    // for (Prop* prop : m_props)
+    // {
+    //     prop->Render();
+    // }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -646,37 +647,39 @@ void Game::InitPlayer() const
     m_player->m_position = Vec3(-2.f, 0.f, 1.f);
 }
 
-//----------------------------------------------------------------------------------------------------
-void Game::SpawnProps()
-{
-    // Texture const* texture = g_renderer->CreateOrGetTextureFromFile("Data/Images/TestUV.png");
-    Texture const* texture = ResourceSubsystem::CreateOrGetTextureFromFile("Data/Images/TestUV.png");
-
-    m_props.reserve(4);
-
-    Prop* prop1 = new Prop(this);
-    Prop* prop2 = new Prop(this);
-    Prop* prop3 = new Prop(this, texture);
-    Prop* prop4 = new Prop(this);
-
-    if (prop1 != nullptr) m_props.push_back(prop1);
-    if (prop2 != nullptr) m_props.push_back(prop2);
-    if (prop3 != nullptr) m_props.push_back(prop3);
-    if (prop4 != nullptr) m_props.push_back(prop4);
-}
-
-void Game::InitProps() const
-{
-    m_props[0]->InitializeLocalVertsForCube();
-    m_props[1]->InitializeLocalVertsForCube();
-    m_props[2]->InitializeLocalVertsForSphere();
-    m_props[3]->InitializeLocalVertsForGrid();
-
-    m_props[0]->m_position = Vec3(2.f, 2.f, 0.f);
-    m_props[1]->m_position = Vec3(-2.f, -2.f, 0.f);
-    m_props[2]->m_position = Vec3(10, -5, 1);
-    m_props[3]->m_position = Vec3::ZERO;
-}
+// ----------------------------------------------------------------------------------------------------
+ // Phase 4: Prop logic moved to JavaScript
+// void Game::SpawnProps()
+// {
+//     // Texture const* texture = g_renderer->CreateOrGetTextureFromFile("Data/Images/TestUV.png");
+//     // Texture const* texture = g_resourceSubsystem->CreateOrGetTextureFromFile("Data/Images/TestUV.png");
+//
+//     m_props.reserve(4);
+//
+//     Prop* prop1 = new Prop(this);
+//     Prop* prop2 = new Prop(this);
+//     // Prop* prop3 = new Prop(this, texture);
+//     Prop* prop3 = new Prop(this );
+//     Prop* prop4 = new Prop(this);
+//
+//     if (prop1 != nullptr) m_props.push_back(prop1);
+//     if (prop2 != nullptr) m_props.push_back(prop2);
+//     if (prop3 != nullptr) m_props.push_back(prop3);
+//     if (prop4 != nullptr) m_props.push_back(prop4);
+// }
+//
+// void Game::InitProps() const
+// {
+//     m_props[0]->InitializeLocalVertsForCube();
+//     m_props[1]->InitializeLocalVertsForCube();
+//     m_props[2]->InitializeLocalVertsForSphere();
+//     m_props[3]->InitializeLocalVertsForGrid();
+//
+//     m_props[0]->m_position = Vec3(2.f, 2.f, 0.f);
+//     m_props[1]->m_position = Vec3(-2.f, -2.f, 0.f);
+//     m_props[2]->m_position = Vec3(10, -5, 1);
+//     m_props[3]->m_position = Vec3::ZERO;
+// }
 
 //----------------------------------------------------------------------------------------------------
 void Game::ExecuteJavaScriptCommand(String const& command)
@@ -932,50 +935,67 @@ void Game::HandleJavaScriptCommands()
 }
 
 //----------------------------------------------------------------------------------------------------
-void Game::CreateCube(Vec3 const& position)
-{
-    DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(Game::CreateCube)(start)(position ({:.2f}, {:.2f}, {:.2f}))", position.x, position.y, position.z));
+// Phase 4: Prop creation moved to JavaScript
+// void Game::CreateCube(Vec3 const& position)
+// {
+//     DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(Game::CreateCube)(start)(position ({:.2f}, {:.2f}, {:.2f}))", position.x, position.y, position.z));
+//
+//     Prop* newCube       = new Prop(this);
+//     newCube->m_position = position;
+//     newCube->m_color    = Rgba8(
+//         static_cast<unsigned char>(g_rng->RollRandomIntInRange(100, 255)),
+//         static_cast<unsigned char>(g_rng->RollRandomIntInRange(100, 255)),
+//         static_cast<unsigned char>(g_rng->RollRandomIntInRange(100, 255)),
+//         255
+//     );
+//     newCube->InitializeLocalVertsForCube();
+//
+//     m_props.push_back(newCube);
+//
+//     DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(Game::CreateCube)(end)(m_props size: {})", m_props.size()));
+// }
 
-    Prop* newCube       = new Prop(this);
-    newCube->m_position = position;
-    newCube->m_color    = Rgba8(
-        static_cast<unsigned char>(g_rng->RollRandomIntInRange(100, 255)),
-        static_cast<unsigned char>(g_rng->RollRandomIntInRange(100, 255)),
-        static_cast<unsigned char>(g_rng->RollRandomIntInRange(100, 255)),
-        255
-    );
-    newCube->InitializeLocalVertsForCube();
-
-    m_props.push_back(newCube);
-
-    DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(Game::CreateCube)(end)(m_props size: {})", m_props.size()));
-}
+// //----------------------------------------------------------------------------------------------------
+// void Game::MoveProp(int         propIndex,
+//                     Vec3 const& newPosition)
+// {
+//     if (propIndex >= 0 && propIndex < static_cast<int>(m_props.size()))
+//     {
+//         m_props[propIndex]->m_position = newPosition;
+//         DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(Game::MoveProp)(end)(prop {} move to position ({:.2f}, {:.2f}, {:.2f}))", propIndex, newPosition.x, newPosition.y, newPosition.z));
+//     }
+//     else
+//     {
+//         DebuggerPrintf("警告：JavaScript 請求移動無效的物件索引 %d（總共 %zu 個物件）\n", propIndex, m_props.size());
+//     }
+// }
 
 //----------------------------------------------------------------------------------------------------
-void Game::MoveProp(int         propIndex,
-                    Vec3 const& newPosition)
+Player* Game::GetPlayer() const
 {
-    if (propIndex >= 0 && propIndex < static_cast<int>(m_props.size()))
-    {
-        m_props[propIndex]->m_position = newPosition;
-        DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(Game::MoveProp)(end)(prop {} move to position ({:.2f}, {:.2f}, {:.2f}))", propIndex, newPosition.x, newPosition.y, newPosition.z));
-    }
-    else
-    {
-        DebuggerPrintf("警告：JavaScript 請求移動無效的物件索引 %d（總共 %zu 個物件）\n", propIndex, m_props.size());
-    }
-}
-
-//----------------------------------------------------------------------------------------------------
-Player* Game::GetPlayer()
-{
+    if (m_player == nullptr) return nullptr;
     return m_player;
+}
+
+//----------------------------------------------------------------------------------------------------
+Clock* Game::GetClock() const
+{
+    if (m_gameClock == nullptr) return nullptr;
+    return m_gameClock;
 }
 
 void Game::Update(float const gameDeltaSeconds,
                   float const systemDeltaSeconds)
 {
-    UpdateEntities(gameDeltaSeconds, systemDeltaSeconds);
+    // Phase 4: C++ entity updates disabled - now handled by JavaScript EntityBase
+    // UpdateEntities(gameDeltaSeconds, systemDeltaSeconds);
+
+    // Keep player camera update for now (camera controller)
+    if (m_player)
+    {
+        m_player->Update(systemDeltaSeconds);
+    }
+
     UpdateFromKeyBoard();
     UpdateFromController();
 
@@ -992,28 +1012,30 @@ void Game::Render()
 
     if (m_gameState == eGameState::GAME)
     {
+        // Phase 4: C++ entity rendering disabled - now handled by JavaScript EntityBase
         RenderEntities();
-        Vec2 screenDimensions = Window::s_mainWindow->GetScreenDimensions();
-        Vec2 windowDimensions = Window::s_mainWindow->GetWindowDimensions();
-        Vec2 clientDimensions = Window::s_mainWindow->GetClientDimensions();
-        Vec2 windowPosition   = Window::s_mainWindow->GetWindowPosition();
-        Vec2 clientPosition   = Window::s_mainWindow->GetClientPosition();
-        DebugAddScreenText(Stringf("ScreenDimensions=(%.1f,%.1f)", screenDimensions.x, screenDimensions.y), Vec2(0, 0), 20.f, Vec2::ZERO, 0.f);
-        DebugAddScreenText(Stringf("WindowDimensions=(%.1f,%.1f)", windowDimensions.x, windowDimensions.y), Vec2(0, 20), 20.f, Vec2::ZERO, 0.f);
-        DebugAddScreenText(Stringf("ClientDimensions=(%.1f,%.1f)", clientDimensions.x, clientDimensions.y), Vec2(0, 40), 20.f, Vec2::ZERO, 0.f);
-        DebugAddScreenText(Stringf("WindowPosition=(%.1f,%.1f)", windowPosition.x, windowPosition.y), Vec2(0, 60), 20.f, Vec2::ZERO, 0.f);
-        DebugAddScreenText(Stringf("ClientPosition=(%.1f,%.1f)", clientPosition.x, clientPosition.y), Vec2(0, 80), 20.f, Vec2::ZERO, 0.f);
 
-        if (g_scriptSubsystem)
-        {
-            std::string jsStatus = g_scriptSubsystem->IsInitialized() ? "JS:Initialized" : "JS:UnInitialized";
-            DebugAddScreenText(jsStatus, Vec2(0, 100), 20.f, Vec2::ZERO, 0.f);
-
-            if (g_scriptSubsystem->HasError())
-            {
-                DebugAddScreenText("JS錯誤: " + g_scriptSubsystem->GetLastError(), Vec2(0, 120), 15.f, Vec2::ZERO, 0.f, Rgba8::RED);
-            }
-        }
+        // Vec2 screenDimensions = Window::s_mainWindow->GetScreenDimensions();
+        // Vec2 windowDimensions = Window::s_mainWindow->GetWindowDimensions();
+        // Vec2 clientDimensions = Window::s_mainWindow->GetClientDimensions();
+        // Vec2 windowPosition   = Window::s_mainWindow->GetWindowPosition();
+        // Vec2 clientPosition   = Window::s_mainWindow->GetClientPosition();
+        // DebugAddScreenText(Stringf("ScreenDimensions=(%.1f,%.1f)", screenDimensions.x, screenDimensions.y), Vec2(0, 0), 20.f, Vec2::ZERO, 0.f);
+        // DebugAddScreenText(Stringf("WindowDimensions=(%.1f,%.1f)", windowDimensions.x, windowDimensions.y), Vec2(0, 20), 20.f, Vec2::ZERO, 0.f);
+        // DebugAddScreenText(Stringf("ClientDimensions=(%.1f,%.1f)", clientDimensions.x, clientDimensions.y), Vec2(0, 40), 20.f, Vec2::ZERO, 0.f);
+        // DebugAddScreenText(Stringf("WindowPosition=(%.1f,%.1f)", windowPosition.x, windowPosition.y), Vec2(0, 60), 20.f, Vec2::ZERO, 0.f);
+        // DebugAddScreenText(Stringf("ClientPosition=(%.1f,%.1f)", clientPosition.x, clientPosition.y), Vec2(0, 80), 20.f, Vec2::ZERO, 0.f);
+        //
+        // if (g_scriptSubsystem)
+        // {
+        //     std::string jsStatus = g_scriptSubsystem->IsInitialized() ? "JS:Initialized" : "JS:UnInitialized";
+        //     DebugAddScreenText(jsStatus, Vec2(0, 100), 20.f, Vec2::ZERO, 0.f);
+        //
+        //     if (g_scriptSubsystem->HasError())
+        //     {
+        //         DebugAddScreenText("JS錯誤: " + g_scriptSubsystem->GetLastError(), Vec2(0, 120), 15.f, Vec2::ZERO, 0.f, Rgba8::RED);
+        //     }
+        // }
     }
 
     g_renderer->EndCamera(*m_player->GetCamera());
@@ -1027,20 +1049,20 @@ void Game::Render()
     //------------------------------------------------------------------------------------------------
     //-Start-of-Screen-Camera-------------------------------------------------------------------------
 
-    g_renderer->BeginCamera(*m_screenCamera);
-
-    if (m_gameState == eGameState::ATTRACT)
-    {
-        RenderAttractMode();
-    }
-
-    g_renderer->EndCamera(*m_screenCamera);
-
-    //-End-of-Screen-Camera---------------------------------------------------------------------------
-    if (m_gameState == eGameState::GAME)
-    {
-        DebugRenderScreen(*m_screenCamera);
-    }
+    // g_renderer->BeginCamera(*m_screenCamera);
+    //
+    // if (m_gameState == eGameState::ATTRACT)
+    // {
+    //     RenderAttractMode();
+    // }
+    //
+    // g_renderer->EndCamera(*m_screenCamera);
+    //
+    // //-End-of-Screen-Camera---------------------------------------------------------------------------
+    // if (m_gameState == eGameState::GAME)
+    // {
+    //     DebugRenderScreen(*m_screenCamera);
+    // }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -1108,11 +1130,11 @@ void Game::InitializeJavaScriptFramework()
 
         // NOTE: Legacy classic scripts (InputSystemCommon.js, InputSystem.js, AudioSystem.js)
         // have been removed. All functionality should be migrated to ES6 modules.
-        // If you need these systems, create .mjs equivalents and import them in main.mjs.
+        // If you need these systems, create .js equivalents and import them in main.js.
 
         // Load ES6 module entry point (imports all other modules via import statements)
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "Loading main.mjs (ES6 module entry point)...");
-        ExecuteModuleFile("Data/Scripts/main.mjs");
+        DAEMON_LOG(LogGame, eLogVerbosity::Display, "Loading main.js (ES6 module entry point)...");
+        ExecuteModuleFile("Data/Scripts/main.js");
 
         DAEMON_LOG(LogGame, eLogVerbosity::Display, "Game::InitializeJavaScriptFramework() complete - Pure ES6 Module architecture initialized");
     }
