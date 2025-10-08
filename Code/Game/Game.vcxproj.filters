@@ -35,13 +35,7 @@
     <ClCompile Include="Framework\Main_Windows.cpp">
       <Filter>Framework</Filter>
     </ClCompile>
-    <ClCompile Include="Gameplay\Entity.cpp">
-      <Filter>Gameplay</Filter>
-    </ClCompile>
     <ClCompile Include="Gameplay\Game.cpp">
-      <Filter>Gameplay</Filter>
-    </ClCompile>
-    <ClCompile Include="Gameplay\Player.cpp">
       <Filter>Gameplay</Filter>
     </ClCompile>
   </ItemGroup>
@@ -61,13 +55,7 @@
     <ClInclude Include="Framework\GameScriptInterface.hpp">
       <Filter>Framework</Filter>
     </ClInclude>
-    <ClInclude Include="Gameplay\Entity.hpp">
-      <Filter>Gameplay</Filter>
-    </ClInclude>
     <ClInclude Include="Gameplay\Game.hpp">
-      <Filter>Gameplay</Filter>
-    </ClInclude>
-    <ClInclude Include="Gameplay\Player.hpp">
       <Filter>Gameplay</Filter>
     </ClInclude>
   </ItemGroup>

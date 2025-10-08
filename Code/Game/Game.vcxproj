@@ -311,9 +311,7 @@
     <ClCompile Include="Framework\GameCommon.cpp" />
     <ClCompile Include="Framework\GameScriptInterface.cpp" />
     <ClCompile Include="Framework\Main_Windows.cpp" />
-    <ClCompile Include="Gameplay\Entity.cpp" />
     <ClCompile Include="Gameplay\Game.cpp" />
-    <ClCompile Include="Gameplay\Player.cpp" />
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
   <!-- Header Files -->
@@ -323,9 +321,7 @@
     <ClInclude Include="Framework\App.hpp" />
     <ClInclude Include="Framework\GameCommon.hpp" />
     <ClInclude Include="Framework\GameScriptInterface.hpp" />
-    <ClInclude Include="Gameplay\Entity.hpp" />
     <ClInclude Include="Gameplay\Game.hpp" />
-    <ClInclude Include="Gameplay\Player.hpp" />
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
   <!-- Documentation -->
