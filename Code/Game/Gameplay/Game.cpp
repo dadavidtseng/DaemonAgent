@@ -13,7 +13,6 @@
 #include "Game/Framework/App.hpp"
 #include "Game/Framework/GameCommon.hpp"
 #include "Game/Gameplay/Player.hpp"
-#include "Game/Gameplay/Prop.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Engine/Audio/AudioSystem.hpp"
 #include "Engine/Core/Clock.hpp"
@@ -37,9 +36,6 @@ Game::Game()
 
     SpawnPlayer();
     InitPlayer();
-    // Phase 4: Prop logic moved to JavaScript
-    // SpawnProps();
-    // InitProps();
 
     m_screenCamera = new Camera();
 
@@ -71,9 +67,6 @@ Game::Game()
 Game::~Game()
 {
     DAEMON_LOG(LogGame, eLogVerbosity::Log, "(Game::~Game)(start)");
-
-    // Phase 4: Prop logic moved to JavaScript
-    // m_props.clear();
 
     GAME_SAFE_RELEASE(m_gameClock);
     GAME_SAFE_RELEASE(m_player);
@@ -135,272 +128,6 @@ bool Game::IsAttractMode() const
     return m_gameState == eGameState::ATTRACT;
 }
 
-void Game::ValidatePhase1ModuleSystem()
-{
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 1 Module System Validation ===");
-
-    if (g_scriptSubsystem == nullptr)
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ScriptSubsystem is nullptr");
-        return;
-    }
-
-    if (!g_scriptSubsystem->IsInitialized())
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ScriptSubsystem not initialized");
-        return;
-    }
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ ScriptSubsystem initialized");
-
-    // Test 1: Check if modules are enabled
-    if (!g_scriptSubsystem->AreModulesEnabled())
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ES6 modules not enabled");
-        return;
-    }
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ ES6 modules enabled");
-
-    // Test 2: Get ModuleLoader instance
-    ModuleLoader* loader = g_scriptSubsystem->GetModuleLoader();
-    if (loader == nullptr)
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ModuleLoader is nullptr");
-        return;
-    }
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ ModuleLoader instance available");
-
-    // Test 3: Test simple module compilation (no imports)
-    // NOTE: For Phase 1, we test a module WITHOUT import statements
-    // because import resolution is implemented in Phase 2
-    String const simpleModule = R"(
-        // Simple module with exports only (no imports)
-        // This tests Phase 1: module compilation and evaluation
-        console.log("Phase 1 module test: Starting execution");
-
-        export const testValue = 42;
-        export function testFunction() {
-            console.log("Phase 1 module system is working!");
-            return "success";
-        }
-        export class TestClass {
-            constructor(name) {
-                this.name = name;
-            }
-            greet() {
-                return `Hello from ${this.name}!`;
-            }
-        }
-
-        console.log("Phase 1 module test: Module loaded successfully!");
-    )";
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "Testing module compilation...");
-
-    bool success = g_scriptSubsystem->ExecuteModuleFromSource(simpleModule, "test://phase1_validation");
-
-    if (success)
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ Module compiled, instantiated, and evaluated successfully!");
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 1 Validation: PASS (Full Module Pipeline Working) ===");
-    }
-    else
-    {
-        String error = g_scriptSubsystem->GetLastError();
-        DAEMON_LOG(LogGame, eLogVerbosity::Warning, Stringf("Module execution result: %s", error.c_str()));
-
-        // Check if error is compilation-related or instantiation-related
-        if (error.find("compilation") != String::npos || error.find("Compilation") != String::npos)
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, "✗ Module compilation failed - Phase 1 infrastructure issue");
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 1 Validation: FAIL ===");
-        }
-        else if (error.find("instantiation") != String::npos || error.find("Instantiation") != String::npos)
-        {
-            // Instantiation failure is EXPECTED in Phase 1 if module has imports
-            // But our test module has no imports, so this would be unexpected
-            DAEMON_LOG(LogGame, eLogVerbosity::Warning, "Module instantiation failed (check if ResolveModuleCallback is implemented)");
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 1 Validation: PARTIAL PASS (Compilation works, instantiation needs Phase 2) ===");
-        }
-        else if (error.find("Integration with ScriptSubsystem pending") != String::npos)
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Warning, "LoadModuleFromSource not yet implemented");
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 1 Validation: INCOMPLETE (Need to implement LoadModuleFromSource) ===");
-        }
-        else
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, Stringf("Unexpected error: %s", error.c_str()));
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 1 Validation: FAIL ===");
-        }
-    }
-}
-
-//----------------------------------------------------------------------------------------------------
-void Game::ValidatePhase2ModuleSystem()
-{
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 2 Module System Validation ===");
-
-    if (g_scriptSubsystem == nullptr)
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ScriptSubsystem is nullptr");
-        return;
-    }
-
-    if (!g_scriptSubsystem->IsInitialized())
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ScriptSubsystem not initialized");
-        return;
-    }
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ ScriptSubsystem initialized");
-
-    // Test 1: Check if modules are enabled
-    if (!g_scriptSubsystem->AreModulesEnabled())
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ES6 modules not enabled");
-        return;
-    }
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ ES6 modules enabled");
-
-    // Test 2: Get ModuleLoader instance
-    ModuleLoader* loader = g_scriptSubsystem->GetModuleLoader();
-    if (loader == nullptr)
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ModuleLoader is nullptr");
-        return;
-    }
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ ModuleLoader instance available");
-
-    // Test 3: Load main module that imports from another module
-    // This tests Phase 2: import resolution
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "Testing Phase 2: Import resolution from file...");
-
-    bool success = g_scriptSubsystem->ExecuteModule("Data/Scripts/test_phase2_main.js");
-
-    if (success)
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ Module with imports loaded, compiled, and executed successfully!");
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ Import resolution working!");
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ Cross-module dependencies working!");
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 2 Validation: PASS (Full Import Resolution Working) ===");
-    }
-    else
-    {
-        String error = g_scriptSubsystem->GetLastError();
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, Stringf("Module execution failed: %s", error.c_str()));
-
-        // Check error type
-        if (error.find("Failed to read module file") != String::npos)
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, "✗ Test module file not found");
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 2 Validation: FAIL (Missing test files) ===");
-        }
-        else if (error.find("instantiation") != String::npos)
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, "✗ Import resolution failed");
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 2 Validation: FAIL (Import resolution not working) ===");
-        }
-        else if (error.find("compilation") != String::npos || error.find("Compilation") != String::npos)
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, "✗ Module compilation failed");
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 2 Validation: FAIL (Compilation error) ===");
-        }
-        else
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, Stringf("Unexpected error: %s", error.c_str()));
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 2 Validation: FAIL ===");
-        }
-    }
-}
-
-//----------------------------------------------------------------------------------------------------
-void Game::ValidatePhase3ModuleSystem()
-{
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 3 Module System Validation ===");
-
-    if (g_scriptSubsystem == nullptr)
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ScriptSubsystem is nullptr");
-        return;
-    }
-
-    if (!g_scriptSubsystem->IsInitialized())
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ScriptSubsystem not initialized");
-        return;
-    }
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ ScriptSubsystem initialized");
-
-    // Test 1: Check if modules are enabled
-    if (!g_scriptSubsystem->AreModulesEnabled())
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ES6 modules not enabled");
-        return;
-    }
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ ES6 modules enabled");
-
-    // Test 2: Get ModuleLoader instance
-    ModuleLoader* loader = g_scriptSubsystem->GetModuleLoader();
-    if (loader == nullptr)
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "FAIL: ModuleLoader is nullptr");
-        return;
-    }
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ ModuleLoader instance available");
-
-    // Test 3: Execute Phase 3 test module
-    // This module tests:
-    // - Dynamic import (import() function)
-    // - Enhanced import.meta
-    // - Error recovery
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "Testing Phase 3: Dynamic import, import.meta, error recovery...");
-
-    bool success = g_scriptSubsystem->ExecuteModule("Data/Scripts/test_phase3_main.js");
-
-    if (success)
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ Phase 3 test module executed successfully!");
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ Dynamic import() working!");
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ import.meta available!");
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "✓ Error recovery working!");
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 3 Validation: PASS (Advanced Features Working) ===");
-    }
-    else
-    {
-        String error = g_scriptSubsystem->GetLastError();
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, Stringf("Phase 3 test execution failed: %s", error.c_str()));
-
-        // Check error type
-        if (error.find("Failed to read module file") != String::npos)
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, "✗ Test module file not found");
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 3 Validation: FAIL (Missing test files) ===");
-        }
-        else if (error.find("import()") != String::npos || error.find("dynamic") != String::npos)
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, "✗ Dynamic import not working");
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 3 Validation: FAIL (Dynamic import error) ===");
-        }
-        else if (error.find("Promise") != String::npos || error.find("async") != String::npos)
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, "✗ Async/Promise support issue");
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 3 Validation: FAIL (Async/await not working) ===");
-        }
-        else
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, Stringf("Unexpected error: %s", error.c_str()));
-            DAEMON_LOG(LogGame, eLogVerbosity::Display, "=== Phase 3 Validation: FAIL ===");
-        }
-    }
-}
-
 //----------------------------------------------------------------------------------------------------
 void Game::UpdateFromKeyBoard()
 {
@@ -419,18 +146,6 @@ void Game::UpdateFromKeyBoard()
 
     if (m_gameState == eGameState::GAME)
     {
-        if (g_input->WasKeyJustPressed(KEYCODE_F8))
-        {
-            ValidatePhase1ModuleSystem();
-        }
-        if (g_input->WasKeyJustPressed(KEYCODE_F9))
-        {
-            ValidatePhase2ModuleSystem();
-        }
-        if (g_input->WasKeyJustPressed(KEYCODE_M))
-        {
-            ValidatePhase3ModuleSystem();
-        }
         // if (g_input->WasKeyJustPressed(KEYCODE_ESC))
         // {
         //     m_gameState = eGameState::ATTRACT;
@@ -578,27 +293,6 @@ void Game::UpdateEntities(float const gameDeltaSeconds, float const systemDeltaS
         m_player->Update(systemDeltaSeconds);
     }
 
-    // Phase 4: Prop update logic moved to JavaScript
-    // for (Prop* prop : m_props)
-    // {
-    //     if (prop)
-    //     {
-    //         prop->Update(gameDeltaSeconds);
-    //     }
-    // }
-    //
-    // m_props[0]->m_orientation.m_pitchDegrees += 30.f * gameDeltaSeconds;
-    // m_props[0]->m_orientation.m_rollDegrees += 30.f * gameDeltaSeconds;
-    //
-    // float const time       = static_cast<float>(m_gameClock->GetTotalSeconds());
-    // float const colorValue = (sinf(time) + 1.0f) * 0.5f * 255.0f;
-    //
-    // m_props[1]->m_color.r = static_cast<unsigned char>(colorValue);
-    // m_props[1]->m_color.g = static_cast<unsigned char>(colorValue);
-    // m_props[1]->m_color.b = static_cast<unsigned char>(colorValue);
-    //
-    // m_props[2]->m_orientation.m_yawDegrees += 45.f * gameDeltaSeconds;
-
     DebugAddScreenText(Stringf("GameTime:   %.2f", m_gameClock->GetTotalSeconds()), m_screenCamera->GetOrthographicTopRight() - Vec2(500.f, 20.f), 20.f, Vec2::ZERO, 0.f, Rgba8::WHITE, Rgba8::WHITE);
     DebugAddScreenText(Stringf("SystemTime: %.2f", Clock::GetSystemClock().GetTotalSeconds()), m_screenCamera->GetOrthographicTopRight() - Vec2(500.f, 40.f), 20.f, Vec2::ZERO, 0.f, Rgba8::WHITE, Rgba8::WHITE);
     DebugAddScreenText(Stringf("FPS:        %.2f", 1.f / m_gameClock->GetDeltaSeconds()), m_screenCamera->GetOrthographicTopRight() - Vec2(500.f, 60.f), 20.f, Vec2::ZERO, 0.f, Rgba8::WHITE, Rgba8::WHITE);
@@ -618,7 +312,6 @@ void Game::RenderAttractMode() const
     g_renderer->SetSamplerMode(eSamplerMode::BILINEAR_CLAMP);
     g_renderer->SetDepthMode(eDepthMode::DISABLED);
     g_renderer->BindTexture(nullptr);
-    // g_renderer->BindShader(g_renderer->CreateOrGetShaderFromFile("Data/Shaders/Default"));
     g_renderer->BindShader(g_renderer->CreateOrGetShaderFromFile("Data/Shaders/Default"));
     g_renderer->DrawVertexArray(verts);
 }
@@ -628,12 +321,6 @@ void Game::RenderEntities() const
 {
     g_renderer->SetModelConstants(m_player->GetModelToWorldTransform());
     m_player->Render();
-
-    // Phase 4: Prop rendering moved to JavaScript
-    // for (Prop* prop : m_props)
-    // {
-    //     prop->Render();
-    // }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -646,40 +333,6 @@ void Game::InitPlayer() const
 {
     m_player->m_position = Vec3(-2.f, 0.f, 1.f);
 }
-
-// ----------------------------------------------------------------------------------------------------
- // Phase 4: Prop logic moved to JavaScript
-// void Game::SpawnProps()
-// {
-//     // Texture const* texture = g_renderer->CreateOrGetTextureFromFile("Data/Images/TestUV.png");
-//     // Texture const* texture = g_resourceSubsystem->CreateOrGetTextureFromFile("Data/Images/TestUV.png");
-//
-//     m_props.reserve(4);
-//
-//     Prop* prop1 = new Prop(this);
-//     Prop* prop2 = new Prop(this);
-//     // Prop* prop3 = new Prop(this, texture);
-//     Prop* prop3 = new Prop(this );
-//     Prop* prop4 = new Prop(this);
-//
-//     if (prop1 != nullptr) m_props.push_back(prop1);
-//     if (prop2 != nullptr) m_props.push_back(prop2);
-//     if (prop3 != nullptr) m_props.push_back(prop3);
-//     if (prop4 != nullptr) m_props.push_back(prop4);
-// }
-//
-// void Game::InitProps() const
-// {
-//     m_props[0]->InitializeLocalVertsForCube();
-//     m_props[1]->InitializeLocalVertsForCube();
-//     m_props[2]->InitializeLocalVertsForSphere();
-//     m_props[3]->InitializeLocalVertsForGrid();
-//
-//     m_props[0]->m_position = Vec3(2.f, 2.f, 0.f);
-//     m_props[1]->m_position = Vec3(-2.f, -2.f, 0.f);
-//     m_props[2]->m_position = Vec3(10, -5, 1);
-//     m_props[3]->m_position = Vec3::ZERO;
-// }
 
 //----------------------------------------------------------------------------------------------------
 void Game::ExecuteJavaScriptCommand(String const& command)
