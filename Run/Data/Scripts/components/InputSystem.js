@@ -35,7 +35,7 @@ export class InputSystem extends Subsystem
     {
         // Accumulate time for logging
         this.logTimer += systemDelta;
-
+        // console.log('XXXXXXXX WORKS!!!');
         // Periodic logging (every 300ms)
         if (this.logTimer >= 300)
         {
@@ -98,5 +98,8 @@ export class InputSystem extends Subsystem
 
 // Export for ES6 module system
 export default InputSystem;
+
+// Export to globalThis for hot-reload detection
+globalThis.InputSystem = InputSystem;
 
 console.log('InputSystem: Component loaded (Phase 4 ES6)');

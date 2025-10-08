@@ -9,13 +9,14 @@
  * - Register and manage game systems
  * - Execute systems in priority order
  * - Bridge C++ engine methods to JavaScript
- * - Handle hot-reload system integration
+ * - Handle automatic hot-reload detection and system replacement
  *
  * Design Philosophy:
  * - This file is CORE INFRASTRUCTURE - rarely edited
  * - Systems register with JSEngine and execute every frame
  * - Priority-based execution (0-100, lower = earlier)
  * - Dual pattern support: legacy config objects + Subsystem instances
+ * - Automatic hot-reload for modified Subsystem instances
  */
 
 export class JSEngine {
@@ -201,6 +202,74 @@ export class JSEngine {
         console.log(`JSEngine: System '${id}' removed from all lists`);
     }
 
+    // ============================================================================
+    // HOT-RELOAD SYSTEM (Method Replacement)
+    // ============================================================================
+
+    /**
+     * Check for hot-reloads and upgrade system instances automatically
+     * Called every frame to detect when C++ has reloaded module files
+     */
+    checkForHotReloads() {
+        for (const [id, system] of this.registeredSystems) {
+            const instance = system.componentInstance;
+            if (!instance) continue; // Skip legacy systems
+
+            try {
+                // Get the class name and try to find it in global scope
+                const className = instance.constructor.name;
+                const GlobalClass = globalThis[className];
+
+                if (!GlobalClass) continue; // Class not in global scope
+
+                // Check if constructor function changed (class was reloaded)
+                if (instance.constructor !== GlobalClass) {
+                    console.log(`JSEngine: Hot-reload detected for '${id}', upgrading instance methods`);
+                    this.upgradeInstanceMethods(instance, GlobalClass);
+
+                    // Update prototype chain to point to new class
+                    Object.setPrototypeOf(instance, GlobalClass.prototype);
+
+                    // Rebind methods in system registry
+                    system.update = instance.update ? instance.update.bind(instance) : null;
+                    system.render = instance.render ? instance.render.bind(instance) : null;
+
+                    console.log(`JSEngine: Hot-reload complete for '${id}'`);
+                }
+            } catch (e) {
+                // Silently ignore errors (class might not be in global scope)
+            }
+        }
+    }
+
+    /**
+     * Upgrade instance methods with new class definition
+     * Replaces all methods from old class with methods from new class
+     *
+     * @param {Object} instance - Existing instance to upgrade
+     * @param {Function} NewClass - New class definition with updated methods
+     */
+    upgradeInstanceMethods(instance, NewClass) {
+        const proto = NewClass.prototype;
+        const methodNames = Object.getOwnPropertyNames(proto);
+
+        let upgradedCount = 0;
+
+        for (const methodName of methodNames) {
+            if (methodName === 'constructor') continue;
+
+            const descriptor = Object.getOwnPropertyDescriptor(proto, methodName);
+            if (descriptor && typeof descriptor.value === 'function') {
+                // Replace method with new version (bound to instance)
+                instance[methodName] = descriptor.value.bind(instance);
+                upgradedCount++;
+            }
+        }
+
+        console.log(`JSEngine: Upgraded ${upgradedCount} methods for '${instance.id}'`);
+    }
+
+
     /**
      * Update method - called by C++ engine
      * Now processes both game and registered systems
@@ -212,6 +281,11 @@ export class JSEngine {
 
         this.frameCount++;
         this.processOperations();
+
+        // AUTOMATIC HOT-RELOAD: Check for module reloads every frame
+        if (this.hotReloadEnabled) {
+            this.checkForHotReloads();
+        }
 
         // Execute all registered update systems
         for (const system of this.updateSystems) {

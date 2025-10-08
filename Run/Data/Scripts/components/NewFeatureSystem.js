@@ -22,3 +22,8 @@ export class NewFeatureSystem extends Subsystem {
         console.log('New system running!');
     }
 }
+
+// Export to globalThis for hot-reload detection
+globalThis.NewFeatureSystem = NewFeatureSystem;
+
+console.log('NewFeatureSystem: Component loaded (Phase 4 ES6)');

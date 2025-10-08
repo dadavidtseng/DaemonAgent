@@ -14,6 +14,11 @@
  * - Each system = separate file (AI agent can edit independently)
  * - JSGame.js coordinates systems, doesn't contain system logic
  * - JSEngine.js executes registered systems
+ *
+ * Hot-Reload Support:
+ * - Static version property for change detection
+ * - Lifecycle hooks: onBeforeReload() / onAfterReload()
+ * - Automatic state preservation and restoration
  */
 export class Subsystem
 {
@@ -102,23 +107,61 @@ export class Subsystem
 
     /**
      * Static version for hot-reload detection
-     * Each component file should override this with Date.now()
-     * Example in subclass:
-     * static get version() { return Date.now(); }
+     * Automatically updated by hot-reload system when file changes
+     * Override with static version = 1; in subclass
      */
-    static get version() {
-        return 0;
-    }
+    static version = 0;
 
     /**
-     * Get component instance version
+     * Get component class version
      * Useful for hot-reload detection
      */
     getVersion() {
         return this.constructor.version;
     }
+
+    // ============================================================================
+    // HOT-RELOAD LIFECYCLE HOOKS (Override in subclass)
+    // ============================================================================
+
+    /**
+     * Called BEFORE hot-reload destroys this instance
+     * Override to preserve custom state
+     * @returns {Object} State object to preserve during hot-reload
+     */
+    onBeforeReload() {
+        // Default implementation: preserve basic state
+        return {
+            id: this.id,
+            priority: this.priority,
+            enabled: this.enabled,
+            data: this.data
+        };
+    }
+
+    /**
+     * Called AFTER hot-reload creates new instance
+     * Override to restore custom state
+     * @param {Object} preservedState - State returned from onBeforeReload()
+     */
+    onAfterReload(preservedState) {
+        // Default implementation: restore basic state
+        if (preservedState) {
+            this.enabled = preservedState.enabled;
+            this.data = preservedState.data || this.data;
+        }
+    }
+
+    /**
+     * Helper method to check if hot-reload is needed
+     * @param {number} currentVersion - Current tracked version
+     * @returns {boolean} True if reload is needed
+     */
+    static needsReload(currentVersion) {
+        return this.version > currentVersion;
+    }
 }
 
 // Make Subsystem available for import
 // No globalThis registration - clean ES6 module pattern
-console.log('Subsystem: Base class loaded (ECS architecture)');
+console.log('Subsystem: Base class loaded (ECS architecture with hot-reload support)');
