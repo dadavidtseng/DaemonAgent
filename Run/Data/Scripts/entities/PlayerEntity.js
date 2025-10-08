@@ -1,7 +1,7 @@
 //----------------------------------------------------------------------------------------------------
 // PlayerEntity.js - JavaScript Player Entity with Camera Control
 //----------------------------------------------------------------------------------------------------
-import { EntityBase } from './EntityBase.js';
+import {EntityBase} from './EntityBase.js';
 
 /**
  * PlayerEntity - Full camera controller migrated from C++ Player.cpp
@@ -14,8 +14,10 @@ import { EntityBase } from './EntityBase.js';
  * - Q/E + Triggers for camera roll
  * - Shift + A button for speed boost
  */
-export class PlayerEntity extends EntityBase {
-    constructor(game = null) {
+export class PlayerEntity extends EntityBase
+{
+    constructor(game = null)
+    {
         super(game); // Call EntityBase constructor
 
         // Create and configure world camera
@@ -23,10 +25,10 @@ export class PlayerEntity extends EntityBase {
         this.initializeCamera();
 
         // Override base EntityBase properties with Player-specific initial values
-        this.m_position = { x: -2.0, y: 0.0, z: 1.0 };
-        this.m_orientation = { yaw: 0.0, pitch: 0.0, roll: 0.0 };
-        this.m_velocity = { x: 0.0, y: 0.0, z: 0.0 };
-        this.m_angularVelocity = { yaw: 0.0, pitch: 0.0, roll: 0.0 };
+        this.m_position = {x: -2.0, y: 0.0, z: 1.0};
+        this.m_orientation = {yaw: 0.0, pitch: 0.0, roll: 0.0};
+        this.m_velocity = {x: 0.0, y: 0.0, z: 0.0};
+        this.m_angularVelocity = {yaw: 0.0, pitch: 0.0, roll: 0.0};
 
         // Movement constants
         this.moveSpeed = 2.0;
@@ -39,7 +41,8 @@ export class PlayerEntity extends EntityBase {
     /**
      * Initialize world camera (matches C++ Player constructor)
      */
-    initializeCamera() {
+    initializeCamera()
+    {
         // Debug: Check if cameraInterface is available
         console.log('PlayerEntity: initializeCamera() called');
         console.log('PlayerEntity: typeof cameraInterface =', typeof cameraInterface);
@@ -48,11 +51,13 @@ export class PlayerEntity extends EntityBase {
 
         // Create camera through CameraScriptInterface
         console.log('PlayerEntity: About to call cameraInterface.createCamera()...');
-        try {
+        try
+        {
             this.worldCamera = cameraInterface.createCamera();
             console.log('PlayerEntity: createCamera() returned:', this.worldCamera);
             console.log('PlayerEntity: typeof worldCamera =', typeof this.worldCamera);
-        } catch (error) {
+        } catch (error)
+        {
             console.error('PlayerEntity: ERROR in createCamera():', error);
             throw error;
         }
@@ -89,7 +94,8 @@ export class PlayerEntity extends EntityBase {
      * Update - Override EntityBase::update()
      * Matches C++ Player::Update(float deltaSeconds)
      */
-    update(deltaSeconds) {
+    update(deltaSeconds)
+    {
         // Handle input (matches C++ Player::Update lines 47-106)
         this.handleInput(deltaSeconds);
 
@@ -111,7 +117,8 @@ export class PlayerEntity extends EntityBase {
      * Render - Override EntityBase::render()
      * Matches C++ Player::Render() const (empty in C++)
      */
-    render() {
+    render()
+    {
         // Player doesn't render anything (it's just a camera controller)
         // C++ Player::Render() is empty
     }
@@ -119,14 +126,17 @@ export class PlayerEntity extends EntityBase {
     /**
      * Handle input (matches C++ Player::Update input handling)
      */
-    handleInput(deltaSeconds) {
+    handleInput(deltaSeconds)
+    {
         const controller = input.getController(0);
 
         // Reset position on H key or START button (lines 49-56)
-        if (input.wasKeyJustPressed('H') || controller.wasButtonJustPressed('START')) {
-            if (this.m_game && !this.m_game.isAttractMode()) {
-                this.m_position = { x: 0.0, y: 0.0, z: 0.0 };
-                this.m_orientation = { yaw: 0.0, pitch: 0.0, roll: 0.0 };
+        if (input.wasKeyJustPressed('H') || controller.wasButtonJustPressed('START'))
+        {
+            if (this.m_game && !this.m_game.isAttractMode())
+            {
+                this.m_position = {x: 0.0, y: 0.0, z: 0.0};
+                this.m_orientation = {yaw: 0.0, pitch: 0.0, roll: 0.0};
             }
         }
 
@@ -135,7 +145,7 @@ export class PlayerEntity extends EntityBase {
         const left = this.getLeftVector();
 
         // Reset velocity
-        this.m_velocity = { x: 0.0, y: 0.0, z: 0.0 };
+        this.m_velocity = {x: 0.0, y: 0.0, z: 0.0};
 
         // Left stick movement (lines 66-67)
         const leftStick = controller.getLeftStick();
@@ -149,36 +159,43 @@ export class PlayerEntity extends EntityBase {
         this.m_velocity.z += (leftStickY * forward.z - leftStickX * left.z) * this.moveSpeed;
 
         // Keyboard movement (lines 69-74)
-        if (input.isKeyDown('W')) {
+        if (input.isKeyDown('W'))
+        {
             this.m_velocity.x += forward.x * this.moveSpeed;
             this.m_velocity.y += forward.y * this.moveSpeed;
             this.m_velocity.z += forward.z * this.moveSpeed;
         }
-        if (input.isKeyDown('S')) {
+        if (input.isKeyDown('S'))
+        {
             this.m_velocity.x -= forward.x * this.moveSpeed;
             this.m_velocity.y -= forward.y * this.moveSpeed;
             this.m_velocity.z -= forward.z * this.moveSpeed;
         }
-        if (input.isKeyDown('A')) {
+        if (input.isKeyDown('A'))
+        {
             this.m_velocity.x += left.x * this.moveSpeed;
             this.m_velocity.y += left.y * this.moveSpeed;
             this.m_velocity.z += left.z * this.moveSpeed;
         }
-        if (input.isKeyDown('D')) {
+        if (input.isKeyDown('D'))
+        {
             this.m_velocity.x -= left.x * this.moveSpeed;
             this.m_velocity.y -= left.y * this.moveSpeed;
             this.m_velocity.z -= left.z * this.moveSpeed;
         }
-        if (input.isKeyDown('Z') || controller.isButtonDown('LSHOULDER')) {
+        if (input.isKeyDown('Z') || controller.isButtonDown('LSHOULDER'))
+        {
             this.m_velocity.z -= this.moveSpeed;
         }
-        if (input.isKeyDown('C') || controller.isButtonDown('RSHOULDER')) {
+        if (input.isKeyDown('C') || controller.isButtonDown('RSHOULDER'))
+        {
             this.m_velocity.z += this.moveSpeed;
         }
 
         // Speed boost (line 76)
         let speedMultiplier = 1.0;
-        if (input.isKeyDown('SHIFT') || controller.isButtonDown('A')) {
+        if (input.isKeyDown('SHIFT') || controller.isButtonDown('A'))
+        {
             speedMultiplier = 10.0;
         }
 
@@ -207,11 +224,13 @@ export class PlayerEntity extends EntityBase {
         this.m_orientation.pitch += deltaY * this.mouseSensitivity;
 
         // Defensive: Ensure orientation never becomes NaN or null
-        if (typeof this.m_orientation.yaw !== 'number' || isNaN(this.m_orientation.yaw)) {
+        if (typeof this.m_orientation.yaw !== 'number' || isNaN(this.m_orientation.yaw))
+        {
             console.error('PlayerEntity: yaw became NaN! Resetting to 0');
             this.m_orientation.yaw = 0.0;
         }
-        if (typeof this.m_orientation.pitch !== 'number' || isNaN(this.m_orientation.pitch)) {
+        if (typeof this.m_orientation.pitch !== 'number' || isNaN(this.m_orientation.pitch))
+        {
             console.error('PlayerEntity: pitch became NaN! Resetting to 0');
             this.m_orientation.pitch = 0.0;
         }
@@ -226,16 +245,20 @@ export class PlayerEntity extends EntityBase {
         const leftTriggerValue = (typeof leftTrigger === 'number' && !isNaN(leftTrigger)) ? leftTrigger : 0;
         const rightTriggerValue = (typeof rightTrigger === 'number' && !isNaN(rightTrigger)) ? rightTrigger : 0;
 
-        if (leftTriggerValue > 0.0) {
+        if (leftTriggerValue > 0.0)
+        {
             this.m_angularVelocity.roll -= this.rollSpeed;
         }
-        if (rightTriggerValue > 0.0) {
+        if (rightTriggerValue > 0.0)
+        {
             this.m_angularVelocity.roll += this.rollSpeed;
         }
-        if (input.isKeyDown('Q')) {
+        if (input.isKeyDown('Q'))
+        {
             this.m_angularVelocity.roll = this.rollSpeed;
         }
-        if (input.isKeyDown('E')) {
+        if (input.isKeyDown('E'))
+        {
             this.m_angularVelocity.roll = -this.rollSpeed;
         }
     }
@@ -243,12 +266,14 @@ export class PlayerEntity extends EntityBase {
     /**
      * Update C++ camera transform (matches C++ Player::Update line 109)
      */
-    updateCameraTransform() {
+    updateCameraTransform()
+    {
         // Log camera updates occasionally (every 60 frames) to avoid spam
         if (!this.cameraUpdateCount) this.cameraUpdateCount = 0;
         this.cameraUpdateCount++;
 
-        if (this.cameraUpdateCount % 60 === 0) {
+        if (this.cameraUpdateCount % 60 === 0)
+        {
             console.log(`PlayerEntity: Update Camera Transform (frame ${this.cameraUpdateCount})`);
             console.log('  position:', JSON.stringify(this.m_position));
             console.log('  orientation:', JSON.stringify(this.m_orientation));
@@ -264,14 +289,16 @@ export class PlayerEntity extends EntityBase {
     /**
      * Get camera handle for rendering
      */
-    getCamera() {
+    getCamera()
+    {
         return this.worldCamera;
     }
 
     /**
      * Clamp value between min and max
      */
-    clamp(value, min, max) {
+    clamp(value, min, max)
+    {
         return Math.max(min, Math.min(max, value));
     }
 
@@ -279,8 +306,10 @@ export class PlayerEntity extends EntityBase {
      * Cleanup - Destroy camera when entity is destroyed
      * Matches C++ Player::~Player()
      */
-    destroy() {
-        if (this.worldCamera) {
+    destroy()
+    {
+        if (this.worldCamera)
+        {
             cameraInterface.destroyCamera(this.worldCamera);
             this.worldCamera = null;
             console.log('PlayerEntity: World camera destroyed');
