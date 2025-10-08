@@ -50,9 +50,9 @@ export class InputSystem extends Subsystem
             console.log('InputSystem: F1 pressed, shouldRender =', shouldRender);
         }
 
-        if (typeof game !== 'undefined')
+        if (typeof jsGameInstance !== 'undefined')
         {
-            if (game.gameState === 'ATTRACT')
+            if (jsGameInstance.gameState === 'ATTRACT')
             {
                 if (this.wasKeyJustPressed(KEYCODE_SPACE))
                 {
@@ -66,20 +66,20 @@ export class InputSystem extends Subsystem
                         }
                     }
 
-                    game.gameState = 'GAME';
+                    jsGameInstance.gameState = 'GAME';
                 }
             }
 
-            if (game.gameState === 'GAME')
+            if (jsGameInstance.gameState === 'GAME')
             {
                 if (this.wasKeyJustPressed(KEYCODE_ESC))
                 {
-                    game.gameState = 'ATTRACT';
+                    jsGameInstance.gameState = 'ATTRACT';
                 }
 
                 if (this.wasKeyJustPressed(KEYCODE_P))
                 {
-                    game.pauseGameClock();
+                    jsGameInstance.pauseGameClock();
                 }
             }
         }

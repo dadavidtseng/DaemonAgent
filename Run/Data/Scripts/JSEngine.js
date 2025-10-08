@@ -2,6 +2,9 @@
 // JSEngine.js - Core JavaScript Engine Framework
 //----------------------------------------------------------------------------------------------------
 
+// === Global Setup ===
+import './core/InputSetup.js';  // Patch global input object with getController()
+
 /**
  * JSEngine - Core JavaScript engine with system registration framework
  *

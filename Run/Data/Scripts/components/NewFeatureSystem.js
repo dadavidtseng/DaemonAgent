@@ -19,7 +19,7 @@ export class NewFeatureSystem extends Subsystem {
     }
 
     update(gameDelta, systemDelta) {
-        console.log('New system running!');
+        // console.log('New system running!');
     }
 }
 

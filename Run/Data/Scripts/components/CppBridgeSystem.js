@@ -60,7 +60,7 @@ export class CppBridgeSystem {
         }
 
         // Only render if flag is true
-        if (shouldRenderValue && this.engine) {
+        if (shouldRenderValue && this.engine && globalThis.jsGameInstance.gameState === 'ATTRACT') {
             this.engine.renderCppEngine();
         }
     }

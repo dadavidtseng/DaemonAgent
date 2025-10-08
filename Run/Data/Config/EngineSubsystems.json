@@ -1,15 +1,22 @@
 {
+    "_comment": "Engine Subsystems Configuration - Controls which subsystems are initialized during engine startup",
+    "_usage": {
+        "core_subsystems": "Remove subsystem name from 'core.subsystems' array to disable it",
+        "optional_subsystems": "Set 'enabled: false' in subsystem config to disable it",
+        "defaults": "If this file is missing or malformed, all subsystems default to enabled"
+    },
+
     "subsystems": {
         "audio": {
             "enabled": true,
-            "description": "Audio subsystem using FMOD",
+            "description": "Audio subsystem using FMOD for sound playback and 3D audio",
             "config": {
                 "maxChannels": 128
             }
         },
         "input": {
             "enabled": true,
-            "description": "Input subsystem for keyboard, mouse, and gamepad",
+            "description": "Input subsystem for keyboard, mouse, and gamepad input handling",
             "config": {
                 "enableController": true,
                 "enableMouse": true,
@@ -18,7 +25,7 @@
         },
         "script": {
             "enabled": true,
-            "description": "Script subsystem using V8 JavaScript engine",
+            "description": "Script subsystem using V8 JavaScript engine for dual-language game logic",
             "config": {
                 "enableDebugging": true,
                 "heapSizeLimit": 256,
@@ -32,12 +39,22 @@
         },
         "network": {
             "enabled": false,
-            "description": "Network subsystem (not yet implemented)",
+            "description": "Network subsystem for multiplayer and network communication (not yet implemented)",
             "config": {}
         }
     },
+
     "core": {
-        "description": "Core subsystems that are always enabled",
+        "description": "Core subsystems - Remove from array to disable. Warning: Disabling core subsystems may cause crashes if dependent systems are enabled.",
+        "dependencies": {
+            "LogSubsystem": "None - Can be safely disabled",
+            "EventSystem": "Required by most game systems",
+            "JobSystem": "Required by ResourceSubsystem",
+            "Window": "Required by Renderer, InputSystem",
+            "Renderer": "Required by DevConsole, ResourceSubsystem, DebugRenderSystem",
+            "DevConsole": "Requires Renderer - Can be safely disabled",
+            "ResourceSubsystem": "Requires Renderer, JobSystem"
+        },
         "subsystems": [
             "LogSubsystem",
             "EventSystem",
@@ -47,5 +64,12 @@
             "DevConsole",
             "ResourceSubsystem"
         ]
+    },
+
+    "_examples": {
+        "disable_audio": "Set subsystems.audio.enabled to false",
+        "disable_logging": "Remove 'LogSubsystem' from core.subsystems array",
+        "disable_dev_console": "Remove 'DevConsole' from core.subsystems array",
+        "headless_mode": "Remove 'Window' and 'Renderer' from core.subsystems array (experimental)"
     }
 }
