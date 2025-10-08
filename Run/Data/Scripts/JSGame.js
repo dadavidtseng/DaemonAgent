@@ -1,7 +1,6 @@
 //----------------------------------------------------------------------------------------------------
-// JSGame.js - Game System Coordinator (Phase 4 ES6 Module Architecture)
+// JSGame.js - Game System Coordinator
 //----------------------------------------------------------------------------------------------------
-
 
 import {CppBridgeSystem} from './components/CppBridgeSystem.js';
 import {InputSystem} from './components/InputSystem.js';
@@ -12,8 +11,13 @@ import {RendererSystem} from './components/RendererSystem.js';
 // === Phase 4: Entity classes (matching C++ structure) ===
 import {PlayerEntity} from './entities/PlayerEntity.js';
 import {PropEntity} from './entities/PropEntity.js';
-import {NewFeatureSystem} from "./components/NewFeatureSystem.js";
-import {jsGameInstance} from "./main";
+// import {NewFeatureSystem} from "./components/NewFeatureSystem.js";
+
+export const GameState = Object.freeze({
+    ATTRACT: 'ATTRACT',
+    GAME: 'GAME',
+    PAUSED: 'PAUSED'
+});
 
 /**
  * JSGame - Game system coordinator
@@ -32,6 +36,8 @@ import {jsGameInstance} from "./main";
 
 export class JSGame
 {
+    gameState;
+
     constructor(engine)
     {
         console.log('(JSGame::constructor)(start) - Phase 4 ES6 Module pattern');
@@ -43,8 +49,8 @@ export class JSGame
         // Register all component systems with JSEngine
         this.registerGameSystems();
 
-        this.gameState = 'ATTRACT';  // 'ATTRACT', 'GAME', 'PAUSED'
-        globalThis.jsGameInstance = this;
+        this.gameState = GameState.ATTRACT;  // 'ATTRACT', 'GAME', 'PAUSED'
+
         console.log('(JSGame::constructor)(end) - All components registered');
     }
 
@@ -73,11 +79,13 @@ export class JSGame
 
         // === Phase 4: Game entities (matching C++ architecture) ===
         // PlayerEntity (like C++ Player* m_player)
-        try {
+        try
+        {
             console.log('JSGame: About to create PlayerEntity...');
             this.playerEntity = new PlayerEntity(this);
             console.log('JSGame: PlayerEntity created successfully');
-        } catch (error) {
+        } catch (error)
+        {
             console.error('JSGame: ERROR creating PlayerEntity:', error);
             console.error('JSGame: Error stack:', error.stack);
             throw error;
@@ -85,17 +93,20 @@ export class JSGame
 
         // PropEntity array (like C++ std::vector<Prop*> m_props)
         this.props = [];
-        try {
+        try
+        {
             console.log('JSGame: About to create props...');
             this.createProps();
             console.log('JSGame: Props created successfully');
-        } catch (error) {
+        } catch (error)
+        {
             console.error('JSGame: ERROR creating props:', error);
             console.error('JSGame: Error stack:', error.stack);
             throw error;
         }
 
-        this.newFeature = new NewFeatureSystem();
+        // this.newFeature = new NewFeatureSystem();
+
         console.log('JSGame: All component instances created (Phase 4 with Entity structure)');
     }
 
@@ -107,22 +118,22 @@ export class JSGame
         console.log('JSGame: Creating 4 props matching C++ Game behavior...');
 
         // Prop 0: Rotating cube at (2, 2, 0) - pitch+roll += 30°/s
-        const prop0 = new PropEntity(this, 'cube', { x: 2, y: 2, z: 0 }, this.rendererSystem);
+        const prop0 = new PropEntity(this, 'cube', {x: 2, y: 2, z: 0}, this.rendererSystem);
         prop0.setBehavior('rotate-pitch-roll');
         this.props.push(prop0);
 
         // Prop 1: Pulsing color cube at (-2, -2, 0) - sin wave color
-        const prop1 = new PropEntity(this, 'cube', { x: -2, y: -2, z: 0 }, this.rendererSystem);
+        const prop1 = new PropEntity(this, 'cube', {x: -2, y: -2, z: 0}, this.rendererSystem);
         prop1.setBehavior('pulse-color');
         this.props.push(prop1);
 
         // Prop 2: Rotating sphere at (10, -5, 1) - yaw += 45°/s
-        const prop2 = new PropEntity(this, 'sphere', { x: 10, y: -5, z: 1 }, this.rendererSystem);
+        const prop2 = new PropEntity(this, 'sphere', {x: 10, y: -5, z: 1}, this.rendererSystem);
         prop2.setBehavior('rotate-yaw');
         this.props.push(prop2);
 
         // Prop 3: Static grid at (0, 0, 0)
-        const prop3 = new PropEntity(this, 'grid', { x: 0, y: 0, z: 0 }, this.rendererSystem);
+        const prop3 = new PropEntity(this, 'grid', {x: 0, y: 0, z: 0}, this.rendererSystem);
         prop3.setBehavior('static');
         this.props.push(prop3);
 
@@ -152,16 +163,20 @@ export class JSGame
         // === Phase 4: Entity update/render systems ===
         // Game update system (priority: 12) - Updates PlayerEntity and PropEntities
         this.engine.registerSystem('gameUpdate', {
-            update: (gameDelta, systemDelta) => {
+            update: (gameDelta, systemDelta) =>
+            {
                 // Update player
                 this.playerEntity.update(gameDelta);
 
                 // Update all props
-                for (const prop of this.props) {
+                for (const prop of this.props)
+                {
                     prop.update(gameDelta);
                 }
             },
-            render: () => {},
+            render: () =>
+            {
+            },
             priority: 12,
             enabled: true,
             data: {}
@@ -170,24 +185,31 @@ export class JSGame
         // Game render system (priority: 90) - Renders scene with player's camera
         let renderFrameCount = 0;  // Track render calls
         this.engine.registerSystem('gameRender', {
-            update: (gameDelta, systemDelta) => {},
-            render: () => {
+            update: (gameDelta, systemDelta) =>
+            {
+            },
+            render: () =>
+            {
                 renderFrameCount++;
 
                 // Only render JavaScript entities when in GAME mode
                 // (CppBridgeSystem handles ATTRACT mode rendering)
-                if (this.gameState !== 'GAME') {
+                if (this.gameState !== GameState.GAME)
+                {
                     return;
                 }
 
                 // Check global shouldRender flag (F1 toggle functionality)
                 let shouldRenderValue = true;
-                if (typeof globalThis.shouldRender !== 'undefined') {
+                if (typeof globalThis.shouldRender !== 'undefined')
+                {
                     shouldRenderValue = globalThis.shouldRender;
                 }
 
-                if (!shouldRenderValue) {
-                    if (renderFrameCount % 60 === 0) {
+                if (!shouldRenderValue)
+                {
+                    if (renderFrameCount % 60 === 0)
+                    {
                         console.log('JSGame gameRender: Skipping render (shouldRender=false, F1 toggle)');
                     }
                     return;
@@ -195,13 +217,15 @@ export class JSGame
 
                 // Use player's camera for rendering
                 const camera = this.playerEntity.getCamera();
-                if (!camera) {
+                if (!camera)
+                {
                     console.error('JSGame: Player camera not available!');
                     return;
                 }
 
                 // Log every 60 frames to avoid spam
-                if (renderFrameCount % 60 === 0) {
+                if (renderFrameCount % 60 === 0)
+                {
                     console.log(`JSGame gameRender: Frame ${renderFrameCount}, camera=${camera}, props.length=${this.props.length}`);
                 }
 
@@ -209,7 +233,8 @@ export class JSGame
                 renderer.beginCamera(camera);
 
                 // Render all props
-                for (const prop of this.props) {
+                for (const prop of this.props)
+                {
                     prop.render();
                 }
 
@@ -223,7 +248,7 @@ export class JSGame
 
         // === Phase 4: Renderer system (priority: 100) - renders LAST ===
         this.engine.registerSystem(null, this.rendererSystem);  // Priority: 100
-        this.engine.registerSystem(null, this.newFeature);
+        // this.engine.registerSystem(null, this.newFeature);
 
         console.log('(JSGame::registerGameSystems)(end) - All systems registered (Entity-based architecture)');
     }
@@ -246,9 +271,11 @@ export class JSGame
     /**
      * Set game state
      */
-    setGameState(newState) {
-        const validStates = ['ATTRACT', 'GAME', 'PAUSED'];
-        if (!validStates.includes(newState)) {
+    setGameState(newState)
+    {
+        const validStates = Object.values(GameState);  // Change this line
+        if (!validStates.includes(newState))
+        {
             console.log(`JSGame: Invalid game state '${newState}'`);
             return;
         }

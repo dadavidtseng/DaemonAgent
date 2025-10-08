@@ -4,6 +4,7 @@
 
 // === Global Setup ===
 import './core/InputSetup.js';  // Patch global input object with getController()
+import { EventBus } from './core/EventBus.js';  // Event system for dependency inversion
 
 /**
  * JSEngine - Core JavaScript engine with system registration framework
@@ -36,6 +37,13 @@ export class JSEngine {
 
         // C++ Hot-Reload System (handled by C++ FileWatcher + ScriptReloader)
         this.hotReloadEnabled = true; // C++ hot-reload system availability flag
+
+        // Event System (Phase 4.5: Dependency Inversion Principle)
+        this.eventBus = new EventBus();
+        console.log('JSEngine: EventBus created (global event system)');
+
+        // Make EventBus globally accessible for subsystems
+        globalThis.eventBus = this.eventBus;
 
         console.log('JSEngine: Created with system registration support');
     }
