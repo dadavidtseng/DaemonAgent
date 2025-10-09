@@ -28,8 +28,7 @@ private:
 
     void InitializeMethodRegistry() override;
 
-    ScriptMethodResult ExecutePauseGameClock(ScriptArgs const& args);
     ScriptMethodResult ExecuteAppRequestQuit(ScriptArgs const& args);
-    ScriptMethodResult ExecuteRender(ScriptArgs const& args);
-    ScriptMethodResult ExecuteUpdate(ScriptArgs const& args);
+    ScriptMethodResult ExecuteJavaScriptCommand(ScriptArgs const& args);
+    ScriptMethodResult ExecuteJavaScriptFile(ScriptArgs const& args);
 };

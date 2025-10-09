@@ -11,15 +11,12 @@
 #include "Game/Gameplay/Game.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Game/Framework/App.hpp"
-#include "Game/Framework/GameCommon.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Engine/Audio/AudioSystem.hpp"
 #include "Engine/Core/Clock.hpp"
-#include "Engine/Core/DevConsole.hpp"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Core/ErrorWarningAssert.hpp"
 #include "Engine/Core/LogSubsystem.hpp"
-#include "Engine/Input/InputSystem.hpp"
 #include "Engine/Platform/Window.hpp"
 #include "Engine/Renderer/DebugRenderSystem.hpp"
 #include "Engine/Renderer/Renderer.hpp"
@@ -31,8 +28,6 @@
 Game::Game()
 {
     DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::Game)(start)"));
-
-    m_gameClock = new Clock(Clock::GetSystemClock());
 
     DebugAddWorldBasis(Mat44(), -1.f);
 
@@ -54,9 +49,6 @@ Game::Game()
 Game::~Game()
 {
     DAEMON_LOG(LogGame, eLogVerbosity::Log, "(Game::~Game)(start)");
-
-    GAME_SAFE_RELEASE(m_gameClock);
-
     DAEMON_LOG(LogGame, eLogVerbosity::Display, "(Game::~Game)(end)");
 }
 
@@ -71,9 +63,8 @@ void Game::UpdateJS()
 {
     if (g_scriptSubsystem && g_scriptSubsystem->IsInitialized())
     {
-        float const gameDeltaSeconds   = static_cast<float>(m_gameClock->GetDeltaSeconds());
         float const systemDeltaSeconds = static_cast<float>(Clock::GetSystemClock().GetDeltaSeconds());
-        ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.update({}, {});", std::to_string(gameDeltaSeconds), std::to_string(systemDeltaSeconds)));
+        ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.update({});", std::to_string(systemDeltaSeconds)));
     }
 }
 
@@ -175,146 +166,6 @@ void Game::ExecuteModuleFile(String const& modulePath)
     }
 
     DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::ExecuteModuleFile)(end)({})", modulePath.c_str()));
-}
-
-//----------------------------------------------------------------------------------------------------
-Clock* Game::GetClock() const
-{
-    if (m_gameClock == nullptr) return nullptr;
-
-    return m_gameClock;
-}
-
-void Game::Update(float const gameDeltaSeconds,
-                  float const systemDeltaSeconds)
-{
-    UpdateFromKeyBoard();
-
-    // Note: HandleJavaScriptCommands is now called from the main Update() method
-    HandleConsoleCommands();
-}
-
-void Game::Render()
-{
-    RenderAttractMode();
-}
-
-//----------------------------------------------------------------------------------------------------
-void Game::HandleConsoleCommands()
-{
-    // 處理開發者控制台的 JavaScript 指令
-    // 這需要與 DevConsole 整合
-
-    if (g_devConsole && g_devConsole->IsOpen())
-    {
-        // 檢查控制台輸入是否為 JavaScript 指令
-        // 這裡需要實作具體的控制台輸入檢查邏輯
-
-        // 範例實作（需要 DevConsole 支援）:
-        /*
-        std::string input = g_theConsole->GetLastInput();
-        if (input.substr(0, 3) == "js:")
-        {
-            std::string jsCommand = input.substr(3);
-            ExecuteJavaScriptCommand(jsCommand);
-        }
-        else if (input.substr(0, 7) == "jsfile:")
-        {
-            std::string filename = input.substr(7);
-            ExecuteJavaScriptFile(filename);
-        }
-        */
-    }
-}
-
-//----------------------------------------------------------------------------------------------------
-void Game::UpdateFromKeyBoard()
-{
-    if (g_input->WasKeyJustPressed(KEYCODE_ESC))
-    {
-        App::RequestQuit();
-    }
-
-    if (g_input->WasKeyJustPressed(KEYCODE_O))
-    {
-        m_gameClock->StepSingleFrame();
-    }
-
-    if (g_input->IsKeyDown(KEYCODE_T))
-    {
-        m_gameClock->SetTimeScale(0.1f);
-    }
-
-    if (g_input->WasKeyJustReleased(KEYCODE_T))
-    {
-        m_gameClock->SetTimeScale(1.f);
-    }
-}
-
-//----------------------------------------------------------------------------------------------------
-void Game::UpdateFromController()
-{
-#pragma region XboxController
-    // XboxController const& controller = g_input->GetController(0);
-    //
-    // if (m_gameState == eGameState::ATTRACT)
-    // {
-    //     if (controller.WasButtonJustPressed(XBOX_BUTTON_BACK))
-    //     {
-    //         App::RequestQuit();
-    //     }
-    //
-    //     if (controller.WasButtonJustPressed(XBOX_BUTTON_START))
-    //     {
-    //         m_gameState = eGameState::GAME;
-    //     }
-    // }
-    //
-    // if (m_gameState == eGameState::GAME)
-    // {
-    //     if (controller.WasButtonJustPressed(XBOX_BUTTON_BACK))
-    //     {
-    //         m_gameState = eGameState::ATTRACT;
-    //     }
-    //
-    //     if (controller.WasButtonJustPressed(XBOX_BUTTON_B))
-    //     {
-    //         m_gameClock->TogglePause();
-    //     }
-    //
-    //     if (controller.WasButtonJustPressed(XBOX_BUTTON_Y))
-    //     {
-    //         m_gameClock->StepSingleFrame();
-    //     }
-    //
-    //     if (controller.WasButtonJustPressed(XBOX_BUTTON_X))
-    //     {
-    //         m_gameClock->SetTimeScale(0.1f);
-    //     }
-    //
-    //     if (controller.WasButtonJustReleased(XBOX_BUTTON_X))
-    //     {
-    //         m_gameClock->SetTimeScale(1.f);
-    //     }
-    // }
-#pragma endregion
-}
-
-//----------------------------------------------------------------------------------------------------
-void Game::RenderAttractMode() const
-{
-    Vec2 clientDimensions = Window::s_mainWindow->GetClientDimensions();
-
-    VertexList_PCU verts;
-    AddVertsForDisc2D(verts, Vec2(clientDimensions.x * 0.5f, clientDimensions.y * 0.5f), 300.f, 10.f, Rgba8::YELLOW);
-    g_renderer->SetModelConstants();
-    g_renderer->SetBlendMode(eBlendMode::OPAQUE);
-    g_renderer->SetRasterizerMode(eRasterizerMode::SOLID_CULL_BACK);
-    g_renderer->SetSamplerMode(eSamplerMode::BILINEAR_CLAMP);
-    g_renderer->SetDepthMode(eDepthMode::DISABLED);
-    g_renderer->BindTexture(nullptr);
-    g_renderer->BindShader(g_renderer->CreateOrGetShaderFromFile("Data/Shaders/Default"));
-    g_renderer->DrawVertexArray(verts);
 }
 
 //----------------------------------------------------------------------------------------------------

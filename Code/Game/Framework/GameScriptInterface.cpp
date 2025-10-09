@@ -30,35 +30,27 @@ GameScriptInterface::GameScriptInterface(Game* game)
 std::vector<ScriptMethodInfo> GameScriptInterface::GetAvailableMethods() const
 {
     return {
-        ScriptMethodInfo("pauseGameClock",
-                         "Pause game clock",
-                         {},
-                         "void"),
-
         ScriptMethodInfo("appRequestQuit",
                          "Request quit to app",
                          {},
                          "void"),
 
-        ScriptMethodInfo("update",
-                         "JavaScript GameLoop Update",
-                         {"float", "float"},
-                         "void"),
+        ScriptMethodInfo("executeCommand",
+                         "執行 JavaScript 指令",
+                         {"string"},
+                         "string"),
 
-        ScriptMethodInfo("render",
-                         "JavaScript GameLoop Render",
-                         {},
-                         "void"),
+        ScriptMethodInfo("executeFile",
+                         "執行 JavaScript 檔案",
+                         {"string"},
+                         "string"),
     };
 }
 
 //----------------------------------------------------------------------------------------------------
 std::vector<String> GameScriptInterface::GetAvailableProperties() const
 {
-    return {
-        "attractMode",
-        "gameState"
-    };
+    return {};
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -67,21 +59,17 @@ ScriptMethodResult GameScriptInterface::CallMethod(String const&     methodName,
 {
     try
     {
-        if (methodName == "pauseGameClock")
-        {
-            return ExecutePauseGameClock(args);
-        }
         if (methodName == "appRequestQuit")
         {
             return ExecuteAppRequestQuit(args);
         }
-        else if (methodName == "update")
+        else if (methodName == "executeCommand")
         {
-            return ExecuteUpdate(args);
+            return ExecuteJavaScriptCommand(args);
         }
-        else if (methodName == "render")
+        else if (methodName == "executeFile")
         {
-            return ExecuteRender(args);
+            return ExecuteJavaScriptFile(args);
         }
 
         return ScriptMethodResult::Error("未知的方法: " + methodName);
@@ -113,22 +101,6 @@ void GameScriptInterface::InitializeMethodRegistry()
 {
 }
 
-ScriptMethodResult GameScriptInterface::ExecutePauseGameClock(ScriptArgs const& args)
-{
-    auto result = ScriptTypeExtractor::ValidateArgCount(args, 0, "pauseGameClock");
-    if (!result.success) return result;
-
-    try
-    {
-        m_game->GetClock()->TogglePause();
-        return ScriptMethodResult::Success();
-    }
-    catch (const std::exception& e)
-    {
-        return ScriptMethodResult::Error("PauseGameClock: " + String(e.what()));
-    }
-}
-
 ScriptMethodResult GameScriptInterface::ExecuteAppRequestQuit(ScriptArgs const& args)
 {
     auto result = ScriptTypeExtractor::ValidateArgCount(args, 0, "appRequestQuit");
@@ -145,37 +117,38 @@ ScriptMethodResult GameScriptInterface::ExecuteAppRequestQuit(ScriptArgs const& 
     }
 }
 
-ScriptMethodResult GameScriptInterface::ExecuteRender(const ScriptArgs& args)
+//----------------------------------------------------------------------------------------------------
+ScriptMethodResult GameScriptInterface::ExecuteJavaScriptCommand(const ScriptArgs& args)
 {
-    auto result = ScriptTypeExtractor::ValidateArgCount(args, 0, "Render");
+    auto result = ScriptTypeExtractor::ValidateArgCount(args, 1, "executeCommand");
     if (!result.success) return result;
 
     try
     {
-        m_game->Render();
-        return ScriptMethodResult::Success(Stringf("Render Success"));
-    }
-    catch (const std::exception& e)
-    {
-        return ScriptMethodResult::Error("Render failed: " + String(e.what()));
-    }
-}
-
-ScriptMethodResult GameScriptInterface::ExecuteUpdate(const ScriptArgs& args)
-{
-    auto result = ScriptTypeExtractor::ValidateArgCount(args, 2, "Update");
-    if (!result.success) return result;
-
-    try
-    {
-        float gameDeltaSeconds   = ScriptTypeExtractor::ExtractFloat(args[0]);
-        float systemDeltaSeconds = ScriptTypeExtractor::ExtractFloat(args[1]);
-
-        m_game->Update(gameDeltaSeconds, systemDeltaSeconds);
-        return ScriptMethodResult::Success(Stringf("Update Success"));
+        String command = ScriptTypeExtractor::ExtractString(args[0]);
+        m_game->ExecuteJavaScriptCommand(command);
+        return ScriptMethodResult::Success(String("指令執行: " + command));
     }
     catch (std::exception const& e)
     {
-        return ScriptMethodResult::Error("Update failed: " + String(e.what()));
+        return ScriptMethodResult::Error("執行 JavaScript 指令失敗: " + String(e.what()));
+    }
+}
+
+//----------------------------------------------------------------------------------------------------
+ScriptMethodResult GameScriptInterface::ExecuteJavaScriptFile(const ScriptArgs& args)
+{
+    auto result = ScriptTypeExtractor::ValidateArgCount(args, 1, "executeFile");
+    if (!result.success) return result;
+
+    try
+    {
+        String filename = ScriptTypeExtractor::ExtractString(args[0]);
+        m_game->ExecuteJavaScriptFile(filename);
+        return ScriptMethodResult::Success(String("檔案執行: " + filename));
+    }
+    catch (std::exception const& e)
+    {
+        return ScriptMethodResult::Error("執行 JavaScript 檔案失敗: " + String(e.what()));
     }
 }
