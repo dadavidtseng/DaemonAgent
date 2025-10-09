@@ -4,7 +4,9 @@
 
 // === Global Setup ===
 import './core/InputSetup.js';  // Patch global input object with getController()
-import { EventBus } from './core/EventBus.js';  // Event system for dependency inversion
+import {EventBus} from './core/EventBus.js';  // Event system for dependency inversion
+import {Clock} from './components/Clock.js';
+import {KEYCODE_F1, KEYCODE_P} from "./InputSystemCommon";
 
 /**
  * JSEngine - Core JavaScript engine with system registration framework
@@ -23,8 +25,10 @@ import { EventBus } from './core/EventBus.js';  // Event system for dependency i
  * - Automatic hot-reload for modified Subsystem instances
  */
 
-export class JSEngine {
-    constructor() {
+export class JSEngine
+{
+    constructor()
+    {
         this.game = null;
         this.isInitialized = true;
         this.frameCount = 0;
@@ -51,7 +55,8 @@ export class JSEngine {
     /**
      * Set the game instance
      */
-    setGame(gameInstance) {
+    setGame(gameInstance)
+    {
         this.game = gameInstance;
         console.log('JSEngine: Game instance set');
     }
@@ -69,18 +74,20 @@ export class JSEngine {
      * @param {string|null} id - Unique system identifier (legacy) or null (new Subsystem pattern)
      * @param {Object|Subsystem} configOrComponent - Config object (legacy) or Subsystem instance (new)
      */
-    registerSystem(id, configOrComponent = {}) {
+    registerSystem(id, configOrComponent = {})
+    {
         let system;
 
         // NEW PATTERN: Subsystem instance (Phase 3.5)
         // Detect by checking for id, priority properties and update/render methods
         const isComponentInstance = configOrComponent &&
-                                   typeof configOrComponent === 'object' &&
-                                   configOrComponent.id &&
-                                   typeof configOrComponent.priority === 'number' &&
-                                   typeof configOrComponent.update === 'function';
+            typeof configOrComponent === 'object' &&
+            configOrComponent.id &&
+            typeof configOrComponent.priority === 'number' &&
+            typeof configOrComponent.update === 'function';
 
-        if (isComponentInstance) {
+        if (isComponentInstance)
+        {
             // Subsystem instance pattern
             const component = configOrComponent;
             system = {
@@ -94,9 +101,12 @@ export class JSEngine {
             };
 
             console.log(`JSEngine: Registered SystemComponent '${component.id}' (priority: ${component.priority}, ECS pattern)`);
-        } else {
+        }
+        else
+        {
             // LEGACY PATTERN: Config object (backward compatibility)
-            if (!id || typeof id !== 'string') {
+            if (!id || typeof id !== 'string')
+            {
                 console.log('JSEngine: System ID must be a non-empty string (legacy pattern)');
                 return false;
             }
@@ -122,8 +132,10 @@ export class JSEngine {
     /**
      * Unregister a system
      */
-    unregisterSystem(id) {
-        if (!this.registeredSystems.has(id)) {
+    unregisterSystem(id)
+    {
+        if (!this.registeredSystems.has(id))
+        {
             console.warn(`JSEngine: System '${id}' not found`);
             return false;
         }
@@ -136,10 +148,12 @@ export class JSEngine {
     /**
      * Enable or disable a system
      */
-    setSystemEnabled(id, enabled) {
+    setSystemEnabled(id, enabled)
+    {
         const system = this.registeredSystems.get(id);
-        if (!system) {
-            console.warn(`JSEngine: System '${id}' not found`);
+        if (!system)
+        {
+            console.warn(`setSystemEnabled JSEngine: System '${id}' not found`);
             return false;
         }
 
@@ -151,15 +165,18 @@ export class JSEngine {
     /**
      * Get system information
      */
-    getSystem(id) {
+    getSystem(id)
+    {
         return this.registeredSystems.get(id) || null;
     }
 
     /**
      * List all registered systems
      */
-    listSystems() {
-        return Array.from(this.registeredSystems.keys()).map(id => {
+    listSystems()
+    {
+        return Array.from(this.registeredSystems.keys()).map(id =>
+        {
             const sys = this.registeredSystems.get(id);
             return {
                 id: sys.id,
@@ -176,28 +193,37 @@ export class JSEngine {
     // INTERNAL SYSTEM MANAGEMENT
     // ============================================================================
 
-    queueOperation(operation) {
+    queueOperation(operation)
+    {
         this.pendingOperations.push(operation);
     }
 
-    processOperations() {
-        for (const op of this.pendingOperations) {
-            if (op.type === 'register') {
+    processOperations()
+    {
+        for (const op of this.pendingOperations)
+        {
+            if (op.type === 'register')
+            {
                 this.addSystemToLists(op.system);
-            } else if (op.type === 'unregister') {
+            }
+            else if (op.type === 'unregister')
+            {
                 this.removeSystemFromLists(op.id);
             }
         }
         this.pendingOperations = [];
     }
 
-    addSystemToLists(system) {
-        if (system.update && typeof system.update === 'function') {
+    addSystemToLists(system)
+    {
+        if (system.update && typeof system.update === 'function')
+        {
             this.updateSystems.push(system);
             this.updateSystems.sort((a, b) => a.priority - b.priority);
         }
 
-        if (system.render && typeof system.render === 'function') {
+        if (system.render && typeof system.render === 'function')
+        {
             this.renderSystems.push(system);
             this.renderSystems.sort((a, b) => a.priority - b.priority);
         }
@@ -205,7 +231,8 @@ export class JSEngine {
         console.log(`JSEngine: System '${system.id}' added to execution lists`);
     }
 
-    removeSystemFromLists(id) {
+    removeSystemFromLists(id)
+    {
         this.updateSystems = this.updateSystems.filter(sys => sys.id !== id);
         this.renderSystems = this.renderSystems.filter(sys => sys.id !== id);
         this.registeredSystems.delete(id);
@@ -221,12 +248,15 @@ export class JSEngine {
      * Check for hot-reloads and upgrade system instances automatically
      * Called every frame to detect when C++ has reloaded module files
      */
-    checkForHotReloads() {
-        for (const [id, system] of this.registeredSystems) {
+    checkForHotReloads()
+    {
+        for (const [id, system] of this.registeredSystems)
+        {
             const instance = system.componentInstance;
             if (!instance) continue; // Skip legacy systems
 
-            try {
+            try
+            {
                 // Get the class name and try to find it in global scope
                 const className = instance.constructor.name;
                 const GlobalClass = globalThis[className];
@@ -234,7 +264,8 @@ export class JSEngine {
                 if (!GlobalClass) continue; // Class not in global scope
 
                 // Check if constructor function changed (class was reloaded)
-                if (instance.constructor !== GlobalClass) {
+                if (instance.constructor !== GlobalClass)
+                {
                     console.log(`JSEngine: Hot-reload detected for '${id}', upgrading instance methods`);
                     this.upgradeInstanceMethods(instance, GlobalClass);
 
@@ -247,7 +278,8 @@ export class JSEngine {
 
                     console.log(`JSEngine: Hot-reload complete for '${id}'`);
                 }
-            } catch (e) {
+            } catch (e)
+            {
                 // Silently ignore errors (class might not be in global scope)
             }
         }
@@ -260,17 +292,20 @@ export class JSEngine {
      * @param {Object} instance - Existing instance to upgrade
      * @param {Function} NewClass - New class definition with updated methods
      */
-    upgradeInstanceMethods(instance, NewClass) {
+    upgradeInstanceMethods(instance, NewClass)
+    {
         const proto = NewClass.prototype;
         const methodNames = Object.getOwnPropertyNames(proto);
 
         let upgradedCount = 0;
 
-        for (const methodName of methodNames) {
+        for (const methodName of methodNames)
+        {
             if (methodName === 'constructor') continue;
 
             const descriptor = Object.getOwnPropertyDescriptor(proto, methodName);
-            if (descriptor && typeof descriptor.value === 'function') {
+            if (descriptor && typeof descriptor.value === 'function')
+            {
                 // Replace method with new version (bound to instance)
                 instance[methodName] = descriptor.value.bind(instance);
                 upgradedCount++;
@@ -285,8 +320,10 @@ export class JSEngine {
      * Update method - called by C++ engine
      * Now processes both game and registered systems
      */
-    update(gameDeltaSeconds, systemDeltaSeconds) {
-        if (!this.isInitialized) {
+    update(systemDeltaSeconds)
+    {
+        if (!this.isInitialized)
+        {
             return;
         }
 
@@ -294,22 +331,31 @@ export class JSEngine {
         this.processOperations();
 
         // AUTOMATIC HOT-RELOAD: Check for module reloads every frame
-        if (this.hotReloadEnabled) {
+        if (this.hotReloadEnabled)
+        {
             this.checkForHotReloads();
         }
 
         // Execute all registered update systems
-        for (const system of this.updateSystems) {
-            if (system.enabled && system.update) {
-                try {
+        for (const system of this.updateSystems)
+        {
+            if (system.enabled && system.update)
+            {
+                try
+                {
+
                     // Pass both gameDeltaSeconds and systemDeltaSeconds to allow systems to choose
-                    system.update(gameDeltaSeconds, systemDeltaSeconds);
-                } catch (error) {
+                    system.update(jsGameInstance.gameClock.getDeltaSeconds(), systemDeltaSeconds);
+                } catch (error)
+                {
                     // Enhanced error logging with multiple fallbacks
-                    if (error instanceof Error) {
+                    if (error instanceof Error)
+                    {
                         console.log(`JSEngine: Error in system '${system.id}' update: ${error.message}`);
                         console.log(`Stack: ${error.stack}`);
-                    } else {
+                    }
+                    else
+                    {
                         console.log(`JSEngine: Error in system '${system.id}' update: ${JSON.stringify(error)}`);
                     }
                 }
@@ -321,22 +367,31 @@ export class JSEngine {
      * Render method - called by C++ engine
      * Now processes both game and registered systems
      */
-    render() {
-        if (!this.isInitialized) {
+    render()
+    {
+        if (!this.isInitialized)
+        {
             return;
         }
 
         // Execute all registered render systems
-        for (const system of this.renderSystems) {
-            if (system.enabled && system.render) {
-                try {
+        for (const system of this.renderSystems)
+        {
+            if (system.enabled && system.render)
+            {
+                try
+                {
                     system.render();
-                } catch (error) {
+                } catch (error)
+                {
                     // Enhanced error logging with multiple fallbacks
-                    if (error instanceof Error) {
+                    if (error instanceof Error)
+                    {
                         console.log(`JSEngine: Error in system '${system.id}' render: ${error.message}`);
                         console.log(`Stack: ${error.stack}`);
-                    } else {
+                    }
+                    else
+                    {
                         console.log(`JSEngine: Error in system '${system.id}' render: ${JSON.stringify(error)}`);
                     }
                 }
@@ -348,68 +403,33 @@ export class JSEngine {
      * C++ Engine interface methods - called by JSGame
      * These bridge to the actual C++ engine functions
      */
-    updateCppEngine(gameDeltaSeconds, systemDeltaSeconds) {
-        if (typeof game !== 'undefined' && game.update) {
-            game.update(gameDeltaSeconds || 0.0, systemDeltaSeconds || 0.0);
-            return true;
-        }
-        console.warn('JSEngine: C++ game.update not available');
-        return false;
+    updateCppEngine(gameDeltaSeconds, systemDeltaSeconds)
+    {
+        // if (typeof game !== 'undefined' && game.update)
+        // {
+        //     game.update(systemDeltaSeconds || 0.0);
+        //     return true;
+        // }
+        // console.warn('JSEngine: C++ game.update not available');
+        // return false;
     }
 
-    renderCppEngine() {
-        if (typeof game !== 'undefined' && game.render) {
-            game.render();
-            return true;
-        }
-        console.warn('JSEngine: C++ game.render not available');
-        return false;
-    }
-
-    /**
-     * Helper methods for game to use C++ engine functions
-     */
-    createCube(x, y, z) {
-        if (typeof game !== 'undefined' && game.createCube) {
-            game.createCube(x, y, z);
-            console.log(`JSEngine: Created cube at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
-            return true;
-        }
-        console.warn('JSEngine: createCube not available');
-        return false;
-    }
-
-    moveProp(index, x, y, z) {
-        if (typeof game !== 'undefined' && game.moveProp) {
-            game.moveProp(index, x, y, z);
-            console.log(`JSEngine: Moved prop ${index} to (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
-            return true;
-        }
-        console.warn('JSEngine: moveProp not available');
-        return false;
-    }
-
-    getPlayerPosition() {
-        if (typeof game !== 'undefined' && game.getPlayerPos) {
-            return game.getPlayerPos();
-        }
-        console.warn('JSEngine: getPlayerPos not available');
-        return {x: 0, y: 0, z: 0};
-    }
-
-    moveCamera(x, y, z) {
-        if (typeof game !== 'undefined' && game.movePlayerCamera) {
-            game.movePlayerCamera(x, y, z);
-            return true;
-        }
-        console.warn('JSEngine: movePlayerCamera not available');
-        return false;
+    renderCppEngine()
+    {
+        // if (typeof game !== 'undefined' && game.render)
+        // {
+        //     game.render();
+        //     return true;
+        // }
+        // console.warn('JSEngine: C++ game.render not available');
+        // return false;
     }
 
     /**
      * Get engine status
      */
-    getStatus() {
+    getStatus()
+    {
         return {
             isInitialized: this.isInitialized,
             hasGame: this.game !== null,

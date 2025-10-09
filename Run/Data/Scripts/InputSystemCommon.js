@@ -12,6 +12,7 @@
 export const KEYCODE_F1 = 112;
 export const KEYCODE_ESC = 27;
 export const KEYCODE_SPACE = 32;
+export const KEYCODE_O = 79;
 export const KEYCODE_P = 80;
 
 // WASD Keys (exported for entity behaviors)

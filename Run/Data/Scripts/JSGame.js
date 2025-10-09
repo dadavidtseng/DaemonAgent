@@ -8,9 +8,11 @@ import {AudioSystem} from './components/AudioSystem.js';
 import {CameraSystem} from './components/CameraSystem.js';
 import {RendererSystem} from './components/RendererSystem.js';
 
+
 // === Phase 4: Entity classes (matching C++ structure) ===
 import {PlayerEntity} from './entities/PlayerEntity.js';
 import {PropEntity} from './entities/PropEntity.js';
+import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon";
 // import {NewFeatureSystem} from "./components/NewFeatureSystem.js";
 
 export const GameState = Object.freeze({
@@ -37,6 +39,7 @@ export const GameState = Object.freeze({
 export class JSGame
 {
     gameState;
+    gameClock;
 
     constructor(engine)
     {
@@ -50,6 +53,18 @@ export class JSGame
         this.registerGameSystems();
 
         this.gameState = GameState.ATTRACT;  // 'ATTRACT', 'GAME', 'PAUSED'
+
+        // Create game clock (requires globalThis.clock ClockScriptInterface from C++)
+        // Matches C++ Game::Game() which creates: m_gameClock = new Clock(Clock::GetSystemClock())
+        if (typeof globalThis.clock !== 'undefined')
+        {
+            this.gameClock = new Clock(globalThis.clock);
+            console.log('JSGame: Game clock created successfully');
+        }
+        else
+        {
+            console.error('JSGame: ClockScriptInterface not available in globalThis.clock!');
+        }
 
         console.log('(JSGame::constructor)(end) - All components registered');
     }
@@ -163,8 +178,9 @@ export class JSGame
         // === Phase 4: Entity update/render systems ===
         // Game update system (priority: 12) - Updates PlayerEntity and PropEntities
         this.engine.registerSystem('gameUpdate', {
-            update: (gameDelta, systemDelta) =>
+            update: (gameDelta,systemDelta) =>
             {
+
                 // Update player
                 this.playerEntity.update(gameDelta);
 
@@ -172,6 +188,22 @@ export class JSGame
                 for (const prop of this.props)
                 {
                     prop.update(gameDelta);
+                }
+
+                // P: Pause game clock
+                if (input.wasKeyJustPressed(KEYCODE_P))
+                {
+                    this.engine.setSystemEnabled('gameRender', false);
+                }
+
+                if (input.wasKeyJustPressed(KEYCODE_O))
+                {
+                    this.engine.setSystemEnabled('gameRender', true);
+                }
+
+                if (input.wasKeyJustPressed(KEYCODE_ESC))
+                {
+                    game.appRequestQuit();
                 }
             },
             render: () =>

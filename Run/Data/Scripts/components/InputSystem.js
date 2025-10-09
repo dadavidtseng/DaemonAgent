@@ -2,7 +2,7 @@
 // Phase 4.5 ES6 Module version using Subsystem pattern + Event System
 
 import {Subsystem} from '../core/Subsystem.js';
-import {KEYCODE_F1, KEYCODE_SPACE, KEYCODE_P, KEYCODE_ESC} from '../InputSystemCommon.js';
+import {KEYCODE_F1, KEYCODE_SPACE, KEYCODE_ESC} from '../InputSystemCommon.js';
 import {GameState} from "../JSGame.js";
 import {jsGameInstance} from "../main.js";
 import {EventTypes} from "../core/EventTypes.js";
@@ -96,12 +96,6 @@ export class InputSystem extends Subsystem
                     globalThis.eventBus.emit(EventTypes.GAME_STATE_CHANGED, event);
 
                     console.log('InputSystem: Emitted GameStateChangedEvent (GAME → ATTRACT)');
-                }
-
-                // P: Pause game clock
-                if (this.wasKeyJustPressed(KEYCODE_P))
-                {
-                    jsGameInstance.pauseGameClock();
                 }
             }
         }
