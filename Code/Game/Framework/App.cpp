@@ -25,6 +25,10 @@
 #include "Engine/Resource/ResourceSubsystem.hpp"
 #include "Engine/Script/ScriptSubsystem.hpp"
 //----------------------------------------------------------------------------------------------------
+#include "GameScriptInterface.hpp"
+#include "Engine/Core/ClockScriptInterface.hpp"
+#include "Engine/Input/InputScriptInterface.hpp"
+#include "Engine/Renderer/RendererScriptInterface.hpp"
 #include "ThirdParty/json/json.hpp"
 
 //----------------------------------------------------------------------------------------------------
@@ -44,6 +48,7 @@ App::App()
 //----------------------------------------------------------------------------------------------------
 App::~App()
 {
+
     GEngine::Get().Destruct();
 }
 
@@ -65,6 +70,13 @@ void App::Startup()
 //
 void App::Shutdown()
 {
+    // m_gameScriptInterface.reset();
+    // m_inputScriptInterface.reset();
+    // m_audioScriptInterface.reset();
+    // m_cameraScriptInterface.reset();
+    // m_rendererScriptInterface.reset();  // ← Clear vertex arrays before g_renderer destructs
+    // m_clockScriptInterface.reset();
+
     GAME_SAFE_RELEASE(g_game);
 
     GEngine::Get().Shutdown();
@@ -268,6 +280,9 @@ void App::SetupScriptingBindings()
 
     m_rendererScriptInterface = std::make_shared<RendererScriptInterface>(g_renderer);
     g_scriptSubsystem->RegisterScriptableObject("renderer", m_rendererScriptInterface);
+
+    m_clockScriptInterface = std::make_shared<ClockScriptInterface>();
+    g_scriptSubsystem->RegisterScriptableObject("clock", m_clockScriptInterface);
 
     g_scriptSubsystem->RegisterGlobalFunction("print", OnPrint);
     g_scriptSubsystem->RegisterGlobalFunction("debug", OnDebug);

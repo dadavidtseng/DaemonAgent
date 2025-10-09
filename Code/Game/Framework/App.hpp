@@ -5,16 +5,18 @@
 //----------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Game/Framework/GameScriptInterface.hpp"
 
-#include "Engine/Audio/AudioScriptInterface.hpp"
+#include <any>
+
 #include "Engine/Core/EventSystem.hpp"
-#include "Engine/Input/InputScriptInterface.hpp"
-#include "Engine/Renderer/CameraScriptInterface.hpp"
-#include "Engine/Renderer/RendererScriptInterface.hpp"
 
 //-Forward-Declaration--------------------------------------------------------------------------------
-class Camera;
+class AudioScriptInterface;
+class CameraScriptInterface;
+class ClockScriptInterface;
+class GameScriptInterface;
+class InputScriptInterface;
+class RendererScriptInterface;
 
 //----------------------------------------------------------------------------------------------------
 class App
@@ -46,10 +48,10 @@ private:
     void UpdateCursorMode();
     void SetupScriptingBindings();
 
-    Camera*                                  m_devConsoleCamera = nullptr;
     std::shared_ptr<GameScriptInterface>     m_gameScriptInterface;
     std::shared_ptr<InputScriptInterface>    m_inputScriptInterface;
     std::shared_ptr<AudioScriptInterface>    m_audioScriptInterface;
     std::shared_ptr<CameraScriptInterface>   m_cameraScriptInterface;
     std::shared_ptr<RendererScriptInterface> m_rendererScriptInterface;
+    std::shared_ptr<ClockScriptInterface>    m_clockScriptInterface;
 };
