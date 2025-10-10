@@ -10,6 +10,7 @@
 
 #include "Engine/Core/EventSystem.hpp"
 
+class DebugRenderSystemScriptInterface;
 //-Forward-Declaration--------------------------------------------------------------------------------
 class AudioScriptInterface;
 class CameraScriptInterface;
@@ -52,6 +53,7 @@ private:
     std::shared_ptr<InputScriptInterface>    m_inputScriptInterface;
     std::shared_ptr<AudioScriptInterface>    m_audioScriptInterface;
     std::shared_ptr<CameraScriptInterface>   m_cameraScriptInterface;
+    std::shared_ptr<DebugRenderSystemScriptInterface>   m_debugRenderSystemScriptInterface;
     std::shared_ptr<RendererScriptInterface> m_rendererScriptInterface;
     std::shared_ptr<ClockScriptInterface>    m_clockScriptInterface;
 };

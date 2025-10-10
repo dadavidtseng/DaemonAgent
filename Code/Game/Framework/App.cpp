@@ -28,6 +28,7 @@
 #include "GameScriptInterface.hpp"
 #include "Engine/Core/ClockScriptInterface.hpp"
 #include "Engine/Input/InputScriptInterface.hpp"
+#include "Engine/Renderer/DebugRenderSystemScriptInterface.hpp"
 #include "Engine/Renderer/RendererScriptInterface.hpp"
 #include "ThirdParty/json/json.hpp"
 
@@ -280,6 +281,9 @@ void App::SetupScriptingBindings()
 
     m_rendererScriptInterface = std::make_shared<RendererScriptInterface>(g_renderer);
     g_scriptSubsystem->RegisterScriptableObject("renderer", m_rendererScriptInterface);
+
+    m_debugRenderSystemScriptInterface = std::make_shared<DebugRenderSystemScriptInterface>();
+    g_scriptSubsystem->RegisterScriptableObject("debugRenderInterface", m_debugRenderSystemScriptInterface);
 
     m_clockScriptInterface = std::make_shared<ClockScriptInterface>();
     g_scriptSubsystem->RegisterScriptableObject("clock", m_clockScriptInterface);
