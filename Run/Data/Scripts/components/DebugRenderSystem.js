@@ -2,6 +2,8 @@
 // JavaScript wrapper for DebugRenderSystemScriptInterface
 // Provides clean JavaScript API for C++ debug rendering functionality
 
+import { Subsystem } from '../core/Subsystem.js';
+
 /**
  * DebugRenderSystem - JavaScript wrapper for debug visualization
  *
@@ -11,19 +13,82 @@
  * - Geometry (points, lines, spheres, text, etc.)
  *
  * Usage:
- *   const debug = new DebugRenderSystem(debugRenderHandle);
+ *   const debug = new DebugRenderSystem();
  *   debug.addWorldLine(0, 0, 0, 1, 1, 1, 0.02, 0, 255, 0, 0, 255, "USE_DEPTH");
  *   debug.renderWorld(camera);
  */
-export class DebugRenderSystem
+export class DebugRenderSystem extends Subsystem
 {
-    constructor(debugRenderHandle)
+    constructor()
     {
-        if (!debugRenderHandle)
+        super('debugRenderSystem', 95, { enabled: true }); // Priority 95, before renderer (100)
+
+        this.isInitialized = false;
+
+        console.log('DebugRenderSystem: Module loaded (Phase 4 ES6)');
+        console.log(`DebugRenderSystem: this.id = ${this.id}, this.priority = ${this.priority}`);
+        console.log(`DebugRenderSystem: this.update type = ${typeof this.update}, this.render type = ${typeof this.render}`);
+        this.initialize();
+    }
+
+    /**
+     * Initialize the debug render system and verify C++ debugRenderInterface availability
+     */
+    initialize()
+    {
+        try
         {
-            throw new Error('DebugRenderSystem: debugRenderHandle is required');
+            // Check if C++ debugRenderInterface is available
+            if (typeof debugRenderInterface !== 'undefined')
+            {
+                console.log('DebugRenderSystem: C++ debugRenderInterface available');
+                this.debugRenderHandle = debugRenderInterface;
+                this.isInitialized = true;
+            }
+            else
+            {
+                console.error('DebugRenderSystem: C++ debugRenderInterface NOT available!');
+                this.isInitialized = false;
+            }
         }
-        this.debugRenderHandle = debugRenderHandle;
+        catch (error)
+        {
+            console.error('DebugRenderSystem: Initialization failed:', error);
+            this.isInitialized = false;
+        }
+    }
+
+    /**
+     * Update method - called every frame
+     * @param {number} gameDelta - Game time delta
+     * @param {number} systemDelta - System time delta
+     */
+    update(gameDelta, systemDelta)
+    {
+        // Debug render system has no per-frame update logic
+        // All debug rendering operations are done through methods directly
+    }
+
+    /**
+     * Render method - called every frame during render phase
+     */
+    render()
+    {
+        // Debug render system has no automatic rendering logic
+        // Rendering is done explicitly through renderWorld/renderScreen methods
+    }
+
+    /**
+     * Get system status for debugging
+     */
+    getSystemStatus()
+    {
+        return {
+            id: this.id,
+            priority: this.priority,
+            enabled: this.enabled,
+            isInitialized: this.isInitialized
+        };
     }
 
     // === CONTROL METHODS ===
