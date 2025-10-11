@@ -2,6 +2,8 @@
 // JavaScript wrapper for ClockScriptInterface
 // Provides clean JavaScript API for C++ Clock time management functionality
 
+import {ClockInterface} from '../core/interfaces/ClockInterface.js';
+
 /**
  * Clock - JavaScript wrapper for game clock control
  *
@@ -12,21 +14,21 @@
  * - Time queries (delta, total, frame count)
  *
  * Usage:
- *   const clockInterface = globalThis.clock; // ClockScriptInterface from C++
- *   const gameClock = new Clock(clockInterface);
+ *   const gameClock = new Clock();
  *   gameClock.pause();
  *   gameClock.setTimeScale(0.5);  // Slow motion
  *   const delta = gameClock.getDeltaSeconds();
  */
 export class Clock
 {
-    constructor(clockScriptInterface)
+    constructor()
     {
-        if (!clockScriptInterface)
+        this.clockInterface = new ClockInterface();
+
+        if (!this.clockInterface.isAvailable())
         {
-            throw new Error('Clock: clockScriptInterface is required');
+            throw new Error('Clock: ClockInterface not available');
         }
-        this.clockInterface = clockScriptInterface;
 
         // Create C++ clock instance (as child of system clock)
         this.handle = this.clockInterface.createClock();

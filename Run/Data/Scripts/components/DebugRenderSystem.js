@@ -3,6 +3,7 @@
 // Provides clean JavaScript API for C++ debug rendering functionality
 
 import { Subsystem } from '../core/Subsystem.js';
+import { DebugRenderInterface } from '../core/interfaces/DebugRenderInterface.js';
 
 /**
  * DebugRenderSystem - JavaScript wrapper for debug visualization
@@ -24,6 +25,7 @@ export class DebugRenderSystem extends Subsystem
         super('debugRenderSystem', 95, { enabled: true }); // Priority 95, before renderer (100)
 
         this.isInitialized = false;
+        this.debugRenderInterface = new DebugRenderInterface();
 
         console.log('DebugRenderSystem: Module loaded (Phase 4 ES6)');
         console.log(`DebugRenderSystem: this.id = ${this.id}, this.priority = ${this.priority}`);
@@ -38,11 +40,10 @@ export class DebugRenderSystem extends Subsystem
     {
         try
         {
-            // Check if C++ debugRenderInterface is available
-            if (typeof debugRenderInterface !== 'undefined')
+            // Check if C++ debugRenderInterface is available through wrapper
+            if (this.debugRenderInterface.isAvailable())
             {
                 console.log('DebugRenderSystem: C++ debugRenderInterface available');
-                this.debugRenderHandle = debugRenderInterface;
                 this.isInitialized = true;
             }
             else
@@ -98,7 +99,7 @@ export class DebugRenderSystem extends Subsystem
      */
     setVisible()
     {
-        return this.debugRenderHandle.setVisible();
+        return this.debugRenderInterface.setVisible();
     }
 
     /**
@@ -106,7 +107,7 @@ export class DebugRenderSystem extends Subsystem
      */
     setHidden()
     {
-        return this.debugRenderHandle.setHidden();
+        return this.debugRenderInterface.setHidden();
     }
 
     /**
@@ -114,7 +115,7 @@ export class DebugRenderSystem extends Subsystem
      */
     clear()
     {
-        return this.debugRenderHandle.clear();
+        return this.debugRenderInterface.clear();
     }
 
     // === OUTPUT METHODS ===
@@ -124,7 +125,7 @@ export class DebugRenderSystem extends Subsystem
      */
     beginFrame()
     {
-        return this.debugRenderHandle.beginFrame();
+        return this.debugRenderInterface.beginFrame();
     }
 
     /**
@@ -133,7 +134,7 @@ export class DebugRenderSystem extends Subsystem
      */
     renderWorld(cameraHandle)
     {
-        return this.debugRenderHandle.renderWorld(cameraHandle);
+        return this.debugRenderInterface.renderWorld(cameraHandle);
     }
 
     /**
@@ -142,7 +143,7 @@ export class DebugRenderSystem extends Subsystem
      */
     renderScreen(cameraHandle)
     {
-        return this.debugRenderHandle.renderScreen(cameraHandle);
+        return this.debugRenderInterface.renderScreen(cameraHandle);
     }
 
     /**
@@ -150,7 +151,7 @@ export class DebugRenderSystem extends Subsystem
      */
     endFrame()
     {
-        return this.debugRenderHandle.endFrame();
+        return this.debugRenderInterface.endFrame();
     }
 
     // === GEOMETRY METHODS - WORLD SPACE ===
@@ -170,7 +171,7 @@ export class DebugRenderSystem extends Subsystem
      */
     addWorldPoint(x, y, z, radius, duration, r, g, b, a, mode = "USE_DEPTH")
     {
-        return this.debugRenderHandle.addWorldPoint(x, y, z, radius, duration, r, g, b, a, mode);
+        return this.debugRenderInterface.addWorldPoint(x, y, z, radius, duration, r, g, b, a, mode);
     }
 
     /**
@@ -191,7 +192,7 @@ export class DebugRenderSystem extends Subsystem
      */
     addWorldLine(x1, y1, z1, x2, y2, z2, radius, duration, r, g, b, a, mode = "USE_DEPTH")
     {
-        return this.debugRenderHandle.addWorldLine(x1, y1, z1, x2, y2, z2, radius, duration, r, g, b, a, mode);
+        return this.debugRenderInterface.addWorldLine(x1, y1, z1, x2, y2, z2, radius, duration, r, g, b, a, mode);
     }
 
     /**
@@ -213,7 +214,7 @@ export class DebugRenderSystem extends Subsystem
      */
     addWorldCylinder(baseX, baseY, baseZ, topX, topY, topZ, radius, duration, isWireframe, r, g, b, a, mode = "USE_DEPTH")
     {
-        return this.debugRenderHandle.addWorldCylinder(baseX, baseY, baseZ, topX, topY, topZ, radius, duration, isWireframe, r, g, b, a, mode);
+        return this.debugRenderInterface.addWorldCylinder(baseX, baseY, baseZ, topX, topY, topZ, radius, duration, isWireframe, r, g, b, a, mode);
     }
 
     /**
@@ -231,7 +232,7 @@ export class DebugRenderSystem extends Subsystem
      */
     addWorldWireSphere(x, y, z, radius, duration, r, g, b, a, mode = "USE_DEPTH")
     {
-        return this.debugRenderHandle.addWorldWireSphere(x, y, z, radius, duration, r, g, b, a, mode);
+        return this.debugRenderInterface.addWorldWireSphere(x, y, z, radius, duration, r, g, b, a, mode);
     }
 
     /**
@@ -252,7 +253,7 @@ export class DebugRenderSystem extends Subsystem
      */
     addWorldArrow(x1, y1, z1, x2, y2, z2, radius, duration, r, g, b, a, mode = "USE_DEPTH")
     {
-        return this.debugRenderHandle.addWorldArrow(x1, y1, z1, x2, y2, z2, radius, duration, r, g, b, a, mode);
+        return this.debugRenderInterface.addWorldArrow(x1, y1, z1, x2, y2, z2, radius, duration, r, g, b, a, mode);
     }
 
     /**
@@ -271,7 +272,7 @@ export class DebugRenderSystem extends Subsystem
      */
     addWorldText(text, transform, textHeight, alignX, alignY, duration, r, g, b, a, mode = "USE_DEPTH")
     {
-        return this.debugRenderHandle.addWorldText(text, transform, textHeight, alignX, alignY, duration, r, g, b, a, mode);
+        return this.debugRenderInterface.addWorldText(text, transform, textHeight, alignX, alignY, duration, r, g, b, a, mode);
     }
 
     /**
@@ -292,7 +293,7 @@ export class DebugRenderSystem extends Subsystem
      */
     addBillboardText(text, x, y, z, textHeight, alignX, alignY, duration, r, g, b, a, mode = "USE_DEPTH")
     {
-        return this.debugRenderHandle.addBillboardText(text, x, y, z, textHeight, alignX, alignY, duration, r, g, b, a, mode);
+        return this.debugRenderInterface.addBillboardText(text, x, y, z, textHeight, alignX, alignY, duration, r, g, b, a, mode);
     }
 
     /**
@@ -303,7 +304,7 @@ export class DebugRenderSystem extends Subsystem
      */
     addWorldBasis(transform, duration, mode = "USE_DEPTH")
     {
-        return this.debugRenderHandle.addWorldBasis(transform, duration, mode);
+        return this.debugRenderInterface.addWorldBasis(transform, duration, mode);
     }
 
     // === GEOMETRY METHODS - SCREEN SPACE ===
@@ -324,7 +325,7 @@ export class DebugRenderSystem extends Subsystem
      */
     addScreenText(text, x, y, size, alignX, alignY, duration, r, g, b, a)
     {
-        return this.debugRenderHandle.addScreenText(text, x, y, size, alignX, alignY, duration, r, g, b, a);
+        return this.debugRenderInterface.addScreenText(text, x, y, size, alignX, alignY, duration, r, g, b, a);
     }
 
     /**
@@ -338,7 +339,7 @@ export class DebugRenderSystem extends Subsystem
      */
     addMessage(text, duration, r, g, b, a)
     {
-        return this.debugRenderHandle.addMessage(text, duration, r, g, b, a);
+        return this.debugRenderInterface.addMessage(text, duration, r, g, b, a);
     }
 }
 

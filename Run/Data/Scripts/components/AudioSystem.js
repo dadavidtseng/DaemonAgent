@@ -3,6 +3,7 @@
 
 import { Subsystem } from '../core/Subsystem.js';
 import { EventTypes } from '../core/EventTypes.js';
+import { AudioInterface } from '../core/interfaces/AudioInterface.js';
 
 /**
  * AudioSystem - JavaScript wrapper for AudioScriptInterface
@@ -27,6 +28,7 @@ export class AudioSystem extends Subsystem {
         this.loadedSounds = new Map(); // Cache for loaded sound IDs
         this.activeSounds = new Map(); // Track active playback IDs
         this.isInitialized = false;
+        this.audioInterface = new AudioInterface();
 
         console.log('AudioSystem: Module loaded (Phase 4.5 ES6 + Event System)');
         this.initialize();
@@ -84,8 +86,8 @@ export class AudioSystem extends Subsystem {
      */
     initialize() {
         try {
-            // Check if C++ audio interface is available
-            if (typeof audio !== 'undefined') {
+            // Check if C++ audio interface is available through wrapper
+            if (this.audioInterface.isAvailable()) {
                 console.log('AudioSystem: C++ audio interface available');
                 this.isInitialized = true;
             } else {
@@ -120,7 +122,7 @@ export class AudioSystem extends Subsystem {
             }
 
             // Load sound through C++ interface
-            const soundID = audio.createOrGetSound(soundPath, dimension);
+            const soundID = this.audioInterface.createOrGetSound(soundPath, dimension);
 
             // Check against MISSING_SOUND_ID, not > 0 (sound ID 0 is valid!)
             if (soundID !== null && soundID !== undefined) {
@@ -150,7 +152,7 @@ export class AudioSystem extends Subsystem {
                 return null;
             }
 
-            const playbackID = audio.startSound(soundID);
+            const playbackID = this.audioInterface.startSound(soundID);
 
             if (playbackID && playbackID > 0) {
                 this.activeSounds.set(playbackID, { soundID, startTime: Date.now() });
@@ -184,7 +186,7 @@ export class AudioSystem extends Subsystem {
                 return null;
             }
 
-            const playbackID = audio.startSoundAdvanced(soundID, isLooped, volume, balance, speed, isPaused);
+            const playbackID = this.audioInterface.startSoundAdvanced(soundID, isLooped, volume, balance, speed, isPaused);
 
             if (playbackID && playbackID > 0) {
                 this.activeSounds.set(playbackID, {
@@ -220,7 +222,7 @@ export class AudioSystem extends Subsystem {
                 return false;
             }
 
-            audio.stopSound(playbackID);
+            this.audioInterface.stopSound(playbackID);
             this.activeSounds.delete(playbackID);
             console.log(`AudioSystem: Stopped sound with playback ID ${playbackID}`);
             return true;
@@ -242,7 +244,7 @@ export class AudioSystem extends Subsystem {
                 return false;
             }
 
-            audio.setSoundVolume(playbackID, volume);
+            this.audioInterface.setSoundVolume(playbackID, volume);
 
             // Update cached info
             if (this.activeSounds.has(playbackID)) {
@@ -285,7 +287,7 @@ export class AudioSystem extends Subsystem {
             isInitialized: this.isInitialized,
             loadedSoundsCount: this.loadedSounds.size,
             activeSoundsCount: this.activeSounds.size,
-            cppInterfaceAvailable: typeof audio !== 'undefined'
+            cppInterfaceAvailable: this.audioInterface.isAvailable()
         };
     }
 
