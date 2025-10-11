@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------
 
 import {Component} from '../../core/Component.js';
-import {RendererInterface} from '../../core/interfaces/RendererInterface.js';
+import {RendererInterface} from '../../interfaces/RendererInterface.js';
 
 /**
  * MeshComponent - Manages geometry and rendering for GameObjects

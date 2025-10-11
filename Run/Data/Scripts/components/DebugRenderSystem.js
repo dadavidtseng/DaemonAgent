@@ -3,7 +3,7 @@
 // Provides clean JavaScript API for C++ debug rendering functionality
 
 import { Subsystem } from '../core/Subsystem.js';
-import { DebugRenderInterface } from '../core/interfaces/DebugRenderInterface.js';
+import { DebugRenderInterface } from '../interfaces/DebugRenderInterface.js';
 
 /**
  * DebugRenderSystem - JavaScript wrapper for debug visualization

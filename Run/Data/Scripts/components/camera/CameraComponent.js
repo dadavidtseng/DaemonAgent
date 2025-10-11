@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------
 
 import {Component} from '../../core/Component.js';
-import {CameraInterface} from '../../core/interfaces/CameraInterface.js';
+import {CameraInterface} from '../../interfaces/CameraInterface.js';
 
 /**
  * CameraComponent - Manages world camera lifecycle and configuration

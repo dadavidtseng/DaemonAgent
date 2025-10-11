@@ -5,7 +5,7 @@ import {Subsystem} from '../core/Subsystem.js';
 import {KEYCODE_F1, KEYCODE_F2, KEYCODE_SPACE, KEYCODE_ESC} from '../InputSystemCommon.js';
 import {GameState} from "../JSGame.js";
 import {jsGameInstance} from "../main.js";
-import {EventTypes} from "../core/EventTypes.js";
+import {EventTypes} from "../events/EventTypes.js";
 import {GameStateChangedEvent} from "../events/GameStateChangedEvent.js";
 
 /**

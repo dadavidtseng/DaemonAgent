@@ -3,9 +3,9 @@
 //----------------------------------------------------------------------------------------------------
 
 // === Global Setup ===
-import {EventBus} from './core/EventBus.js';  // Event system for dependency inversion
+import {EventBus} from './events/EventBus.js';  // Event system for dependency inversion
 import {Clock} from './components/Clock.js';
-import {KEYCODE_F1, KEYCODE_P} from "./InputSystemCommon";
+import {KEYCODE_F1, KEYCODE_P} from "./InputSystemCommon.js";
 
 /**
  * JSEngine - Core JavaScript engine with system registration framework

@@ -2,7 +2,7 @@
 // JavaScript wrapper for ClockScriptInterface
 // Provides clean JavaScript API for C++ Clock time management functionality
 
-import {ClockInterface} from '../core/interfaces/ClockInterface.js';
+import {ClockInterface} from '../interfaces/ClockInterface.js';
 
 /**
  * Clock - JavaScript wrapper for game clock control

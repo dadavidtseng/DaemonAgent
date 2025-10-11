@@ -2,8 +2,8 @@
 // Phase 4.5 ES6 Module version using Subsystem pattern + Event System
 
 import { Subsystem } from '../core/Subsystem.js';
-import { EventTypes } from '../core/EventTypes.js';
-import { AudioInterface } from '../core/interfaces/AudioInterface.js';
+import { EventTypes } from '../events/EventTypes.js';
+import { AudioInterface } from '../interfaces/AudioInterface.js';
 
 /**
  * AudioSystem - JavaScript wrapper for AudioScriptInterface

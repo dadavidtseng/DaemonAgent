@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------
 
 import {Component} from '../../core/Component.js';
-import {InputInterface} from '../../core/interfaces/InputInterface.js';
+import {InputInterface} from '../../interfaces/InputInterface.js';
 
 /**
  * FlyingMovementComponent - 3D flying camera movement

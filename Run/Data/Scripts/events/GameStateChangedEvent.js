@@ -2,8 +2,8 @@
 // GameStateChangedEvent.js - Game State Change Event
 //----------------------------------------------------------------------------------------------------
 
-import { Event } from '../core/Event.js';
-import { EventTypes } from '../core/EventTypes.js';
+import { Event } from './Event.js';
+import { EventTypes } from './EventTypes.js';
 
 /**
  * GameStateChangedEvent - Fired when game state transitions
