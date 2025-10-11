@@ -2,7 +2,7 @@
 // Phase 4.5 ES6 Module version using Subsystem pattern + Event System
 
 import {Subsystem} from '../core/Subsystem.js';
-import {KEYCODE_F1, KEYCODE_SPACE, KEYCODE_ESC} from '../InputSystemCommon.js';
+import {KEYCODE_F1, KEYCODE_F2, KEYCODE_SPACE, KEYCODE_ESC} from '../InputSystemCommon.js';
 import {GameState} from "../JSGame.js";
 import {jsGameInstance} from "../main.js";
 import {EventTypes} from "../core/EventTypes.js";
@@ -13,7 +13,8 @@ import {GameStateChangedEvent} from "../events/GameStateChangedEvent.js";
  * Phase 4.5 ES6 Module using Subsystem pattern + Event System (DIP)
  *
  * Features:
- * - F1 key debugging toggle
+ * - F1 key debugging toggle (rendering on/off)
+ * - F2 key GameObject system toggle (enable/disable new component-based system)
  * - Spacebar game state transitions
  * - Event-based communication (NO direct AudioSystem dependency)
  *

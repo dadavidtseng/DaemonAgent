@@ -10,6 +10,7 @@
  */
 
 export const KEYCODE_F1 = 112;
+export const KEYCODE_F2 = 113;
 export const KEYCODE_ESC = 27;
 export const KEYCODE_SPACE = 32;
 export const KEYCODE_O = 79;
@@ -20,6 +21,19 @@ export const KEYCODE_W = 87;
 export const KEYCODE_A = 65;
 export const KEYCODE_S = 83;
 export const KEYCODE_D = 68;
+
+// Arrow Keys (exported for component system)
+export const KEYCODE_UP = 38;
+export const KEYCODE_DOWN = 40;
+export const KEYCODE_LEFT = 37;
+export const KEYCODE_RIGHT = 39;
+
+// Phase 3: Additional movement keys (Z/C vertical, Q/E roll, SHIFT boost)
+export const KEYCODE_Z = 90;
+export const KEYCODE_C = 67;
+export const KEYCODE_Q = 81;
+export const KEYCODE_E = 69;
+export const KEYCODE_SHIFT = 16;
 
 export const KEYCODE = {
     // Number Keys (0-9)
@@ -111,12 +125,22 @@ export const KEYCODE = {
 
 // Make globally available for C++ legacy compatibility
 globalThis.KEYCODE_F1 = KEYCODE_F1;
+globalThis.KEYCODE_F2 = KEYCODE_F2;
 globalThis.KEYCODE_ESC = KEYCODE_ESC;
 globalThis.KEYCODE_SPACE = KEYCODE_SPACE;
 globalThis.KEYCODE_W = KEYCODE_W;
 globalThis.KEYCODE_A = KEYCODE_A;
 globalThis.KEYCODE_S = KEYCODE_S;
 globalThis.KEYCODE_D = KEYCODE_D;
+globalThis.KEYCODE_UP = KEYCODE_UP;
+globalThis.KEYCODE_DOWN = KEYCODE_DOWN;
+globalThis.KEYCODE_LEFT = KEYCODE_LEFT;
+globalThis.KEYCODE_RIGHT = KEYCODE_RIGHT;
+globalThis.KEYCODE_Z = KEYCODE_Z;
+globalThis.KEYCODE_C = KEYCODE_C;
+globalThis.KEYCODE_Q = KEYCODE_Q;
+globalThis.KEYCODE_E = KEYCODE_E;
+globalThis.KEYCODE_SHIFT = KEYCODE_SHIFT;
 globalThis.KEYCODE = KEYCODE;
 
 console.log('InputSystemCommon: ES6 module loaded (Phase 4)');
