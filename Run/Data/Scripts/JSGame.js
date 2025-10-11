@@ -8,13 +8,13 @@ import {AudioSystem} from './components/AudioSystem.js';
 import {CameraSystem} from './components/CameraSystem.js';
 import {RendererSystem} from './components/RendererSystem.js';
 import {DebugRenderSystem} from './components/DebugRenderSystem.js';
+import {NewFeatureSystem} from './components/NewFeatureSystem.js';
 
-
-// === Phase 4: Entity classes (matching C++ structure) ===
-import {PlayerEntity} from './entities/PlayerEntity.js';
-import {PropEntity} from './entities/PropEntity.js';
 import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon";
-// import {NewFeatureSystem} from "./components/NewFeatureSystem.js";
+
+// === Phase 5: GameObject system (new component-based architecture) ===
+import {Player} from './objects/Player.js';
+import {Prop} from './objects/Prop.js';
 
 export const GameState = Object.freeze({
     ATTRACT: 'ATTRACT',
@@ -32,7 +32,8 @@ export const GameState = Object.freeze({
  * @param {Object} T - Translation {x, y, z}
  * @returns {Array<number>} 16-element matrix in column-major order
  */
-function createTransformMatrix(I, J, K, T) {
+function createTransformMatrix(I, J, K, T)
+{
     return [
         I.x, I.y, I.z, 0,  // Column 0: Right (I basis)
         J.x, J.y, J.z, 0,  // Column 1: Up (J basis)
@@ -44,7 +45,8 @@ function createTransformMatrix(I, J, K, T) {
 /**
  * Create identity matrix (matches C++ Mat44())
  */
-function identityMatrix() {
+function identityMatrix()
+{
     return [
         1, 0, 0, 0,
         0, 1, 0, 0,
@@ -72,7 +74,8 @@ export class JSGame
 {
     gameState;
     gameClock;
-screenCamera;
+    screenCamera;
+
     constructor(engine)
     {
         console.log('(JSGame::constructor)(start) - Phase 4 ES6 Module pattern');
@@ -86,16 +89,15 @@ screenCamera;
 
         this.gameState = GameState.ATTRACT;  // 'ATTRACT', 'GAME', 'PAUSED'
 
-        // Create game clock (requires globalThis.clock ClockScriptInterface from C++)
+        // Create game clock (uses ClockInterface wrapper for C++ clock)
         // Matches C++ Game::Game() which creates: m_gameClock = new Clock(Clock::GetSystemClock())
-        if (typeof globalThis.clock !== 'undefined')
+        try
         {
-            this.gameClock = new Clock(globalThis.clock);
+            this.gameClock = new Clock();
             console.log('JSGame: Game clock created successfully');
-        }
-        else
+        } catch (error)
         {
-            console.error('JSGame: ClockScriptInterface not available in globalThis.clock!');
+            console.error('JSGame: Clock creation failed:', error);
         }
 
         // === Debug Visualization Setup (migrated from C++ Game constructor) ===
@@ -141,7 +143,7 @@ screenCamera;
         try
         {
             console.log('JSGame: About to create PlayerEntity...');
-            this.playerEntity = new PlayerEntity(this);
+            // this.playerEntity = new PlayerEntity(this);
             console.log('JSGame: PlayerEntity created successfully');
         } catch (error)
         {
@@ -150,53 +152,65 @@ screenCamera;
             throw error;
         }
 
-        // PropEntity array (like C++ std::vector<Prop*> m_props)
-        this.props = [];
+        // === Phase 5: GameObject system (new component-based architecture) ===
+        // Create Player GameObject (F2 toggle system)
         try
         {
-            console.log('JSGame: About to create props...');
-            this.createProps();
-            console.log('JSGame: Props created successfully');
+            console.log('JSGame: Creating Player GameObject (Phase 5)...');
+            this.playerGameObject = new Player();
+            console.log('JSGame: Player GameObject created successfully');
         } catch (error)
         {
-            console.error('JSGame: ERROR creating props:', error);
+            console.error('JSGame: ERROR creating Player GameObject:', error);
             console.error('JSGame: Error stack:', error.stack);
             throw error;
         }
 
-        // this.newFeature = new NewFeatureSystem();
+        // Create Prop GameObjects (Phase 6: Prop migration)
+        this.propGameObjects = [];
+        try
+        {
+            console.log('JSGame: Creating Prop GameObjects (Phase 6)...');
+            this.createPropGameObjects();
+            console.log('JSGame: Prop GameObjects created successfully');
+        } catch (error)
+        {
+            console.error('JSGame: ERROR creating Prop GameObjects:', error);
+            console.error('JSGame: Error stack:', error.stack);
+            throw error;
+        }
 
-        console.log('JSGame: All component instances created (Phase 4 with Entity structure)');
+        this.newFeature = new NewFeatureSystem();
+
+        console.log('JSGame: All component instances created (Phase 4 with Entity structure + Phase 5 GameObject system)');
     }
 
+
     /**
-     * Create the 4 props (matches C++ Game::SpawnProps behavior)
+     * Create the 4 Prop GameObjects (Phase 6: Prop migration)
+     * Matches createProps() behavior with component-based architecture
      */
-    createProps()
+    createPropGameObjects()
     {
-        console.log('JSGame: Creating 4 props matching C++ Game behavior...');
+        console.log('JSGame: Creating 4 Prop GameObjects matching C++ Game behavior...');
 
         // Prop 0: Rotating cube at (2, 2, 0) - pitch+roll += 30°/s
-        const prop0 = new PropEntity(this, 'cube', {x: 2, y: 2, z: 0}, this.rendererSystem);
-        prop0.setBehavior('rotate-pitch-roll');
-        this.props.push(prop0);
+        const prop0 = new Prop(this.rendererSystem, 'cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll');
+        this.propGameObjects.push(prop0);
 
         // Prop 1: Pulsing color cube at (-2, -2, 0) - sin wave color
-        const prop1 = new PropEntity(this, 'cube', {x: -2, y: -2, z: 0}, this.rendererSystem);
-        prop1.setBehavior('pulse-color');
-        this.props.push(prop1);
+        const prop1 = new Prop(this.rendererSystem, 'cube', {x: -2, y: -2, z: 0}, 'pulse-color');
+        this.propGameObjects.push(prop1);
 
         // Prop 2: Rotating sphere at (10, -5, 1) - yaw += 45°/s
-        const prop2 = new PropEntity(this, 'sphere', {x: 10, y: -5, z: 1}, this.rendererSystem);
-        prop2.setBehavior('rotate-yaw');
-        this.props.push(prop2);
+        const prop2 = new Prop(this.rendererSystem, 'sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw');
+        this.propGameObjects.push(prop2);
 
         // Prop 3: Static grid at (0, 0, 0)
-        const prop3 = new PropEntity(this, 'grid', {x: 0, y: 0, z: 0}, this.rendererSystem);
-        prop3.setBehavior('static');
-        this.props.push(prop3);
+        const prop3 = new Prop(this.rendererSystem, 'grid', {x: 0, y: 0, z: 0}, 'static');
+        this.propGameObjects.push(prop3);
 
-        console.log(`JSGame: Created ${this.props.length} props`);
+        console.log(`JSGame: Created ${this.propGameObjects.length} Prop GameObjects`);
     }
 
     /**
@@ -317,8 +331,7 @@ screenCamera;
             console.log('JSGame: Screen text added successfully');
 
             console.log('JSGame: Debug visualization setup complete');
-        }
-        catch (error)
+        } catch (error)
         {
             console.error('JSGame: Error setting up debug visualization:', error);
             console.error('JSGame: Error message:', error.message);
@@ -346,20 +359,27 @@ screenCamera;
         this.engine.registerSystem(null, this.cameraSystem);    // Priority: 3
         this.engine.registerSystem(null, this.audioSystem);     // Priority: 5
         this.engine.registerSystem(null, this.inputSystem);     // Priority: 10
+        this.engine.registerSystem(null, this.newFeature);     // Priority: 10
         // === Phase 4: Entity update/render systems ===
         // Game update system (priority: 12) - Updates PlayerEntity and PropEntities
         this.engine.registerSystem('gameUpdate', {
-            update: (gameDelta,systemDelta) =>
+            update: (gameDelta, systemDelta) =>
             {
+                // Convert systemDelta from seconds to milliseconds
+                const deltaTimeMs = systemDelta * 1000.0;
 
-                // Update player
-                this.playerEntity.update(gameDelta);
-
-                // Update all props
-                for (const prop of this.props)
+                // New component-based Player GameObject
+                if (this.playerGameObject)
                 {
-                    prop.update(gameDelta);
+                    this.playerGameObject.update(deltaTimeMs);
                 }
+
+                // Update Prop GameObjects (Phase 6: Prop migration)
+                for (const prop of this.propGameObjects)
+                {
+                    prop.update(deltaTimeMs);
+                }
+
 
                 // P: Pause game clock
                 if (input.wasKeyJustPressed(KEYCODE_P))
@@ -418,32 +438,32 @@ screenCamera;
                     return;
                 }
 
-                // Use player's camera for rendering
-                const camera = this.playerEntity.getCamera();
+                // Use player's camera for rendering (F2 toggle: GameObject vs Entity)
+                let camera;
+
+                camera = this.playerGameObject ? this.playerGameObject.getCamera() : null;
+
+
                 if (!camera)
                 {
                     console.error('JSGame: Player camera not available!');
                     return;
                 }
 
-                // Log every 60 frames to avoid spam
-                if (renderFrameCount % 60 === 0)
-                {
-                    console.log(`JSGame gameRender: Frame ${renderFrameCount}, camera=${camera}, props.length=${this.props.length}`);
-                }
-
-                // Render debug visualization
-                this.debugRenderSystem.renderWorld(this.playerEntity.getCamera());
+                // Render debug visualization (use same camera as main rendering)
+                this.debugRenderSystem.renderWorld(camera);
                 this.debugRenderSystem.renderScreen(this.screenCamera);
 
                 // Begin camera rendering
                 renderer.beginCamera(camera);
 
-                // Render all props
-                for (const prop of this.props)
+
+                // Render Prop GameObjects (Phase 6: Prop migration)
+                for (const prop of this.propGameObjects)
                 {
                     prop.render();
                 }
+
 
                 // End camera rendering
                 renderer.endCamera(camera);

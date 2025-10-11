@@ -3,7 +3,6 @@
 //----------------------------------------------------------------------------------------------------
 
 // === Global Setup ===
-import './core/InputSetup.js';  // Patch global input object with getController()
 import {EventBus} from './core/EventBus.js';  // Event system for dependency inversion
 import {Clock} from './components/Clock.js';
 import {KEYCODE_F1, KEYCODE_P} from "./InputSystemCommon";
