@@ -8,7 +8,7 @@ import {AudioSystem} from './components/AudioSystem.js';
 import {CameraSystem} from './components/CameraSystem.js';
 import {RendererSystem} from './components/RendererSystem.js';
 import {DebugRenderSystem} from './components/DebugRenderSystem.js';
-import {NewFeatureSystem} from './components/NewFeatureSystem.js';
+// import {NewFeatureSystem} from './components/NewFeatureSystem.js';
 
 import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon";
 
@@ -180,7 +180,7 @@ export class JSGame
             throw error;
         }
 
-        this.newFeature = new NewFeatureSystem();
+        // this.newFeature = new NewFeatureSystem();
 
         console.log('JSGame: All component instances created (Phase 4 with Entity structure + Phase 5 GameObject system)');
     }
@@ -359,7 +359,7 @@ export class JSGame
         this.engine.registerSystem(null, this.cameraSystem);    // Priority: 3
         this.engine.registerSystem(null, this.audioSystem);     // Priority: 5
         this.engine.registerSystem(null, this.inputSystem);     // Priority: 10
-        this.engine.registerSystem(null, this.newFeature);     // Priority: 10
+        // this.engine.registerSystem(null, this.newFeature);     // Priority: 10
         // === Phase 4: Entity update/render systems ===
         // Game update system (priority: 12) - Updates PlayerEntity and PropEntities
         this.engine.registerSystem('gameUpdate', {
