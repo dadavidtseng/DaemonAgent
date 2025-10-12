@@ -2,7 +2,7 @@
 // Phase 4.5 ES6 Module version using Subsystem pattern + Event System
 
 import {Subsystem} from '../core/Subsystem.js';
-import {KEYCODE_F1, KEYCODE_F2, KEYCODE_SPACE, KEYCODE_ESC} from '../InputSystemCommon.js';
+import {KEYCODE_F1, KEYCODE_F2, KEYCODE_SPACE, KEYCODE_ESC, KEYCODE_E} from '../InputSystemCommon.js';
 import {GameState} from "../JSGame.js";
 import {jsGameInstance} from "../main.js";
 import {EventTypes} from "../events/EventTypes.js";
@@ -98,6 +98,61 @@ export class InputSystem extends Subsystem
 
                     console.log('InputSystem: Emitted GameStateChangedEvent (GAME → ATTRACT)');
                 }
+            }
+
+            if(this.wasKeyJustPressed(KEYCODE_E))
+            {
+                console.log('🧪 Phase 4 Heartbeat Test - Connection Monitoring');
+                console.log('================================================\n');
+
+                // Generate Ed25519 keys
+                console.log('[1] Generating Ed25519 key pair...');
+                const keyPair = kadi.generateKeyPair();
+                console.log('✓ Keys generated\n');
+
+                // Register connection state callback
+                console.log('[2] Registering connection state callback...');
+                let stateChanges = [];
+
+                kadi.onConnectionStateChange(function(oldState, newState) {
+                    const timestamp = new Date().toISOString().substring(11, 19);
+                    console.log(`  [${timestamp}] State: ${oldState} → ${newState}`);
+                    stateChanges.push({ time: timestamp, old: oldState, new: newState });
+                });
+                console.log('✓ Callback registered\n');
+
+                // Connect to broker
+                console.log('[3] Connecting to MockKADIBroker...');
+                kadi.connect('ws://localhost:8080', keyPair.publicKey, keyPair.privateKey);
+                console.log('✓ Connection initiated\n');
+
+                // Register minimal tools
+                console.log('[4] Registering test tool...');
+                const tools = [{
+                    name: 'test_heartbeat',
+                    description: 'Test tool for heartbeat monitoring',
+                    parameters: { type: 'object', properties: {} }
+                }];
+
+                kadi.registerTools(JSON.stringify(tools));
+                console.log('✓ Tool registered\n');
+
+                console.log('================================================');
+                console.log('📊 HEARTBEAT MONITORING STARTED');
+                console.log('================================================');
+                console.log('Expected behavior:');
+                console.log('  • PING sent every ~30 seconds');
+                console.log('  • PONG response logged immediately');
+                console.log('  • Connection remains stable');
+                console.log('');
+                console.log('Watch the C++ debug output for:');
+                console.log('  "KADIWebSocketSubsystem: Sending heartbeat PING"');
+                console.log('  "KADIWebSocketSubsystem: Received PONG response"');
+                console.log('');
+                console.log('⏱️  Wait at least 90 seconds to observe multiple heartbeats');
+                console.log('');
+                console.log('To disconnect: kadi.disconnect();');
+                console.log('================================================\n');
             }
         }
     }
