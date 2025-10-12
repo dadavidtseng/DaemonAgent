@@ -3,9 +3,17 @@
 //----------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------
+// IMPORTANT: Define NOMINMAX before any Windows headers to prevent min/max macro conflicts with V8
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+
+
 #include "Game/Framework/App.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Game/Framework/GameCommon.hpp"
+#include "Game/Framework/GameScriptInterface.hpp"
 #include "Game/Gameplay/Game.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Engine/Audio/AudioScriptInterface.hpp"
@@ -25,12 +33,14 @@
 #include "Engine/Resource/ResourceSubsystem.hpp"
 #include "Engine/Script/ScriptSubsystem.hpp"
 //----------------------------------------------------------------------------------------------------
-#include "GameScriptInterface.hpp"
 #include "Engine/Core/ClockScriptInterface.hpp"
 #include "Engine/Input/InputScriptInterface.hpp"
+#include "Engine/Network/KADIScriptInterface.hpp"
 #include "Engine/Renderer/DebugRenderSystemScriptInterface.hpp"
 #include "Engine/Renderer/RendererScriptInterface.hpp"
 #include "ThirdParty/json/json.hpp"
+
+
 
 //----------------------------------------------------------------------------------------------------
 App*  g_app  = nullptr;       // Created and owned by Main_Windows.cpp
@@ -71,6 +81,12 @@ void App::Startup()
 //
 void App::Shutdown()
 {
+    // Phase 2: Clear V8::Persistent callbacks BEFORE V8 isolate destruction
+    if (m_kadiScriptInterface)
+    {
+        m_kadiScriptInterface->ClearCallbacks();
+    }
+
     // m_gameScriptInterface.reset();
     // m_inputScriptInterface.reset();
     // m_audioScriptInterface.reset();
@@ -131,6 +147,12 @@ void App::BeginFrame() const
     g_devConsole->BeginFrame();
     g_input->BeginFrame();
     g_audio->BeginFrame();
+
+    // KADI broker integration frame updates
+    if (g_kadiSubsystem)
+    {
+        g_kadiSubsystem->BeginFrame();
+    }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -177,6 +199,12 @@ void App::EndFrame() const
     g_devConsole->EndFrame();
     g_input->EndFrame();
     g_audio->EndFrame();
+
+    // KADI broker integration frame updates
+    if (g_kadiSubsystem)
+    {
+        g_kadiSubsystem->EndFrame();
+    }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -287,6 +315,22 @@ void App::SetupScriptingBindings()
 
     m_clockScriptInterface = std::make_shared<ClockScriptInterface>();
     g_scriptSubsystem->RegisterScriptableObject("clock", m_clockScriptInterface);
+
+    // Register KADI broker integration for distributed agent communication
+    if (g_kadiSubsystem)
+    {
+        m_kadiScriptInterface = std::make_shared<KADIScriptInterface>(g_kadiSubsystem);
+
+        // Phase 2: Pass V8 isolate to KADI interface for callback invocation
+        m_kadiScriptInterface->SetV8Isolate(g_scriptSubsystem->GetIsolate());
+
+        g_scriptSubsystem->RegisterScriptableObject("kadi", m_kadiScriptInterface);
+        DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings) KADI script interface registered with V8 isolate"));
+    }
+    else
+    {
+        DAEMON_LOG(LogScript, eLogVerbosity::Warning, StringFormat("(App::SetupScriptingBindings) KADI subsystem not available, skipping registration"));
+    }
 
     g_scriptSubsystem->RegisterGlobalFunction("print", OnPrint);
     g_scriptSubsystem->RegisterGlobalFunction("debug", OnDebug);

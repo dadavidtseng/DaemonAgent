@@ -18,6 +18,7 @@ class ClockScriptInterface;
 class GameScriptInterface;
 class InputScriptInterface;
 class RendererScriptInterface;
+class KADIScriptInterface;
 
 //----------------------------------------------------------------------------------------------------
 class App
@@ -56,4 +57,5 @@ private:
     std::shared_ptr<DebugRenderSystemScriptInterface>   m_debugRenderSystemScriptInterface;
     std::shared_ptr<RendererScriptInterface> m_rendererScriptInterface;
     std::shared_ptr<ClockScriptInterface>    m_clockScriptInterface;
+    std::shared_ptr<KADIScriptInterface>     m_kadiScriptInterface;
 };
