@@ -9,6 +9,7 @@ import {CameraSystem} from './components/CameraSystem.js';
 import {RendererSystem} from './components/RendererSystem.js';
 import {DebugRenderSystem} from './components/DebugRenderSystem.js';
 // import {NewFeatureSystem} from './components/NewFeatureSystem.js';
+import {KADIGameControl} from './kadi/KADIGameControl.js';
 
 import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon";
 
@@ -132,6 +133,10 @@ export class JSGame
 
         // Debug Render system (priority: 95) - debug visualization
         this.debugRenderSystem = new DebugRenderSystem();
+
+        // === KADI Game Control (priority: 11) - game manipulation via KADI protocol ===
+        this.kadiGameControl = new KADIGameControl(this);
+        console.log('JSGame: KADIGameControl subsystem created successfully');
 
         // Create screen-space camera for UI/debug rendering
         this.screenCamera = cameraInterface.createCamera();
@@ -359,6 +364,7 @@ export class JSGame
         this.engine.registerSystem(null, this.cameraSystem);    // Priority: 3
         this.engine.registerSystem(null, this.audioSystem);     // Priority: 5
         this.engine.registerSystem(null, this.inputSystem);     // Priority: 10
+        this.engine.registerSystem(null, this.kadiGameControl);  // Priority: 11
         // this.engine.registerSystem(null, this.newFeature);     // Priority: 10
         // === Phase 4: Entity update/render systems ===
         // Game update system (priority: 12) - Updates PlayerEntity and PropEntities
