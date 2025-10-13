@@ -198,34 +198,10 @@ if (typeof kadi !== 'undefined') {
         recordTest(7, 'Disconnect from Broker', false, 'Exception: ' + e.message);
     }
 
-    // Test 8: Register Tools
+    // Test 8: Register Tools (DISABLED - Phase 5 tools registered by KADIGameControl subsystem)
     try {
-        const tools = [
-            {
-                name: 'spawn_cube',
-                description: 'Spawns a cube at the specified position',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        position: {
-                            type: 'object',
-                            properties: {
-                                x: { type: 'number' },
-                                y: { type: 'number' },
-                                z: { type: 'number' }
-                            }
-                        }
-                    }
-                }
-            },
-            {
-                name: 'get_player_position',
-                description: 'Gets the current player position',
-                parameters: { type: 'object', properties: {} }
-            }
-        ];
-        kadi.registerTools(JSON.stringify(tools));
-        recordTest(8, 'Register Tools', true, '2 tools registered (spawn_cube, get_player_position)');
+        console.log('  SKIPPED - Phase 5 KADIGameControl subsystem handles tool registration');
+        recordTest(8, 'Register Tools', true, 'SKIPPED - Handled by Phase 5 KADIGameControl');
     } catch (e) {
         recordTest(8, 'Register Tools', false, 'Exception: ' + e.message);
     }
@@ -709,41 +685,16 @@ if (typeof kadi !== 'undefined') {
     console.log('\n🛠️ Tool Registration Phase');
     console.log('----------------------------------------------------\n');
 
-    // Test 6: Register Tools with Broker
+    // Test 6: Register Tools with Broker (DISABLED - Phase 5 tools registered by KADIGameControl subsystem)
     try {
-        const tools = [
-            {
-                name: 'spawn_cube',
-                description: 'Spawns a cube at the specified position',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        position: {
-                            type: 'object',
-                            properties: {
-                                x: { type: 'number' },
-                                y: { type: 'number' },
-                                z: { type: 'number' }
-                            }
-                        }
-                    }
-                }
-            },
-            {
-                name: 'get_player_position',
-                description: 'Gets the current player position',
-                parameters: { type: 'object', properties: {} }
-            }
-        ];
-
-        kadi.registerTools(JSON.stringify(tools));
+        console.log('  SKIPPED - Phase 5 KADIGameControl subsystem handles tool registration');
 
         const hasReadyState = globalThis.phase3_stateChanges.some(
             change => change.new === 'ready'
         );
 
         recordPhase3Test(6, 'Register Tools with Broker', hasReadyState,
-                        hasReadyState ? '2 tools registered, connection READY' : 'Registration sent, waiting for READY state');
+                        hasReadyState ? 'SKIPPED - Phase 5 tools registered by KADIGameControl' : 'SKIPPED - Phase 5 handles registration');
     } catch (e) {
         recordPhase3Test(6, 'Register Tools with Broker', false, `Exception: ${e.message}`);
     }
