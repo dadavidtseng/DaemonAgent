@@ -3,6 +3,8 @@
 // KADI game control tool invocation handlers (JavaScript-only)
 //----------------------------------------------------------------------------------------------------
 
+import {hotReloadRegistry} from '../core/HotReloadRegistry.js';
+
 /**
  * GameControlHandler - Handles KADI tool invocations for game control
  *
@@ -136,7 +138,15 @@ export class GameControlHandler
             z: args.position[2]
         };
 
-        const cube = new Prop(
+        // Get Prop class from HotReloadRegistry (hot-reload compatible!)
+        const PropClass = hotReloadRegistry.getClass('Prop');
+        if (!PropClass)
+        {
+            this.sendError(requestId, 'Prop class not registered in HotReloadRegistry');
+            return;
+        }
+
+        const cube = new PropClass(
             this.jsGame.rendererSystem,
             'cube',
             position,

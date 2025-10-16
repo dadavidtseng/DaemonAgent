@@ -6,6 +6,8 @@
 import {Subsystem} from '../core/Subsystem.js';
 import {GameControlHandler} from './GameControlHandler.js';
 import {GameControlTools} from './GameControlTools.js';
+import {DevelopmentToolHandler} from './DevelopmentToolHandler.js';
+import {DevelopmentTools} from './DevelopmentTools.js';
 
 /**
  * KADIGameControl - Subsystem for KADI game control integration
@@ -13,11 +15,11 @@ import {GameControlTools} from './GameControlTools.js';
  * Architecture:
  * - Registered as proper subsystem (Priority 11, after InputSystem)
  * - Purely reactive (no update logic needed)
- * - Integrates GameControlHandler with KADI protocol
+ * - Integrates GameControlHandler and DevelopmentToolHandler with KADI protocol
  *
  * Responsibilities:
- * - Register game control tools with KADI
- * - Route tool invocations to GameControlHandler
+ * - Register game control tools and development tools with KADI
+ * - Route tool invocations to appropriate handlers
  * - Manage KADI connection lifecycle
  */
 export class KADIGameControl extends Subsystem
@@ -30,7 +32,8 @@ export class KADIGameControl extends Subsystem
         super('KADIGameControl', 11);  // Priority 11 (after InputSystem at 10)
 
         this.jsGame = jsGame;
-        this.handler = new GameControlHandler(jsGame);
+        this.gameControlHandler = new GameControlHandler(jsGame);
+        this.developmentToolHandler = new DevelopmentToolHandler(game);  // Pass global C++ game interface
         this.toolsRegistered = false;
         this.connectionInitiated = false;
 
@@ -91,15 +94,27 @@ export class KADIGameControl extends Subsystem
             return;
         }
 
+        // Combine game control tools and development tools
+        const allTools = [...GameControlTools, ...DevelopmentTools];
+
         // Register tools with KADI
         try
         {
-            kadi.registerTools(JSON.stringify(GameControlTools));
+            kadi.registerTools(JSON.stringify(allTools));
             this.toolsRegistered = true;
-            console.log(`KADIGameControl: Registered ${GameControlTools.length} game control tools`);
+            console.log(`KADIGameControl: Registered ${allTools.length} tools total`);
+            console.log(`  - ${GameControlTools.length} game control tools`);
+            console.log(`  - ${DevelopmentTools.length} development tools (Phase 6a)`);
 
             // List registered tools
+            console.log('KADIGameControl: Game Control Tools:');
             for (const tool of GameControlTools)
+            {
+                console.log(`  - ${tool.name}: ${tool.description}`);
+            }
+
+            console.log('KADIGameControl: Development Tools (Phase 6a):');
+            for (const tool of DevelopmentTools)
             {
                 console.log(`  - ${tool.name}: ${tool.description}`);
             }
@@ -114,8 +129,23 @@ export class KADIGameControl extends Subsystem
         try
         {
             kadi.onToolInvoke((requestId, toolName, args) => {
-                // Route to handler
-                this.handler.handleToolInvoke(requestId, toolName, args);
+                // Route to appropriate handler based on tool name
+                if (GameControlTools.some(tool => tool.name === toolName))
+                {
+                    this.gameControlHandler.handleToolInvoke(requestId, toolName, args);
+                }
+                else if (DevelopmentTools.some(tool => tool.name === toolName))
+                {
+                    this.developmentToolHandler.handleToolInvoke(requestId, toolName, args);
+                }
+                else
+                {
+                    console.log(`KADIGameControl: ERROR - Unknown tool: ${toolName}`);
+                    kadi.sendToolResult(requestId, JSON.stringify({
+                        success: false,
+                        error: `Unknown tool: ${toolName}`
+                    }));
+                }
             });
             console.log('KADIGameControl: Tool invocation handler registered');
         }
@@ -173,8 +203,10 @@ export class KADIGameControl extends Subsystem
             enabled: this.enabled,
             priority: this.priority,
             toolsRegistered: this.toolsRegistered,
-            spawnedCubeCount: this.handler.spawnedCubes.size,
-            entityIdCounter: this.handler.entityIdCounter
+            gameControlTools: GameControlTools.length,
+            developmentTools: DevelopmentTools.length,
+            spawnedCubeCount: this.gameControlHandler.spawnedCubes.size,
+            entityIdCounter: this.gameControlHandler.entityIdCounter
         };
     }
 }
