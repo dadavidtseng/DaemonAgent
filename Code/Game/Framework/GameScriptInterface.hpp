@@ -31,4 +31,18 @@ private:
     ScriptMethodResult ExecuteAppRequestQuit(ScriptArgs const& args);
     ScriptMethodResult ExecuteJavaScriptCommand(ScriptArgs const& args);
     ScriptMethodResult ExecuteJavaScriptFile(ScriptArgs const& args);
+
+    // Phase 6a: KADI Development Tools - File Operations
+    ScriptMethodResult ExecuteCreateScriptFile(ScriptArgs const& args);
+    ScriptMethodResult ExecuteReadScriptFile(ScriptArgs const& args);
+    ScriptMethodResult ExecuteDeleteScriptFile(ScriptArgs const& args);
+
+    // Phase 6a: KADI Development Tools - Input Injection
+    ScriptMethodResult ExecuteInjectKeyPress(ScriptArgs const& args);
+    ScriptMethodResult ExecuteInjectKeyHold(ScriptArgs const& args);
+
+    // Phase 6b: KADI Development Tools - FileWatcher Management
+    ScriptMethodResult ExecuteAddWatchedFile(ScriptArgs const& args);
+    ScriptMethodResult ExecuteRemoveWatchedFile(ScriptArgs const& args);
+    ScriptMethodResult ExecuteGetWatchedFiles(ScriptArgs const& args);
 };
