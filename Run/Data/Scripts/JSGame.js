@@ -8,14 +8,13 @@ import {AudioSystem} from './components/AudioSystem.js';
 import {CameraSystem} from './components/CameraSystem.js';
 import {RendererSystem} from './components/RendererSystem.js';
 import {DebugRenderSystem} from './components/DebugRenderSystem.js';
-// import {NewFeatureSystem} from './components/NewFeatureSystem.js';
 import {KADIGameControl} from './kadi/KADIGameControl.js';
-
 import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon";
-
-// === Phase 5: GameObject system (new component-based architecture) ===
 import {Player} from './objects/Player.js';
 import {Prop} from './objects/Prop.js';
+import {hotReloadRegistry} from './core/HotReloadRegistry.js';
+
+// import {NewFeatureSystem} from './components/NewFeatureSystem.js';
 
 export const GameState = Object.freeze({
     ATTRACT: 'ATTRACT',
@@ -105,6 +104,11 @@ export class JSGame
         // Now with comprehensive error handling to prevent constructor failure
         this.setupDebugVisualization();
 
+        // === Hot-Reload Version Tracking ===
+        // Track versions for Player and Prop classes to detect hot-reloads
+        this.playerVersion = hotReloadRegistry.getVersion('Player');
+        this.propVersion = hotReloadRegistry.getVersion('Prop');
+
         console.log('(JSGame::constructor)(end) - All components registered');
     }
 
@@ -136,6 +140,7 @@ export class JSGame
 
         // === KADI Game Control (priority: 11) - game manipulation via KADI protocol ===
         this.kadiGameControl = new KADIGameControl(this);
+
         console.log('JSGame: KADIGameControl subsystem created successfully');
 
         // Create screen-space camera for UI/debug rendering
@@ -373,6 +378,40 @@ export class JSGame
             {
                 // Convert systemDelta from seconds to milliseconds
                 const deltaTimeMs = systemDelta * 1000.0;
+
+                // === HOT-RELOAD DETECTION: Check for Player class updates ===
+                if (hotReloadRegistry.hasUpdated('Player', this.playerVersion))
+                {
+                    const newVersion = hotReloadRegistry.getVersion('Player');
+
+                    // Get updated Player class from registry
+                    const PlayerClass = hotReloadRegistry.getClass('Player');
+
+                    // Recreate player GameObject with new class
+                    this.playerGameObject = new PlayerClass();
+
+                    // Update tracked version
+                    this.playerVersion = newVersion;
+                }
+
+                // === HOT-RELOAD DETECTION: Check for Prop class updates ===
+                if (hotReloadRegistry.hasUpdated('Prop', this.propVersion))
+                {
+                    const newVersion = hotReloadRegistry.getVersion('Prop');
+
+                    // Get updated Prop class from registry
+                    const PropClass = hotReloadRegistry.getClass('Prop');
+
+                    // Recreate all prop GameObjects with new class
+                    this.propGameObjects = [];
+                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll'));
+                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'cube', {x: -2, y: -2, z: 0}, 'pulse-color'));
+                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw'));
+                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'grid', {x: 0, y: 0, z: 0}, 'static'));
+
+                    // Update tracked version
+                    this.propVersion = newVersion;
+                }
 
                 // New component-based Player GameObject
                 if (this.playerGameObject)

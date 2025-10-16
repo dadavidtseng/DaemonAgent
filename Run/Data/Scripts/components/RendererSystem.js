@@ -1,7 +1,7 @@
 //----------------------------------------------------------------------------------------------------
 // RendererSystem.js - Renderer subsystem wrapper
 //----------------------------------------------------------------------------------------------------
-import { Subsystem } from '../core/Subsystem.js';
+import {Subsystem} from '../core/Subsystem.js';
 
 /**
  * RendererSystem - Wrapper for the global renderer interface
@@ -9,8 +9,10 @@ import { Subsystem } from '../core/Subsystem.js';
  * Provides rendering utilities and manages the renderer state.
  * Priority: 100 (renders last, after all updates)
  */
-export class RendererSystem extends Subsystem {
-    constructor() {
+export class RendererSystem extends Subsystem
+{
+    constructor()
+    {
         super('rendererSystem', 100, {enabled: true}); // Render last
 
         this.data = {
@@ -21,8 +23,10 @@ export class RendererSystem extends Subsystem {
     /**
      * Update - Initialize renderer on first frame
      */
-    update(gameDelta, systemDelta) {
-        if (!this.data.initialized) {
+    update(gameDelta, systemDelta)
+    {
+        if (!this.data.initialized)
+        {
             this.initialize();
             this.data.initialized = true;
         }
@@ -31,8 +35,10 @@ export class RendererSystem extends Subsystem {
     /**
      * Initialize renderer
      */
-    initialize() {
-        if (typeof renderer === 'undefined') {
+    initialize()
+    {
+        if (typeof renderer === 'undefined')
+        {
             console.error('RendererSystem: renderer global object not available!');
             return;
         }
@@ -42,21 +48,22 @@ export class RendererSystem extends Subsystem {
      * Helper: Create a cube vertex array
      * Returns vertex array handle
      */
-    createCubeVertexArray(size = 1.0) {
+    createCubeVertexArray(size = 1.0)
+    {
         const handle = renderer.createVertexArrayCPP();
 
         const half = size / 2;
 
         // Define 8 corners of a cube
         const corners = [
-            { x: -half, y: -half, z: -half }, // 0: FBL
-            { x:  half, y: -half, z: -half }, // 1: FBR
-            { x:  half, y: -half, z:  half }, // 2: FTR
-            { x: -half, y: -half, z:  half }, // 3: FTL
-            { x: -half, y:  half, z: -half }, // 4: BBL
-            { x:  half, y:  half, z: -half }, // 5: BBR
-            { x:  half, y:  half, z:  half }, // 6: BTR
-            { x: -half, y:  half, z:  half }  // 7: BTL
+            {x: -half, y: -half, z: -half}, // 0: FBL
+            {x: half, y: -half, z: -half}, // 1: FBR
+            {x: half, y: -half, z: half}, // 2: FTR
+            {x: -half, y: -half, z: half}, // 3: FTL
+            {x: -half, y: half, z: -half}, // 4: BBL
+            {x: half, y: half, z: -half}, // 5: BBR
+            {x: half, y: half, z: half}, // 6: BTR
+            {x: -half, y: half, z: half}  // 7: BTL
         ];
 
         // Define 6 faces (2 triangles each = 12 triangles = 36 vertices)
@@ -86,10 +93,12 @@ export class RendererSystem extends Subsystem {
 
         // Build vertex array in JavaScript (36 vertices * 9 values = 324 elements)
         const vertexArray = [];
-        faces.forEach((face, faceIndex) => {
+        faces.forEach((face, faceIndex) =>
+        {
             const color = colors[faceIndex];
 
-            face.forEach((cornerIndex, vertIndex) => {
+            face.forEach((cornerIndex, vertIndex) =>
+            {
                 const corner = corners[cornerIndex];
 
                 // UV coordinates (simple mapping)
@@ -116,7 +125,8 @@ export class RendererSystem extends Subsystem {
      * Returns vertex array handle
      * Matches C++ Prop::InitializeLocalVertsForSphere()
      */
-    createSphereVertexArray(radius = 0.5, numSlices = 32, numStacks = 16) {
+    createSphereVertexArray(radius = 0.5, numSlices = 32, numStacks = 16)
+    {
         console.log('=== createSphereVertexArray START ===');
         console.log(`RendererSystem: Creating sphere with radius=${radius}, slices=${numSlices}, stacks=${numStacks}`);
 
@@ -140,7 +150,8 @@ export class RendererSystem extends Subsystem {
 
         console.log('RendererSystem: Starting vertex generation loop...');
         // Generate sphere using latitude-longitude method
-        for (let stackIndex = 0; stackIndex < numStacks; stackIndex++) {
+        for (let stackIndex = 0; stackIndex < numStacks; stackIndex++)
+        {
             const phi1 = Math.PI * (stackIndex / numStacks);
             const phi2 = Math.PI * ((stackIndex + 1) / numStacks);
             const v1 = stackIndex / numStacks;
@@ -151,7 +162,8 @@ export class RendererSystem extends Subsystem {
             const sinPhi2 = Math.sin(phi2);
             const cosPhi2 = Math.cos(phi2);
 
-            for (let sliceIndex = 0; sliceIndex < numSlices; sliceIndex++) {
+            for (let sliceIndex = 0; sliceIndex < numSlices; sliceIndex++)
+            {
                 const theta1 = 2.0 * Math.PI * (sliceIndex / numSlices);
                 const theta2 = 2.0 * Math.PI * ((sliceIndex + 1) / numSlices);
                 const u1 = sliceIndex / numSlices;
@@ -190,30 +202,66 @@ export class RendererSystem extends Subsystem {
                 const uvTLv = uvMinY + uvHeight * v2;
 
                 // Triangle 1: BL, BR, TL (9 values * 3 vertices = 27 values)
-                vertexArray[idx++] = blX; vertexArray[idx++] = blY; vertexArray[idx++] = blZ;
-                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
-                vertexArray[idx++] = uvBLu; vertexArray[idx++] = uvBLv;
+                vertexArray[idx++] = blX;
+                vertexArray[idx++] = blY;
+                vertexArray[idx++] = blZ;
+                vertexArray[idx++] = r;
+                vertexArray[idx++] = g;
+                vertexArray[idx++] = b;
+                vertexArray[idx++] = a;
+                vertexArray[idx++] = uvBLu;
+                vertexArray[idx++] = uvBLv;
 
-                vertexArray[idx++] = brX; vertexArray[idx++] = brY; vertexArray[idx++] = brZ;
-                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
-                vertexArray[idx++] = uvBRu; vertexArray[idx++] = uvBRv;
+                vertexArray[idx++] = brX;
+                vertexArray[idx++] = brY;
+                vertexArray[idx++] = brZ;
+                vertexArray[idx++] = r;
+                vertexArray[idx++] = g;
+                vertexArray[idx++] = b;
+                vertexArray[idx++] = a;
+                vertexArray[idx++] = uvBRu;
+                vertexArray[idx++] = uvBRv;
 
-                vertexArray[idx++] = tlX; vertexArray[idx++] = tlY; vertexArray[idx++] = tlZ;
-                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
-                vertexArray[idx++] = uvTLu; vertexArray[idx++] = uvTLv;
+                vertexArray[idx++] = tlX;
+                vertexArray[idx++] = tlY;
+                vertexArray[idx++] = tlZ;
+                vertexArray[idx++] = r;
+                vertexArray[idx++] = g;
+                vertexArray[idx++] = b;
+                vertexArray[idx++] = a;
+                vertexArray[idx++] = uvTLu;
+                vertexArray[idx++] = uvTLv;
 
                 // Triangle 2: BR, TR, TL (9 values * 3 vertices = 27 values)
-                vertexArray[idx++] = brX; vertexArray[idx++] = brY; vertexArray[idx++] = brZ;
-                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
-                vertexArray[idx++] = uvBRu; vertexArray[idx++] = uvBRv;
+                vertexArray[idx++] = brX;
+                vertexArray[idx++] = brY;
+                vertexArray[idx++] = brZ;
+                vertexArray[idx++] = r;
+                vertexArray[idx++] = g;
+                vertexArray[idx++] = b;
+                vertexArray[idx++] = a;
+                vertexArray[idx++] = uvBRu;
+                vertexArray[idx++] = uvBRv;
 
-                vertexArray[idx++] = trX; vertexArray[idx++] = trY; vertexArray[idx++] = trZ;
-                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
-                vertexArray[idx++] = uvTRu; vertexArray[idx++] = uvTRv;
+                vertexArray[idx++] = trX;
+                vertexArray[idx++] = trY;
+                vertexArray[idx++] = trZ;
+                vertexArray[idx++] = r;
+                vertexArray[idx++] = g;
+                vertexArray[idx++] = b;
+                vertexArray[idx++] = a;
+                vertexArray[idx++] = uvTRu;
+                vertexArray[idx++] = uvTRv;
 
-                vertexArray[idx++] = tlX; vertexArray[idx++] = tlY; vertexArray[idx++] = tlZ;
-                vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = a;
-                vertexArray[idx++] = uvTLu; vertexArray[idx++] = uvTLv;
+                vertexArray[idx++] = tlX;
+                vertexArray[idx++] = tlY;
+                vertexArray[idx++] = tlZ;
+                vertexArray[idx++] = r;
+                vertexArray[idx++] = g;
+                vertexArray[idx++] = b;
+                vertexArray[idx++] = a;
+                vertexArray[idx++] = uvTLu;
+                vertexArray[idx++] = uvTLv;
             }
         }
         console.log('RendererSystem: Vertex generation complete, submitting to C++...');
@@ -233,7 +281,8 @@ export class RendererSystem extends Subsystem {
      * Returns vertex array handle
      * Matches C++ Prop::InitializeLocalVertsForGrid()
      */
-    createGridVertexArray(gridLineLength = 100.0) {
+    createGridVertexArray(gridLineLength = 100.0)
+    {
         console.log('=== createGridVertexArray START ===');
         console.log(`RendererSystem: Creating grid with lineLength=${gridLineLength}`);
         const handle = renderer.createVertexArrayCPP();
@@ -250,7 +299,8 @@ export class RendererSystem extends Subsystem {
         let idx = 0;
 
         // Optimized inline box generation (no object allocations)
-        const addBox = (minX, minY, minZ, maxX, maxY, maxZ, r, g, b) => {
+        const addBox = (minX, minY, minZ, maxX, maxY, maxZ, r, g, b) =>
+        {
             // Define corners inline (no object allocations)
             // Front face corners
             const fbl_x = maxX, fbl_y = minY, fbl_z = minZ;
@@ -264,158 +314,375 @@ export class RendererSystem extends Subsystem {
             const btr_x = minX, btr_y = minY, btr_z = maxZ;
 
             // Front face (2 triangles = 6 vertices × 9 values = 54 values)
-            vertexArray[idx++] = fbl_x; vertexArray[idx++] = fbl_y; vertexArray[idx++] = fbl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+            vertexArray[idx++] = fbl_x;
+            vertexArray[idx++] = fbl_y;
+            vertexArray[idx++] = fbl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = fbr_x; vertexArray[idx++] = fbr_y; vertexArray[idx++] = fbr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = fbr_x;
+            vertexArray[idx++] = fbr_y;
+            vertexArray[idx++] = fbr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = ftl_x; vertexArray[idx++] = ftl_y; vertexArray[idx++] = ftl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = ftl_x;
+            vertexArray[idx++] = ftl_y;
+            vertexArray[idx++] = ftl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = fbr_x; vertexArray[idx++] = fbr_y; vertexArray[idx++] = fbr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = fbr_x;
+            vertexArray[idx++] = fbr_y;
+            vertexArray[idx++] = fbr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = ftr_x; vertexArray[idx++] = ftr_y; vertexArray[idx++] = ftr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+            vertexArray[idx++] = ftr_x;
+            vertexArray[idx++] = ftr_y;
+            vertexArray[idx++] = ftr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = ftl_x; vertexArray[idx++] = ftl_y; vertexArray[idx++] = ftl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = ftl_x;
+            vertexArray[idx++] = ftl_y;
+            vertexArray[idx++] = ftl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
             // Back face (54 values)
-            vertexArray[idx++] = bbl_x; vertexArray[idx++] = bbl_y; vertexArray[idx++] = bbl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+            vertexArray[idx++] = bbl_x;
+            vertexArray[idx++] = bbl_y;
+            vertexArray[idx++] = bbl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = bbr_x; vertexArray[idx++] = bbr_y; vertexArray[idx++] = bbr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = bbr_x;
+            vertexArray[idx++] = bbr_y;
+            vertexArray[idx++] = bbr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = btl_x; vertexArray[idx++] = btl_y; vertexArray[idx++] = btl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = btl_x;
+            vertexArray[idx++] = btl_y;
+            vertexArray[idx++] = btl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = bbr_x; vertexArray[idx++] = bbr_y; vertexArray[idx++] = bbr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = bbr_x;
+            vertexArray[idx++] = bbr_y;
+            vertexArray[idx++] = bbr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = btr_x; vertexArray[idx++] = btr_y; vertexArray[idx++] = btr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+            vertexArray[idx++] = btr_x;
+            vertexArray[idx++] = btr_y;
+            vertexArray[idx++] = btr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = btl_x; vertexArray[idx++] = btl_y; vertexArray[idx++] = btl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = btl_x;
+            vertexArray[idx++] = btl_y;
+            vertexArray[idx++] = btl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
             // Left face (54 values)
-            vertexArray[idx++] = bbr_x; vertexArray[idx++] = bbr_y; vertexArray[idx++] = bbr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+            vertexArray[idx++] = bbr_x;
+            vertexArray[idx++] = bbr_y;
+            vertexArray[idx++] = bbr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = fbl_x; vertexArray[idx++] = fbl_y; vertexArray[idx++] = fbl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = fbl_x;
+            vertexArray[idx++] = fbl_y;
+            vertexArray[idx++] = fbl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = btr_x; vertexArray[idx++] = btr_y; vertexArray[idx++] = btr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = btr_x;
+            vertexArray[idx++] = btr_y;
+            vertexArray[idx++] = btr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = fbl_x; vertexArray[idx++] = fbl_y; vertexArray[idx++] = fbl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = fbl_x;
+            vertexArray[idx++] = fbl_y;
+            vertexArray[idx++] = fbl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = ftl_x; vertexArray[idx++] = ftl_y; vertexArray[idx++] = ftl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+            vertexArray[idx++] = ftl_x;
+            vertexArray[idx++] = ftl_y;
+            vertexArray[idx++] = ftl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = btr_x; vertexArray[idx++] = btr_y; vertexArray[idx++] = btr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = btr_x;
+            vertexArray[idx++] = btr_y;
+            vertexArray[idx++] = btr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
             // Right face (54 values)
-            vertexArray[idx++] = fbr_x; vertexArray[idx++] = fbr_y; vertexArray[idx++] = fbr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+            vertexArray[idx++] = fbr_x;
+            vertexArray[idx++] = fbr_y;
+            vertexArray[idx++] = fbr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = bbl_x; vertexArray[idx++] = bbl_y; vertexArray[idx++] = bbl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = bbl_x;
+            vertexArray[idx++] = bbl_y;
+            vertexArray[idx++] = bbl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = ftr_x; vertexArray[idx++] = ftr_y; vertexArray[idx++] = ftr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = ftr_x;
+            vertexArray[idx++] = ftr_y;
+            vertexArray[idx++] = ftr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = bbl_x; vertexArray[idx++] = bbl_y; vertexArray[idx++] = bbl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = bbl_x;
+            vertexArray[idx++] = bbl_y;
+            vertexArray[idx++] = bbl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = btl_x; vertexArray[idx++] = btl_y; vertexArray[idx++] = btl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+            vertexArray[idx++] = btl_x;
+            vertexArray[idx++] = btl_y;
+            vertexArray[idx++] = btl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = ftr_x; vertexArray[idx++] = ftr_y; vertexArray[idx++] = ftr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = ftr_x;
+            vertexArray[idx++] = ftr_y;
+            vertexArray[idx++] = ftr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
             // Top face (54 values)
-            vertexArray[idx++] = ftl_x; vertexArray[idx++] = ftl_y; vertexArray[idx++] = ftl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+            vertexArray[idx++] = ftl_x;
+            vertexArray[idx++] = ftl_y;
+            vertexArray[idx++] = ftl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = ftr_x; vertexArray[idx++] = ftr_y; vertexArray[idx++] = ftr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = ftr_x;
+            vertexArray[idx++] = ftr_y;
+            vertexArray[idx++] = ftr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = btr_x; vertexArray[idx++] = btr_y; vertexArray[idx++] = btr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = btr_x;
+            vertexArray[idx++] = btr_y;
+            vertexArray[idx++] = btr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = ftr_x; vertexArray[idx++] = ftr_y; vertexArray[idx++] = ftr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = ftr_x;
+            vertexArray[idx++] = ftr_y;
+            vertexArray[idx++] = ftr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = btl_x; vertexArray[idx++] = btl_y; vertexArray[idx++] = btl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+            vertexArray[idx++] = btl_x;
+            vertexArray[idx++] = btl_y;
+            vertexArray[idx++] = btl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = btr_x; vertexArray[idx++] = btr_y; vertexArray[idx++] = btr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = btr_x;
+            vertexArray[idx++] = btr_y;
+            vertexArray[idx++] = btr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
             // Bottom face (54 values)
-            vertexArray[idx++] = bbr_x; vertexArray[idx++] = bbr_y; vertexArray[idx++] = bbr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 0;
+            vertexArray[idx++] = bbr_x;
+            vertexArray[idx++] = bbr_y;
+            vertexArray[idx++] = bbr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = bbl_x; vertexArray[idx++] = bbl_y; vertexArray[idx++] = bbl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = bbl_x;
+            vertexArray[idx++] = bbl_y;
+            vertexArray[idx++] = bbl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = fbl_x; vertexArray[idx++] = fbl_y; vertexArray[idx++] = fbl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = fbl_x;
+            vertexArray[idx++] = fbl_y;
+            vertexArray[idx++] = fbl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = bbl_x; vertexArray[idx++] = bbl_y; vertexArray[idx++] = bbl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 0;
+            vertexArray[idx++] = bbl_x;
+            vertexArray[idx++] = bbl_y;
+            vertexArray[idx++] = bbl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 0;
 
-            vertexArray[idx++] = fbr_x; vertexArray[idx++] = fbr_y; vertexArray[idx++] = fbr_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 1; vertexArray[idx++] = 1;
+            vertexArray[idx++] = fbr_x;
+            vertexArray[idx++] = fbr_y;
+            vertexArray[idx++] = fbr_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 1;
+            vertexArray[idx++] = 1;
 
-            vertexArray[idx++] = fbl_x; vertexArray[idx++] = fbl_y; vertexArray[idx++] = fbl_z;
-            vertexArray[idx++] = r; vertexArray[idx++] = g; vertexArray[idx++] = b; vertexArray[idx++] = 255;
-            vertexArray[idx++] = 0; vertexArray[idx++] = 1;
+            vertexArray[idx++] = fbl_x;
+            vertexArray[idx++] = fbl_y;
+            vertexArray[idx++] = fbl_z;
+            vertexArray[idx++] = r;
+            vertexArray[idx++] = g;
+            vertexArray[idx++] = b;
+            vertexArray[idx++] = 255;
+            vertexArray[idx++] = 0;
+            vertexArray[idx++] = 1;
         };
 
         // Generate grid lines
-        for (let i = -Math.floor(halfLength); i < Math.floor(halfLength); i++) {
+        for (let i = -Math.floor(halfLength); i < Math.floor(halfLength); i++)
+        {
             const lineWidth = (i === 0) ? 0.3 : 0.05;
             const halfWidth = lineWidth / 2.0;
 
@@ -430,13 +697,13 @@ export class RendererSystem extends Subsystem {
 
             // X-axis line
             addBox(-halfLength, -halfWidth + i, -halfWidth,
-                   halfLength, halfWidth + i, halfWidth,
-                   colorX_r, colorX_g, colorX_b);
+                halfLength, halfWidth + i, halfWidth,
+                colorX_r, colorX_g, colorX_b);
 
             // Y-axis line
             addBox(-halfWidth + i, -halfLength, -halfWidth,
-                   halfWidth + i, halfLength, halfWidth,
-                   colorY_r, colorY_g, colorY_b);
+                halfWidth + i, halfLength, halfWidth,
+                colorY_r, colorY_g, colorY_b);
         }
 
         // Submit all vertices in single call
@@ -450,7 +717,8 @@ export class RendererSystem extends Subsystem {
     /**
      * Helper: Set default rendering state
      */
-    setDefaultRenderState() {
+    setDefaultRenderState()
+    {
         renderer.setBlendMode("OPAQUE");
         renderer.setRasterizerMode("SOLID_CULL_BACK");
         renderer.setSamplerMode("POINT_CLAMP");

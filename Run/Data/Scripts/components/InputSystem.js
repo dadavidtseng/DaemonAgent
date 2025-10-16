@@ -41,9 +41,9 @@ export class InputSystem extends Subsystem
      */
     update(gameDelta, systemDelta)
     {
+        console.log('MODIFY InputSystem: HandleInput active');
         // Accumulate time for logging
         this.logTimer += systemDelta;
-
         // Periodic logging (every 300ms)
         if (this.logTimer >= 300)
         {

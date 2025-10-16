@@ -79,7 +79,8 @@ export class JSEngine
 
         // Debug logging
         console.log(`JSEngine.registerSystem: id=${id}, configOrComponent type=${typeof configOrComponent}`);
-        if (configOrComponent && typeof configOrComponent === 'object') {
+        if (configOrComponent && typeof configOrComponent === 'object')
+        {
             console.log(`JSEngine.registerSystem: configOrComponent.id=${configOrComponent.id}, priority=${configOrComponent.priority}`);
             console.log(`JSEngine.registerSystem: update type=${typeof configOrComponent.update}, render type=${typeof configOrComponent.render}`);
         }
@@ -351,9 +352,9 @@ export class JSEngine
             {
                 try
                 {
-
                     // Pass both gameDeltaSeconds and systemDeltaSeconds to allow systems to choose
                     system.update(jsGameInstance.gameClock.getDeltaSeconds(), systemDeltaSeconds);
+
                 } catch (error)
                 {
                     // Enhanced error logging with multiple fallbacks

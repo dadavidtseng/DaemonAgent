@@ -8,6 +8,7 @@ import {GameObject} from '../core/GameObject.js';
 import {KeyboardInputComponent} from '../components/input/KeyboardInputComponent.js';
 import {FlyingMovementComponent} from '../components/movement/FlyingMovementComponent.js';
 import {CameraComponent} from '../components/camera/CameraComponent.js';
+import {hotReloadRegistry} from '../core/HotReloadRegistry.js';
 
 /**
  * Player - Player GameObject with component composition
@@ -73,7 +74,7 @@ export class Player extends GameObject
         {
             return;
         }
-
+        // console.log('Player GameObject: Active');
         // Update all components (calls KeyboardInputComponent.update)
         super.update(deltaTime);
 
@@ -114,10 +115,10 @@ export class Player extends GameObject
     }
 }
 
-// Export for ES6 module system
-export default Player;
-
-// Export to globalThis for hot-reload detection
-globalThis.Player = Player;
+// Register with hot-reload system (NO global pollution!)
+hotReloadRegistry.register('Player', Player, {
+    modulePath: './objects/Player.js',
+    parentClass: 'GameObject'
+});
 
 console.log('Player: GameObject class loaded (Phase 1 + Phase 2 - Foundation + Movement/Camera)');

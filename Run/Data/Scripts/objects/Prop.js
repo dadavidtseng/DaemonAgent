@@ -9,6 +9,7 @@ import {RotatePitchRollBehavior} from '../components/behavior/RotatePitchRollBeh
 import {PulseColorBehavior} from '../components/behavior/PulseColorBehavior.js';
 import {RotateYawBehavior} from '../components/behavior/RotateYawBehavior.js';
 import {StaticBehavior} from '../components/behavior/StaticBehavior.js';
+import {hotReloadRegistry} from '../core/HotReloadRegistry.js';
 
 /**
  * Prop - Prop GameObject with component composition
@@ -121,10 +122,9 @@ export class Prop extends GameObject
     }
 }
 
-// Export for ES6 module system
-export default Prop;
-
-// Export to globalThis for hot-reload detection
-globalThis.Prop = Prop;
+hotReloadRegistry.register('Prop', Prop, {
+    modulePath: './objects/Prop.js',
+    parentClass: 'GameObject'
+});
 
 console.log('Prop: GameObject class loaded (Phase 4 - Prop Migration)');
