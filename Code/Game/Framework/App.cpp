@@ -27,6 +27,7 @@
 #include "Engine/Core/LogSubsystem.hpp"
 #include "Engine/Input/InputSystem.hpp"
 #include "Engine/Platform/Window.hpp"
+#include "Engine/Renderer/Camera.hpp"
 #include "Engine/Renderer/CameraScriptInterface.hpp"
 #include "Engine/Renderer/DebugRenderSystem.hpp"
 #include "Engine/Renderer/Renderer.hpp"
@@ -40,6 +41,15 @@
 #include "Engine/Renderer/RendererScriptInterface.hpp"
 #include "ThirdParty/json/json.hpp"
 
+// Phase 1: Async Architecture Includes
+#include "Engine/Renderer/RenderCommandQueue.hpp"
+#include "Game/Framework/EntityStateBuffer.hpp"
+#include "Game/Framework/JSGameLogicJob.hpp"
+
+// Standard library for threading
+#include <chrono>
+#include <thread>
+
 
 
 //----------------------------------------------------------------------------------------------------
@@ -52,6 +62,10 @@ STATIC bool App::m_isQuitting = false;
 
 //----------------------------------------------------------------------------------------------------
 App::App()
+    : m_renderCommandQueue(nullptr)
+    , m_entityStateBuffer(nullptr)
+    , m_jsGameLogicJob(nullptr)
+    , m_mainCamera(nullptr)
 {
     GEngine::Get().Construct();
 }
@@ -71,9 +85,53 @@ void App::Startup()
     g_eventSystem->SubscribeEventCallbackFunction("OnCloseButtonClicked", OnCloseButtonClicked);
     g_eventSystem->SubscribeEventCallbackFunction("quit", OnCloseButtonClicked);
 
+    // Phase 1: Initialize async architecture infrastructure BEFORE game initialization
+    m_renderCommandQueue = new RenderCommandQueue();
+    m_entityStateBuffer  = new EntityStateBuffer();
+
+    // Phase 3: Initialize main camera for rendering entities
+    m_mainCamera = new Camera();
+    m_mainCamera->m_mode = Camera::eMode_Perspective;
+    m_mainCamera->SetPerspectiveGraphicView(16.0f / 9.0f, 60.0f, 0.1f, 100.0f);  // aspect, fov, near, far
+    m_mainCamera->SetNormalizedViewport(AABB2(Vec2::ZERO, Vec2::ONE));  // Full screen viewport (0,0) to (1,1)
+
+    // Phase 3 FIX: Set camera-to-render transform to correct coordinate system rotation
+    // The engine uses I-Forward/J-Left/K-Up (X-Forward/Y-Left/Z-Up)
+    // But rendering expects a 90° CCW rotation around Z-axis to match screen orientation
+    // This 90° CCW rotation swaps: X→Y, Y→-X (keeps Z unchanged)
+    Mat44 cameraToRender;
+    cameraToRender.m_values[Mat44::Ix] =  0.0f;  // New I-basis X component (was pointing X, now points Y)
+    cameraToRender.m_values[Mat44::Iy] =  1.0f;  // New I-basis Y component
+    cameraToRender.m_values[Mat44::Iz] =  0.0f;  // New I-basis Z component
+    cameraToRender.m_values[Mat44::Iw] =  0.0f;
+
+    cameraToRender.m_values[Mat44::Jx] = -1.0f;  // New J-basis X component (was pointing Y, now points -X)
+    cameraToRender.m_values[Mat44::Jy] =  0.0f;  // New J-basis Y component
+    cameraToRender.m_values[Mat44::Jz] =  0.0f;  // New J-basis Z component
+    cameraToRender.m_values[Mat44::Jw] =  0.0f;
+
+    cameraToRender.m_values[Mat44::Kx] =  0.0f;  // New K-basis X component (Z stays Z)
+    cameraToRender.m_values[Mat44::Ky] =  0.0f;  // New K-basis Y component
+    cameraToRender.m_values[Mat44::Kz] =  1.0f;  // New K-basis Z component
+    cameraToRender.m_values[Mat44::Kw] =  0.0f;
+
+    cameraToRender.m_values[Mat44::Tx] =  0.0f;  // No translation
+    cameraToRender.m_values[Mat44::Ty] =  0.0f;
+    cameraToRender.m_values[Mat44::Tz] =  0.0f;
+    cameraToRender.m_values[Mat44::Tw] =  1.0f;
+
+    m_mainCamera->SetCameraToRenderTransform(cameraToRender);
+    DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - Main camera initialized with 90° CCW Z-rotation camera-to-render transform");
+
     g_game = new Game();
     SetupScriptingBindings();
     g_game->PostInit();
+
+    // Phase 1: Submit JavaScript worker thread job AFTER game and script initialization
+    m_jsGameLogicJob = new JSGameLogicJob(g_game, m_renderCommandQueue, m_entityStateBuffer);
+    g_jobSystem->SubmitJob(m_jsGameLogicJob);
+
+    DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - Async architecture initialized (Phase 1)");
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -81,6 +139,46 @@ void App::Startup()
 //
 void App::Shutdown()
 {
+    // Phase 1: Shutdown async architecture BEFORE game destruction
+    // Order: Request shutdown → Wait for worker → Retrieve from JobSystem → Cleanup resources
+    if (m_jsGameLogicJob)
+    {
+        DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - Requesting worker thread shutdown...");
+        m_jsGameLogicJob->RequestShutdown();
+
+        // Wait for worker thread to complete (max 5 seconds timeout)
+        int waitCount = 0;
+        while (!m_jsGameLogicJob->IsShutdownComplete() && waitCount < 500)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            ++waitCount;
+        }
+
+        if (m_jsGameLogicJob->IsShutdownComplete())
+        {
+            DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - Worker thread exited successfully");
+        }
+        else
+        {
+            DAEMON_LOG(LogScript, eLogVerbosity::Warning, "App::Shutdown - Worker thread shutdown timeout!");
+        }
+
+        // CRITICAL: Retrieve job from JobSystem before manual deletion
+        // This prevents double-delete when JobSystem::Shutdown() tries to clean up
+        // The job is in m_completedJobs queue, so retrieve it first
+        Job* retrievedJob = g_jobSystem->RetrieveCompletedJob();
+        while (retrievedJob != nullptr && retrievedJob != m_jsGameLogicJob)
+        {
+            // If there are other completed jobs, delete them first
+            delete retrievedJob;
+            retrievedJob = g_jobSystem->RetrieveCompletedJob();
+        }
+
+        // Now safe to delete our job (it's no longer tracked by JobSystem)
+        delete m_jsGameLogicJob;
+        m_jsGameLogicJob = nullptr;
+    }
+
     // Phase 2: Clear V8::Persistent callbacks BEFORE V8 isolate destruction
     if (m_kadiScriptInterface)
     {
@@ -95,6 +193,25 @@ void App::Shutdown()
     // m_clockScriptInterface.reset();
 
     GAME_SAFE_RELEASE(g_game);
+
+    // Phase 1: Cleanup async infrastructure AFTER game destruction
+    if (m_mainCamera)
+    {
+        delete m_mainCamera;
+        m_mainCamera = nullptr;
+    }
+
+    if (m_entityStateBuffer)
+    {
+        delete m_entityStateBuffer;
+        m_entityStateBuffer = nullptr;
+    }
+
+    if (m_renderCommandQueue)
+    {
+        delete m_renderCommandQueue;
+        m_renderCommandQueue = nullptr;
+    }
 
     GEngine::Get().Shutdown();
 }
@@ -167,6 +284,39 @@ void App::Update()
         g_scriptSubsystem->Update();
     }
 
+    // Phase 1: Async Frame Synchronization
+    // Check if worker thread completed previous JavaScript frame
+    if (m_jsGameLogicJob && m_jsGameLogicJob->IsFrameComplete())
+    {
+        // Swap entity state buffers (copy back buffer → front buffer)
+        if (m_entityStateBuffer)
+        {
+            m_entityStateBuffer->SwapBuffers();
+        }
+
+        // Trigger next JavaScript frame on worker thread
+        m_jsGameLogicJob->TriggerNextFrame();
+    }
+    else if (m_jsGameLogicJob)
+    {
+        // Frame skip: Worker still executing, continue with last state
+        // This maintains stable 60 FPS rendering regardless of JavaScript performance
+        static uint64_t frameSkipCount = 0;
+        if (frameSkipCount % 60 == 0)  // Log every 60 frame skips
+        {
+            DAEMON_LOG(LogScript, eLogVerbosity::Warning,
+                       Stringf("App::Update - JavaScript frame skip (worker still executing) - Total skips: %llu",
+                               frameSkipCount));
+        }
+        ++frameSkipCount;
+    }
+
+    // Phase 1: Process render commands from queue (placeholder implementation)
+    // Phase 2 will implement actual command processing
+    ProcessRenderCommands();
+
+    // Legacy synchronous JavaScript update (TODO: Remove after Phase 1 validation)
+    // Kept temporarily to avoid breaking existing JavaScript functionality
     g_game->UpdateJS();
 }
 
@@ -337,4 +487,46 @@ void App::SetupScriptingBindings()
     g_scriptSubsystem->RegisterGlobalFunction("gc", OnGarbageCollection);
 
     DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings)(end)"));
+}
+
+//----------------------------------------------------------------------------------------------------
+// ProcessRenderCommands (Phase 1: Placeholder Implementation)
+//
+// Consumes render commands from lock-free queue and processes them.
+//
+// Phase 1: Placeholder - only logs commands, no actual processing
+// Phase 2: Implement actual command processing (CREATE_MESH, UPDATE_ENTITY, etc.)
+//----------------------------------------------------------------------------------------------------
+void App::ProcessRenderCommands()
+{
+    if (!m_renderCommandQueue)
+    {
+        return;
+    }
+
+    // Phase 1: Placeholder implementation
+    // Consume all commands and log them (no actual processing yet)
+    m_renderCommandQueue->ConsumeAll([](RenderCommand const& cmd) {
+        // Phase 1: Log command type only (no processing)
+        static uint64_t totalCommands = 0;
+        if (totalCommands % 60 == 0)  // Log every 60 commands
+        {
+            DAEMON_LOG(LogRenderer, eLogVerbosity::Display,
+                       Stringf("App::ProcessRenderCommands - Placeholder: Consumed command type %d (total: %llu)",
+                               static_cast<int>(cmd.type),
+                               totalCommands));
+        }
+        ++totalCommands;
+
+        // Phase 2 will implement:
+        // switch (cmd.type) {
+        //     case RenderCommandType::CREATE_MESH:
+        //         // Create mesh entity
+        //         break;
+        //     case RenderCommandType::UPDATE_ENTITY:
+        //         // Update entity position/orientation/color
+        //         break;
+        //     // ... other command types
+        // }
+    });
 }
