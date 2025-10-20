@@ -535,11 +535,12 @@ export class JSGame
                 this.debugRenderSystem.renderWorld(camera);
                 this.debugRenderSystem.renderScreen(this.screenCamera);
 
-                // Begin camera rendering
-                renderer.beginCamera(camera);
+                // Phase 2: No need for begin/end camera calls - C++ handles rendering automatically
+                // renderer.beginCamera(camera);  // REMOVED - replaced by EntityAPI system
 
 
                 // Render Prop GameObjects (Phase 2: High-level entity API)
+                // JavaScript calls prop.render() but actual rendering happens in C++ via EntityStateBuffer
                 if (this.propGameObjects && Array.isArray(this.propGameObjects))
                 {
                     for (const prop of this.propGameObjects)
@@ -556,8 +557,8 @@ export class JSGame
                 }
 
 
-                // End camera rendering
-                renderer.endCamera(camera);
+                // Phase 2: No need for end camera call - C++ handles rendering automatically
+                // renderer.endCamera(camera);  // REMOVED - replaced by EntityAPI system
             },
             priority: 90,
             enabled: true,
@@ -567,8 +568,9 @@ export class JSGame
         // === Phase 4: Debug Render system (priority: 95) - debug visualization ===
         this.engine.registerSystem(null, this.debugRenderSystem);  // Priority: 95
 
+        // Phase 2: RendererSystem removed - replaced by EntityAPI
         // === Phase 4: Renderer system (priority: 100) - renders LAST ===
-        this.engine.registerSystem(null, this.rendererSystem);  // Priority: 100
+        // this.engine.registerSystem(null, this.rendererSystem);  // Priority: 100 - REMOVED
         // this.engine.registerSystem(null, this.newFeature);
 
         console.log('(JSGame::registerGameSystems)(end) - All systems registered (Entity-based architecture)');
