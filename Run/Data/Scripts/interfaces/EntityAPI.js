@@ -50,7 +50,7 @@
 export class EntityAPI
 {
     // Version tracking for hot-reload detection
-    static version = 5; // FLATTENED API - V8 cannot handle nested objects, using individual primitive arguments
+    static version = 6; // FULLY FLATTENED API - All methods now use individual primitive arguments (createMesh, updatePosition, updateOrientation, updateColor, moveBy)
 
     constructor()
     {
@@ -182,9 +182,10 @@ export class EntityAPI
 
         try
         {
-            // Convert array to object for C++ interface
-            const positionObj = {x: position[0], y: position[1], z: position[2]};
-            this.cppEntity.updatePosition(entityId, positionObj);
+            // FLATTENED API: V8 binding cannot handle nested objects
+            // Call C++ with individual primitive arguments instead of object
+            // Signature: updatePosition(entityId, posX, posY, posZ)
+            this.cppEntity.updatePosition(entityId, position[0], position[1], position[2]);
         }
         catch (error)
         {
@@ -213,9 +214,10 @@ export class EntityAPI
 
         try
         {
-            // Convert array to object for C++ interface
-            const deltaObj = {x: delta[0], y: delta[1], z: delta[2]};
-            this.cppEntity.moveBy(entityId, deltaObj);
+            // FLATTENED API: V8 binding cannot handle nested objects
+            // Call C++ with individual primitive arguments instead of object
+            // Signature: moveBy(entityId, dx, dy, dz)
+            this.cppEntity.moveBy(entityId, delta[0], delta[1], delta[2]);
         }
         catch (error)
         {
@@ -244,9 +246,10 @@ export class EntityAPI
 
         try
         {
-            // Convert array to object for C++ interface
-            const orientationObj = {yaw: orientation[0], pitch: orientation[1], roll: orientation[2]};
-            this.cppEntity.updateOrientation(entityId, orientationObj);
+            // FLATTENED API: V8 binding cannot handle nested objects
+            // Call C++ with individual primitive arguments instead of object
+            // Signature: updateOrientation(entityId, yaw, pitch, roll)
+            this.cppEntity.updateOrientation(entityId, orientation[0], orientation[1], orientation[2]);
         }
         catch (error)
         {
@@ -275,9 +278,10 @@ export class EntityAPI
 
         try
         {
-            // Convert array to object for C++ interface
-            const colorObj = {r: color[0], g: color[1], b: color[2], a: color[3]};
-            this.cppEntity.updateColor(entityId, colorObj);
+            // FLATTENED API: V8 binding cannot handle nested objects
+            // Call C++ with individual primitive arguments instead of object
+            // Signature: updateColor(entityId, r, g, b, a)
+            this.cppEntity.updateColor(entityId, color[0], color[1], color[2], color[3]);
         }
         catch (error)
         {

@@ -213,10 +213,12 @@ ScriptMethodResult EntityScriptInterface::ExecuteCreateMesh(ScriptArgs const& ar
 //----------------------------------------------------------------------------------------------------
 ScriptMethodResult EntityScriptInterface::ExecuteUpdatePosition(ScriptArgs const& args)
 {
+	// FLATTENED API: V8 cannot handle nested objects, expect individual primitive arguments
+	// Signature: updatePosition(entityId, posX, posY, posZ)
 	// Validate argument count
-	if (args.size() != 2)
+	if (args.size() != 4)
 	{
-		return ScriptMethodResult::Error("updatePosition: Expected 2 arguments (entityId, position), got " +
+		return ScriptMethodResult::Error("updatePosition: Expected 4 arguments (entityId, posX, posY, posZ), got " +
 		                                  std::to_string(args.size()));
 	}
 
@@ -229,15 +231,17 @@ ScriptMethodResult EntityScriptInterface::ExecuteUpdatePosition(ScriptArgs const
 			return ScriptMethodResult::Error("updatePosition: Invalid entityId");
 		}
 
-		// Extract position
-		auto positionOpt = ExtractVec3(args[1]);
-		if (!positionOpt.has_value())
-		{
-			return ScriptMethodResult::Error("updatePosition: Invalid position object");
-		}
+		// Extract position components (flattened - doubles from JavaScript)
+		double posX = std::any_cast<double>(args[1]);
+		double posY = std::any_cast<double>(args[2]);
+		double posZ = std::any_cast<double>(args[3]);
+
+		Vec3 position(static_cast<float>(posX),
+		              static_cast<float>(posY),
+		              static_cast<float>(posZ));
 
 		// Call HighLevelEntityAPI
-		m_entityAPI->UpdatePosition(entityIdOpt.value(), positionOpt.value());
+		m_entityAPI->UpdatePosition(entityIdOpt.value(), position);
 
 		return ScriptMethodResult::Success();
 	}
@@ -250,10 +254,12 @@ ScriptMethodResult EntityScriptInterface::ExecuteUpdatePosition(ScriptArgs const
 //----------------------------------------------------------------------------------------------------
 ScriptMethodResult EntityScriptInterface::ExecuteMoveBy(ScriptArgs const& args)
 {
+	// FLATTENED API: V8 cannot handle nested objects, expect individual primitive arguments
+	// Signature: moveBy(entityId, dx, dy, dz)
 	// Validate argument count
-	if (args.size() != 2)
+	if (args.size() != 4)
 	{
-		return ScriptMethodResult::Error("moveBy: Expected 2 arguments (entityId, delta), got " +
+		return ScriptMethodResult::Error("moveBy: Expected 4 arguments (entityId, dx, dy, dz), got " +
 		                                  std::to_string(args.size()));
 	}
 
@@ -266,15 +272,17 @@ ScriptMethodResult EntityScriptInterface::ExecuteMoveBy(ScriptArgs const& args)
 			return ScriptMethodResult::Error("moveBy: Invalid entityId");
 		}
 
-		// Extract delta
-		auto deltaOpt = ExtractVec3(args[1]);
-		if (!deltaOpt.has_value())
-		{
-			return ScriptMethodResult::Error("moveBy: Invalid delta object");
-		}
+		// Extract delta components (flattened - doubles from JavaScript)
+		double dx = std::any_cast<double>(args[1]);
+		double dy = std::any_cast<double>(args[2]);
+		double dz = std::any_cast<double>(args[3]);
+
+		Vec3 delta(static_cast<float>(dx),
+		           static_cast<float>(dy),
+		           static_cast<float>(dz));
 
 		// Call HighLevelEntityAPI
-		m_entityAPI->MoveBy(entityIdOpt.value(), deltaOpt.value());
+		m_entityAPI->MoveBy(entityIdOpt.value(), delta);
 
 		return ScriptMethodResult::Success();
 	}
@@ -287,10 +295,12 @@ ScriptMethodResult EntityScriptInterface::ExecuteMoveBy(ScriptArgs const& args)
 //----------------------------------------------------------------------------------------------------
 ScriptMethodResult EntityScriptInterface::ExecuteUpdateOrientation(ScriptArgs const& args)
 {
+	// FLATTENED API: V8 cannot handle nested objects, expect individual primitive arguments
+	// Signature: updateOrientation(entityId, yaw, pitch, roll)
 	// Validate argument count
-	if (args.size() != 2)
+	if (args.size() != 4)
 	{
-		return ScriptMethodResult::Error("updateOrientation: Expected 2 arguments (entityId, orientation), got " +
+		return ScriptMethodResult::Error("updateOrientation: Expected 4 arguments (entityId, yaw, pitch, roll), got " +
 		                                  std::to_string(args.size()));
 	}
 
@@ -303,15 +313,17 @@ ScriptMethodResult EntityScriptInterface::ExecuteUpdateOrientation(ScriptArgs co
 			return ScriptMethodResult::Error("updateOrientation: Invalid entityId");
 		}
 
-		// Extract orientation
-		auto orientationOpt = ExtractEulerAngles(args[1]);
-		if (!orientationOpt.has_value())
-		{
-			return ScriptMethodResult::Error("updateOrientation: Invalid orientation object");
-		}
+		// Extract orientation components (flattened - doubles from JavaScript)
+		double yaw   = std::any_cast<double>(args[1]);
+		double pitch = std::any_cast<double>(args[2]);
+		double roll  = std::any_cast<double>(args[3]);
+
+		EulerAngles orientation(static_cast<float>(yaw),
+		                        static_cast<float>(pitch),
+		                        static_cast<float>(roll));
 
 		// Call HighLevelEntityAPI
-		m_entityAPI->UpdateOrientation(entityIdOpt.value(), orientationOpt.value());
+		m_entityAPI->UpdateOrientation(entityIdOpt.value(), orientation);
 
 		return ScriptMethodResult::Success();
 	}
@@ -324,10 +336,12 @@ ScriptMethodResult EntityScriptInterface::ExecuteUpdateOrientation(ScriptArgs co
 //----------------------------------------------------------------------------------------------------
 ScriptMethodResult EntityScriptInterface::ExecuteUpdateColor(ScriptArgs const& args)
 {
+	// FLATTENED API: V8 cannot handle nested objects, expect individual primitive arguments
+	// Signature: updateColor(entityId, r, g, b, a)
 	// Validate argument count
-	if (args.size() != 2)
+	if (args.size() != 5)
 	{
-		return ScriptMethodResult::Error("updateColor: Expected 2 arguments (entityId, color), got " +
+		return ScriptMethodResult::Error("updateColor: Expected 5 arguments (entityId, r, g, b, a), got " +
 		                                  std::to_string(args.size()));
 	}
 
@@ -340,15 +354,19 @@ ScriptMethodResult EntityScriptInterface::ExecuteUpdateColor(ScriptArgs const& a
 			return ScriptMethodResult::Error("updateColor: Invalid entityId");
 		}
 
-		// Extract color
-		auto colorOpt = ExtractRgba8(args[1]);
-		if (!colorOpt.has_value())
-		{
-			return ScriptMethodResult::Error("updateColor: Invalid color object");
-		}
+		// Extract color components (flattened - doubles from JavaScript)
+		double r = std::any_cast<double>(args[1]);
+		double g = std::any_cast<double>(args[2]);
+		double b = std::any_cast<double>(args[3]);
+		double a = std::any_cast<double>(args[4]);
+
+		Rgba8 color(static_cast<unsigned char>(r),
+		            static_cast<unsigned char>(g),
+		            static_cast<unsigned char>(b),
+		            static_cast<unsigned char>(a));
 
 		// Call HighLevelEntityAPI
-		m_entityAPI->UpdateColor(entityIdOpt.value(), colorOpt.value());
+		m_entityAPI->UpdateColor(entityIdOpt.value(), color);
 
 		return ScriptMethodResult::Success();
 	}
