@@ -29,32 +29,32 @@ import {hotReloadRegistry} from '../core/HotReloadRegistry.js';
  *
  * Usage:
  * ```javascript
- * const prop = new Prop(rendererSystem, 'cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll');
+ * const prop = new Prop('cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll');
  * prop.update(deltaTime); // Called every frame
- * prop.render(); // Called during rendering
+ * prop.render(); // Called during rendering (Phase 2: C++ handles actual rendering)
  * ```
  */
 export class Prop extends GameObject
 {
     /**
-     * @param {RendererSystem} rendererSystem - Renderer system for geometry creation
-     * @param {string} meshType - Geometry type ('cube', 'sphere', 'grid')
+     * @param {string} meshType - Geometry type ('cube', 'sphere', 'grid', 'plane')
      * @param {Object} position - Initial position {x, y, z}
      * @param {string} behaviorType - Behavior type ('rotate-pitch-roll', 'pulse-color', 'rotate-yaw', 'static')
      * @param {Object} color - Initial color {r, g, b, a} (default: white)
+     * @param {number} scale - Uniform scale factor (default: 1.0)
      */
-    constructor(rendererSystem, meshType, position, behaviorType, color = {r: 255, g: 255, b: 255, a: 255})
+    constructor(meshType, position, behaviorType, color = {r: 255, g: 255, b: 255, a: 255}, scale = 1.0)
     {
         super(`Prop_${meshType}_${behaviorType}`);
 
-        console.log(`Prop: Constructing ${meshType} at (${position.x}, ${position.y}, ${position.z}) with ${behaviorType} behavior`);
+        console.log(`Prop: Constructing ${meshType} at (${position.x}, ${position.y}, ${position.z}) with ${behaviorType} behavior (Phase 2)`);
 
         // Set initial position and orientation
         this.position = position;
         this.orientation = {yaw: 0, pitch: 0, roll: 0};
 
-        // Component composition: MeshComponent
-        this.mesh = new MeshComponent(rendererSystem, meshType, color);
+        // Component composition: MeshComponent (Phase 2 - no rendererSystem needed)
+        this.mesh = new MeshComponent(meshType, color, scale);
         this.addComponent(this.mesh);
 
         // Component composition: BehaviorComponent

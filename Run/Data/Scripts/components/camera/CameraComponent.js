@@ -32,6 +32,8 @@ import {CameraInterface} from '../../interfaces/CameraInterface.js';
  */
 export class CameraComponent extends Component
 {
+    static version = 2;  // Hot-reload version tracking (incremented after adding setCameraRole)
+
     constructor()
     {
         super('camera');
@@ -77,6 +79,14 @@ export class CameraComponent extends Component
 
         // Set initial position and orientation
         this.updateCameraTransform();
+
+        // Mark this camera as the active world camera for 3D rendering (Phase 2)
+        console.log('CameraComponent: Setting as active world camera...');
+        this.cameraInterface.setActiveWorldCamera(this.worldCamera);
+
+        // Phase 2: Set camera role for entity-based rendering
+        console.log('CameraComponent: Setting camera role to "world"...');
+        this.cameraInterface.setCameraRole(this.worldCamera, "world");
 
         console.log('CameraComponent: Initialized successfully');
     }

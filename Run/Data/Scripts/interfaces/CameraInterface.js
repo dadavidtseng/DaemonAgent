@@ -24,6 +24,8 @@
  * - setNormalizedViewport(camera, x, y, width, height): void
  * - setCameraToRenderTransform(camera, ...matrix16): void
  * - setCameraPositionAndOrientation(camera, x, y, z, yaw, pitch, roll): void
+ * - setActiveWorldCamera(camera): void
+ * - getActiveWorldCamera(): cameraHandle
  *
  * Usage Example:
  * ```javascript
@@ -34,6 +36,8 @@
  */
 export class CameraInterface
 {
+    static version = 2;  // Hot-reload version tracking (incremented after adding setCameraRole)
+
     constructor()
     {
         this.cppCamera = globalThis.cameraInterface; // C++ camera interface reference
@@ -166,6 +170,66 @@ export class CameraInterface
     }
 
     /**
+     * Set the active world camera for 3D rendering
+     * @param {number} camera - Camera handle to set as active
+     */
+    setActiveWorldCamera(camera)
+    {
+        if (!this.cppCamera || !this.cppCamera.setActiveWorldCamera)
+        {
+            console.error('CameraInterface: setActiveWorldCamera not available');
+            return;
+        }
+        this.cppCamera.setActiveWorldCamera(camera);
+        console.log('CameraInterface: Set active world camera:', camera);
+    }
+
+    /**
+     * Get the active world camera
+     * @returns {number} Active camera handle or null if not set
+     */
+    getActiveWorldCamera()
+    {
+        if (!this.cppCamera || !this.cppCamera.getActiveWorldCamera)
+        {
+            console.error('CameraInterface: getActiveWorldCamera not available');
+            return null;
+        }
+        return this.cppCamera.getActiveWorldCamera();
+    }
+
+    /**
+     * Set camera role for entity-based rendering (Phase 2)
+     * @param {number} camera - Camera handle
+     * @param {string} role - Role name ("world" for 3D, "screen" for 2D UI)
+     */
+    setCameraRole(camera, role)
+    {
+        if (!this.cppCamera || !this.cppCamera.setCameraRole)
+        {
+            console.error('CameraInterface: setCameraRole not available');
+            return;
+        }
+        this.cppCamera.setCameraRole(camera, role);
+        console.log(`CameraInterface: Set camera role: ${role} for camera ${camera}`);
+    }
+
+    /**
+     * Get camera by role (Phase 2)
+     * @param {string} role - Role name ("world" or "screen")
+     * @returns {number} Camera handle or null if not found
+     */
+    getCameraByRole(role)
+    {
+        if (!this.cppCamera || !this.cppCamera.getCameraByRole)
+        {
+            console.error('CameraInterface: getCameraByRole not available');
+            return null;
+        }
+        return this.cppCamera.getCameraByRole(role);
+    }
+
+    /**
      * Check if C++ camera interface is available
      * @returns {boolean} True if C++ interface is connected
      */
@@ -189,7 +253,11 @@ export class CameraInterface
                 setOrthographicView: typeof this.cppCamera.setOrthographicView === 'function',
                 setNormalizedViewport: typeof this.cppCamera.setNormalizedViewport === 'function',
                 setCameraToRenderTransform: typeof this.cppCamera.setCameraToRenderTransform === 'function',
-                setCameraPositionAndOrientation: typeof this.cppCamera.setCameraPositionAndOrientation === 'function'
+                setCameraPositionAndOrientation: typeof this.cppCamera.setCameraPositionAndOrientation === 'function',
+                setActiveWorldCamera: typeof this.cppCamera.setActiveWorldCamera === 'function',
+                getActiveWorldCamera: typeof this.cppCamera.getActiveWorldCamera === 'function',
+                setCameraRole: typeof this.cppCamera.setCameraRole === 'function',
+                getCameraByRole: typeof this.cppCamera.getCameraByRole === 'function'
             } : null
         };
     }

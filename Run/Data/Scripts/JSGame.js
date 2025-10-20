@@ -6,7 +6,8 @@ import {CppBridgeSystem} from './components/CppBridgeSystem.js';
 import {InputSystem} from './components/InputSystem.js';
 import {AudioSystem} from './components/AudioSystem.js';
 import {CameraSystem} from './components/CameraSystem.js';
-import {RendererSystem} from './components/RendererSystem.js';
+// Phase 2: RendererSystem removed - replaced by EntityAPI
+// import {RendererSystem} from './components/RendererSystem.js';
 import {DebugRenderSystem} from './components/DebugRenderSystem.js';
 import {KADIGameControl} from './kadi/KADIGameControl.js';
 import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon";
@@ -97,7 +98,7 @@ export class JSGame
             console.log('JSGame: Game clock created successfully');
         } catch (error)
         {
-            console.error('JSGame: Clock creation failed:', error);
+            console.log('JSGame: ERROR - Clock creation failed:', error);
         }
 
         // === Debug Visualization Setup (migrated from C++ Game constructor) ===
@@ -132,8 +133,9 @@ export class JSGame
         // Input system (priority: 10)
         this.inputSystem = new InputSystem();
 
+        // Phase 2: RendererSystem removed - replaced by EntityAPI
         // === Phase 4: Renderer system (priority: 100) - must create BEFORE entities ===
-        this.rendererSystem = new RendererSystem();
+        // this.rendererSystem = new RendererSystem();
 
         // Debug Render system (priority: 95) - debug visualization
         this.debugRenderSystem = new DebugRenderSystem();
@@ -148,6 +150,10 @@ export class JSGame
         cameraInterface.setOrthographicView(this.screenCamera, 0.0, 0.0, 1920.0, 1080.0);
         cameraInterface.setNormalizedViewport(this.screenCamera, 0.0, 0.0, 1.0, 1.0);
 
+        // Phase 2: Set camera role for entity-based rendering
+        console.log('JSGame: Setting screenCamera role to "screen"...');
+        cameraInterface.setCameraRole(this.screenCamera, "screen");
+
         // === Phase 4: Game entities (matching C++ architecture) ===
         // PlayerEntity (like C++ Player* m_player)
         try
@@ -157,8 +163,8 @@ export class JSGame
             console.log('JSGame: PlayerEntity created successfully');
         } catch (error)
         {
-            console.error('JSGame: ERROR creating PlayerEntity:', error);
-            console.error('JSGame: Error stack:', error.stack);
+            console.log('JSGame: ERROR creating PlayerEntity:', error);
+            console.log('JSGame: Error stack:', error.stack);
             throw error;
         }
 
@@ -171,8 +177,8 @@ export class JSGame
             console.log('JSGame: Player GameObject created successfully');
         } catch (error)
         {
-            console.error('JSGame: ERROR creating Player GameObject:', error);
-            console.error('JSGame: Error stack:', error.stack);
+            console.log('JSGame: ERROR creating Player GameObject:', error);
+            console.log('JSGame: Error stack:', error.stack);
             throw error;
         }
 
@@ -185,8 +191,8 @@ export class JSGame
             console.log('JSGame: Prop GameObjects created successfully');
         } catch (error)
         {
-            console.error('JSGame: ERROR creating Prop GameObjects:', error);
-            console.error('JSGame: Error stack:', error.stack);
+            console.log('JSGame: ERROR creating Prop GameObjects:', error);
+            console.log('JSGame: Error stack:', error.stack);
             throw error;
         }
 
@@ -204,23 +210,43 @@ export class JSGame
     {
         console.log('JSGame: Creating 4 Prop GameObjects matching C++ Game behavior...');
 
-        // Prop 0: Rotating cube at (2, 2, 0) - pitch+roll += 30°/s
-        const prop0 = new Prop(this.rendererSystem, 'cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll');
-        this.propGameObjects.push(prop0);
+        try {
+            // Prop 0: Rotating cube at (2, 2, 0) - pitch+roll += 30°/s (Phase 2)
+            const prop0 = new Prop('cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll');
+            this.propGameObjects.push(prop0);
+            console.log('JSGame: Prop 0 created successfully');
+        } catch (error) {
+            console.log('JSGame: ERROR creating Prop 0:', error);
+        }
 
-        // Prop 1: Pulsing color cube at (-2, -2, 0) - sin wave color
-        const prop1 = new Prop(this.rendererSystem, 'cube', {x: -2, y: -2, z: 0}, 'pulse-color');
-        this.propGameObjects.push(prop1);
+        try {
+            // Prop 1: Pulsing color cube at (-2, -2, 0) - sin wave color (Phase 2)
+            const prop1 = new Prop('cube', {x: -2, y: -2, z: 0}, 'pulse-color');
+            this.propGameObjects.push(prop1);
+            console.log('JSGame: Prop 1 created successfully');
+        } catch (error) {
+            console.log('JSGame: ERROR creating Prop 1:', error);
+        }
 
-        // Prop 2: Rotating sphere at (10, -5, 1) - yaw += 45°/s
-        const prop2 = new Prop(this.rendererSystem, 'sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw');
-        this.propGameObjects.push(prop2);
+        try {
+            // Prop 2: Rotating sphere at (10, -5, 1) - yaw += 45°/s (Phase 2)
+            const prop2 = new Prop('sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw');
+            this.propGameObjects.push(prop2);
+            console.log('JSGame: Prop 2 created successfully');
+        } catch (error) {
+            console.log('JSGame: ERROR creating Prop 2:', error);
+        }
 
-        // Prop 3: Static grid at (0, 0, 0)
-        const prop3 = new Prop(this.rendererSystem, 'grid', {x: 0, y: 0, z: 0}, 'static');
-        this.propGameObjects.push(prop3);
+        try {
+            // Prop 3: Static grid at (0, 0, 0) (Phase 2)
+            const prop3 = new Prop('grid', {x: 0, y: 0, z: 0}, 'static');
+            this.propGameObjects.push(prop3);
+            console.log('JSGame: Prop 3 created successfully');
+        } catch (error) {
+            console.log('JSGame: ERROR creating Prop 3:', error);
+        }
 
-        console.log(`JSGame: Created ${this.propGameObjects.length} Prop GameObjects`);
+        console.log(`JSGame: Created ${this.propGameObjects.length} Prop GameObjects (Phase 2)`);
     }
 
     /**
@@ -343,9 +369,9 @@ export class JSGame
             console.log('JSGame: Debug visualization setup complete');
         } catch (error)
         {
-            console.error('JSGame: Error setting up debug visualization:', error);
-            console.error('JSGame: Error message:', error.message);
-            console.error('JSGame: Error stack:', error.stack);
+            console.log('JSGame: ERROR - Error setting up debug visualization:', error);
+            console.log('JSGame: ERROR - Error message:', error.message);
+            console.log('JSGame: ERROR - Error stack:', error.stack);
             // Don't rethrow - allow constructor to complete even if debug viz fails
         }
     }
@@ -402,12 +428,12 @@ export class JSGame
                     // Get updated Prop class from registry
                     const PropClass = hotReloadRegistry.getClass('Prop');
 
-                    // Recreate all prop GameObjects with new class
+                    // Recreate all prop GameObjects with new class (Phase 2: no rendererSystem parameter)
                     this.propGameObjects = [];
-                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll'));
-                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'cube', {x: -2, y: -2, z: 0}, 'pulse-color'));
-                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw'));
-                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'grid', {x: 0, y: 0, z: 0}, 'static'));
+                    this.propGameObjects.push(new PropClass('cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll'));
+                    this.propGameObjects.push(new PropClass('cube', {x: -2, y: -2, z: 0}, 'pulse-color'));
+                    this.propGameObjects.push(new PropClass('sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw'));
+                    this.propGameObjects.push(new PropClass('grid', {x: 0, y: 0, z: 0}, 'static'));
 
                     // Update tracked version
                     this.propVersion = newVersion;
@@ -419,10 +445,20 @@ export class JSGame
                     this.playerGameObject.update(deltaTimeMs);
                 }
 
-                // Update Prop GameObjects (Phase 6: Prop migration)
-                for (const prop of this.propGameObjects)
+                // Update Prop GameObjects (Phase 2: High-level entity API)
+                if (this.propGameObjects && Array.isArray(this.propGameObjects))
                 {
-                    prop.update(deltaTimeMs);
+                    for (const prop of this.propGameObjects)
+                    {
+                        if (prop && typeof prop.update === 'function')
+                        {
+                            prop.update(deltaTimeMs);
+                        }
+                        else if (!prop)
+                        {
+                            console.log('JSGame: ERROR - Prop in propGameObjects array is null/undefined!');
+                        }
+                    }
                 }
 
 
@@ -491,7 +527,7 @@ export class JSGame
 
                 if (!camera)
                 {
-                    console.error('JSGame: Player camera not available!');
+                    console.log('JSGame: ERROR - Player camera not available!');
                     return;
                 }
 
@@ -503,10 +539,20 @@ export class JSGame
                 renderer.beginCamera(camera);
 
 
-                // Render Prop GameObjects (Phase 6: Prop migration)
-                for (const prop of this.propGameObjects)
+                // Render Prop GameObjects (Phase 2: High-level entity API)
+                if (this.propGameObjects && Array.isArray(this.propGameObjects))
                 {
-                    prop.render();
+                    for (const prop of this.propGameObjects)
+                    {
+                        if (prop && typeof prop.render === 'function')
+                        {
+                            prop.render();
+                        }
+                        else if (!prop)
+                        {
+                            console.log('JSGame: ERROR - Prop in propGameObjects array is null/undefined during render!');
+                        }
+                    }
                 }
 
 
