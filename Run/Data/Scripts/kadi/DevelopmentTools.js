@@ -12,7 +12,7 @@ export const DevelopmentTools = [
     {
         name: "create_script",
         description: "Create a new JavaScript file in Scripts directory with specified content",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 filePath: {
@@ -36,7 +36,7 @@ export const DevelopmentTools = [
     {
         name: "read_script",
         description: "Read an existing JavaScript file from Scripts directory",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 filePath: {
@@ -51,7 +51,7 @@ export const DevelopmentTools = [
     {
         name: "delete_script",
         description: "Delete a JavaScript file from Scripts directory (protected files cannot be deleted)",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 filePath: {
@@ -66,7 +66,7 @@ export const DevelopmentTools = [
     {
         name: "press_keycode",
         description: "Inject a key press event with specified duration",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 keyCode: {
@@ -89,7 +89,7 @@ export const DevelopmentTools = [
     {
         name: "hold_keycode",
         description: "Inject a key hold event with duration and optional repeat behavior",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 keyCode: {
@@ -116,7 +116,7 @@ export const DevelopmentTools = [
     {
         name: "modify_script",
         description: "Fine-grained modification of JavaScript files with 5 operations: add_line, remove_line, add_function, remove_function, replace_text",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 filePath: {
