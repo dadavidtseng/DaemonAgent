@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------
 
 #include "Game/Framework/HighLevelEntityAPI.hpp"
+#include "Game/Framework/CameraStateBuffer.hpp"
 
 #include "Engine/Renderer/RenderCommandQueue.hpp"
 #include "Engine/Script/ScriptSubsystem.hpp"
@@ -22,8 +23,16 @@
 #undef max
 #endif
 
+// Suppress V8 header warnings (unreferenced formal parameters, etc.)
+#pragma warning(push)
+#pragma warning(disable: 4100)  // 'identifier': unreferenced formal parameter
+#pragma warning(disable: 4127)  // conditional expression is constant
+#pragma warning(disable: 4324)  // 'structname': structure was padded due to alignment specifier
+
 // V8 JavaScript engine headers
 #include "v8.h"
+
+#pragma warning(pop)
 
 //----------------------------------------------------------------------------------------------------
 // Construction / Destruction
@@ -31,10 +40,12 @@
 
 HighLevelEntityAPI::HighLevelEntityAPI(RenderCommandQueue* commandQueue,
                                        ScriptSubsystem* v8Subsystem,
-                                       Renderer* renderer)
+                                       Renderer* renderer,
+                                       CameraStateBuffer* cameraBuffer)
 	: m_commandQueue(commandQueue)
 	, m_scriptSubsystem(v8Subsystem)
 	, m_renderer(renderer)
+	, m_cameraBuffer(cameraBuffer)
 	, m_nextEntityId(1)      // Start entity IDs at 1 (0 reserved for invalid)
 	, m_nextCameraId(1000)   // Start camera IDs at 1000 (separate namespace)
 	, m_nextLightId(10000)   // Start light IDs at 10000 (separate namespace)
@@ -43,6 +54,7 @@ HighLevelEntityAPI::HighLevelEntityAPI(RenderCommandQueue* commandQueue,
 	GUARANTEE_OR_DIE(m_commandQueue != nullptr, "HighLevelEntityAPI: RenderCommandQueue is nullptr!");
 	GUARANTEE_OR_DIE(m_scriptSubsystem != nullptr, "HighLevelEntityAPI: ScriptSubsystem is nullptr!");
 	GUARANTEE_OR_DIE(m_renderer != nullptr, "HighLevelEntityAPI: Renderer is nullptr!");
+	GUARANTEE_OR_DIE(m_cameraBuffer != nullptr, "HighLevelEntityAPI: CameraStateBuffer is nullptr!");
 
 	DebuggerPrintf("HighLevelEntityAPI: Initialized (Phase 2)\n");
 }
@@ -207,52 +219,52 @@ void HighLevelEntityAPI::DestroyEntity(EntityID entityId)
 //----------------------------------------------------------------------------------------------------
 
 CallbackID HighLevelEntityAPI::CreateCamera(Vec3 const& position,
-                                            Vec3 const& lookAt,
+                                            EulerAngles const& orientation,
                                             std::string const& type,
                                             ScriptCallback const& callback)
 {
 	// Generate unique camera ID
-	EntityID cameraId = GenerateCameraID();
+	EntityID cameraId = this->GenerateCameraID();
 
 	// Generate unique callback ID
-	CallbackID callbackId = GenerateCallbackID();
+	CallbackID callbackId = this->GenerateCallbackID();
 
 	// Store callback
 	PendingCallback pendingCallback;
 	pendingCallback.callback = callback;
 	pendingCallback.resultId = cameraId;
 	pendingCallback.ready = false;  // Will be set to true by NotifyCallbackReady()
-	m_pendingCallbacks[callbackId] = pendingCallback;
+	this->m_pendingCallbacks[callbackId] = pendingCallback;
 
 	// Create camera creation command
 	CameraCreationData cameraData;
 	cameraData.position = position;
-	cameraData.lookAt = lookAt;
+	cameraData.orientation = orientation;
 	cameraData.type = type;
 
 	RenderCommand command(RenderCommandType::CREATE_CAMERA, cameraId, cameraData);
 
 	// Submit command to queue
-	bool submitted = SubmitCommand(command);
+	bool submitted = this->SubmitCommand(command);
 	if (!submitted)
 	{
 		// Queue full - log error and mark callback as ready with invalid ID
 		DebuggerPrintf("HighLevelEntityAPI::CreateCamera - Queue full! Dropping camera creation for camera %llu\n",
 		               cameraId);
-		m_pendingCallbacks[callbackId].ready = true;
-		m_pendingCallbacks[callbackId].resultId = 0;  // 0 = creation failed
+		this->m_pendingCallbacks[callbackId].ready = true;
+		this->m_pendingCallbacks[callbackId].resultId = 0;  // 0 = creation failed
 	}
 	else
 	{
 		// Success - mark callback as ready immediately (simplified Phase 2 approach)
-		m_pendingCallbacks[callbackId].ready = true;
+		this->m_pendingCallbacks[callbackId].ready = true;
 	}
 
 	return callbackId;
 }
 
 //----------------------------------------------------------------------------------------------------
-void HighLevelEntityAPI::MoveCamera(EntityID cameraId, Vec3 const& position)
+void HighLevelEntityAPI::UpdateCameraPosition(EntityID cameraId, Vec3 const& position)
 {
 	// Create camera update command
 	CameraUpdateData updateData;
@@ -261,10 +273,10 @@ void HighLevelEntityAPI::MoveCamera(EntityID cameraId, Vec3 const& position)
 
 	RenderCommand command(RenderCommandType::UPDATE_CAMERA, cameraId, updateData);
 
-	bool submitted = SubmitCommand(command);
+	bool submitted = this->SubmitCommand(command);
 	if (!submitted)
 	{
-		DebuggerPrintf("HighLevelEntityAPI::MoveCamera - Queue full! Dropping camera move for camera %llu\n",
+		DebuggerPrintf("HighLevelEntityAPI::UpdateCameraPosition - Queue full! Dropping camera move for camera %llu\n",
 		               cameraId);
 	}
 }
@@ -273,7 +285,7 @@ void HighLevelEntityAPI::MoveCamera(EntityID cameraId, Vec3 const& position)
 void HighLevelEntityAPI::MoveCameraBy(EntityID cameraId, Vec3 const& delta)
 {
 	// PHASE 2 SIMPLIFICATION: Delta movement not fully implemented
-	DebuggerPrintf("HighLevelEntityAPI::MoveCameraBy - Not fully implemented in Phase 2! Use MoveCamera instead.\n");
+	DebuggerPrintf("HighLevelEntityAPI::MoveCameraBy - Not fully implemented in Phase 2! Use UpdateCameraPosition instead.\n");
 
 	// Treat delta as absolute position temporarily
 	CameraUpdateData updateData;
@@ -281,7 +293,7 @@ void HighLevelEntityAPI::MoveCameraBy(EntityID cameraId, Vec3 const& delta)
 	updateData.orientation = EulerAngles::ZERO;
 
 	RenderCommand command(RenderCommandType::UPDATE_CAMERA, cameraId, updateData);
-	SubmitCommand(command);
+	this->SubmitCommand(command);
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -298,6 +310,158 @@ void HighLevelEntityAPI::LookAtCamera(EntityID cameraId, Vec3 const& target)
 }
 
 //----------------------------------------------------------------------------------------------------
+void HighLevelEntityAPI::UpdateCameraOrientation(EntityID cameraId, EulerAngles const& orientation)
+{
+	// Create camera update command (fire-and-forget)
+	CameraUpdateData updateData;
+	updateData.position = Vec3::ZERO;  // Keep existing position
+	updateData.orientation = orientation;
+
+	RenderCommand command(RenderCommandType::UPDATE_CAMERA, cameraId, updateData);
+
+	bool submitted = this->SubmitCommand(command);
+	if (!submitted)
+	{
+		DebuggerPrintf("HighLevelEntityAPI::UpdateCameraOrientation - Queue full! Dropping camera orientation update for camera %llu\n",
+		               cameraId);
+	}
+}
+
+//----------------------------------------------------------------------------------------------------
+CallbackID HighLevelEntityAPI::SetActiveCamera(EntityID cameraId, ScriptCallback const& callback)
+{
+	// Generate unique callback ID
+	CallbackID callbackId = this->GenerateCallbackID();
+
+	// Store callback
+	PendingCallback pendingCallback;
+	pendingCallback.callback = callback;
+	pendingCallback.resultId = cameraId;
+	pendingCallback.ready = false;
+	this->m_pendingCallbacks[callbackId] = pendingCallback;
+
+	// Create set active camera command (uses std::monostate - no payload needed)
+	RenderCommand command(RenderCommandType::SET_ACTIVE_CAMERA, cameraId, std::monostate{});
+
+	// Submit command to queue
+	bool submitted = this->SubmitCommand(command);
+	if (!submitted)
+	{
+		// Queue full - log error and mark callback as ready with failure
+		DebuggerPrintf("HighLevelEntityAPI::SetActiveCamera - Queue full! Dropping set active camera for camera %llu\n",
+		               cameraId);
+		this->m_pendingCallbacks[callbackId].ready = true;
+		this->m_pendingCallbacks[callbackId].resultId = 0;  // 0 = operation failed
+	}
+	else
+	{
+		// Success - mark callback as ready immediately (simplified Phase 2 approach)
+		this->m_pendingCallbacks[callbackId].ready = true;
+	}
+
+	return callbackId;
+}
+
+//----------------------------------------------------------------------------------------------------
+CallbackID HighLevelEntityAPI::UpdateCameraType(EntityID cameraId, std::string const& type, ScriptCallback const& callback)
+{
+	// Generate unique callback ID
+	CallbackID callbackId = this->GenerateCallbackID();
+
+	// Store callback
+	PendingCallback pendingCallback;
+	pendingCallback.callback = callback;
+	pendingCallback.resultId = cameraId;
+	pendingCallback.ready = false;
+	this->m_pendingCallbacks[callbackId] = pendingCallback;
+
+	// Create camera type update command
+	CameraTypeUpdateData typeUpdateData;
+	typeUpdateData.type = type;
+
+	RenderCommand command(RenderCommandType::UPDATE_CAMERA_TYPE, cameraId, typeUpdateData);
+
+	// Submit command to queue
+	bool submitted = this->SubmitCommand(command);
+	if (!submitted)
+	{
+		// Queue full - log error and mark callback as ready with failure
+		DebuggerPrintf("HighLevelEntityAPI::UpdateCameraType - Queue full! Dropping camera type update for camera %llu\n",
+		               cameraId);
+		this->m_pendingCallbacks[callbackId].ready = true;
+		this->m_pendingCallbacks[callbackId].resultId = 0;  // 0 = operation failed
+	}
+	else
+	{
+		// Success - mark callback as ready immediately (simplified Phase 2 approach)
+		this->m_pendingCallbacks[callbackId].ready = true;
+	}
+
+	return callbackId;
+}
+
+//----------------------------------------------------------------------------------------------------
+CallbackID HighLevelEntityAPI::DestroyCamera(EntityID cameraId, ScriptCallback const& callback)
+{
+	// Generate unique callback ID
+	CallbackID callbackId = this->GenerateCallbackID();
+
+	// Store callback
+	PendingCallback pendingCallback;
+	pendingCallback.callback = callback;
+	pendingCallback.resultId = cameraId;
+	pendingCallback.ready = false;
+	this->m_pendingCallbacks[callbackId] = pendingCallback;
+
+	// Create destroy camera command (uses std::monostate - no payload needed)
+	RenderCommand command(RenderCommandType::DESTROY_CAMERA, cameraId, std::monostate{});
+
+	// Submit command to queue
+	bool submitted = this->SubmitCommand(command);
+	if (!submitted)
+	{
+		// Queue full - log error and mark callback as ready with failure
+		DebuggerPrintf("HighLevelEntityAPI::DestroyCamera - Queue full! Dropping camera destruction for camera %llu\n",
+		               cameraId);
+		this->m_pendingCallbacks[callbackId].ready = true;
+		this->m_pendingCallbacks[callbackId].resultId = 0;  // 0 = operation failed
+	}
+	else
+	{
+		// Success - mark callback as ready immediately (simplified Phase 2 approach)
+		this->m_pendingCallbacks[callbackId].ready = true;
+	}
+
+	return callbackId;
+}
+
+//----------------------------------------------------------------------------------------------------
+uintptr_t HighLevelEntityAPI::GetCameraHandle(EntityID cameraId) const
+{
+	// Look up camera by ID from CameraStateBuffer
+	// Returns camera pointer as uintptr_t for JavaScript (cast back to pointer in C++)
+	// Returns 0 if camera not found
+
+	if (!m_cameraBuffer)
+	{
+		DebuggerPrintf("HighLevelEntityAPI::GetCameraHandle - CameraStateBuffer is null!\n");
+		return 0;
+	}
+
+	// Get camera from front buffer (rendering thread-safe)
+	Camera const* camera = m_cameraBuffer->GetCameraById(cameraId);
+	if (!camera)
+	{
+		DebuggerPrintf("HighLevelEntityAPI::GetCameraHandle - Camera %llu not found\n", cameraId);
+		return 0;
+	}
+
+	// Return camera pointer as uintptr_t
+	// Note: Pointer valid until next SwapBuffers() call (typically one frame)
+	return reinterpret_cast<uintptr_t>(camera);
+}
+
+//----------------------------------------------------------------------------------------------------
 // Light API Implementation (Phase 2b - Deferred)
 //----------------------------------------------------------------------------------------------------
 
@@ -306,20 +470,35 @@ CallbackID HighLevelEntityAPI::CreateLight(Vec3 const& position,
                                            float intensity,
                                            ScriptCallback const& callback)
 {
-	DebuggerPrintf("HighLevelEntityAPI::CreateLight - Light API deferred to Phase 2b\n");
+	// Suppress unreferenced parameter warnings for Phase 2c stub
+	(void)position;
+	(void)color;
+	(void)intensity;
+	(void)callback;
+
+	DebuggerPrintf("HighLevelEntityAPI::CreateLight - Light API deferred to Phase 2c\n");
 	return 0;  // Invalid callback ID
 }
 
 //----------------------------------------------------------------------------------------------------
 void HighLevelEntityAPI::UpdateLight(EntityID lightId, Vec3 const& position, Rgba8 const& color, float intensity)
 {
-	DebuggerPrintf("HighLevelEntityAPI::UpdateLight - Light API deferred to Phase 2b\n");
+	// Suppress unreferenced parameter warnings for Phase 2c stub
+	(void)lightId;
+	(void)position;
+	(void)color;
+	(void)intensity;
+
+	DebuggerPrintf("HighLevelEntityAPI::UpdateLight - Light API deferred to Phase 2c\n");
 }
 
 //----------------------------------------------------------------------------------------------------
 void HighLevelEntityAPI::DestroyLight(EntityID lightId)
 {
-	DebuggerPrintf("HighLevelEntityAPI::DestroyLight - Light API deferred to Phase 2b\n");
+	// Suppress unreferenced parameter warnings for Phase 2c stub
+	(void)lightId;
+
+	DebuggerPrintf("HighLevelEntityAPI::DestroyLight - Light API deferred to Phase 2c\n");
 }
 
 //----------------------------------------------------------------------------------------------------

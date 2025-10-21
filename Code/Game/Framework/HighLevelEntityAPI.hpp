@@ -60,6 +60,7 @@
 class RenderCommandQueue;
 class ScriptSubsystem;
 class Renderer;
+class CameraStateBuffer;
 
 //----------------------------------------------------------------------------------------------------
 // CallbackID Type Definition
@@ -126,7 +127,8 @@ public:
 	//------------------------------------------------------------------------------------------------
 	explicit HighLevelEntityAPI(RenderCommandQueue* commandQueue,
 	                             ScriptSubsystem* scriptSubsystem,
-	                             Renderer* renderer);
+	                             Renderer* renderer,
+	                             CameraStateBuffer* cameraBuffer);
 	~HighLevelEntityAPI();
 
 	// Non-copyable (manages callback state)
@@ -168,30 +170,57 @@ public:
 	void DestroyEntity(EntityID entityId);
 
 	//------------------------------------------------------------------------------------------------
-	// Camera API (4 methods)
+	// Camera API (Phase 2b: 8 methods)
 	//------------------------------------------------------------------------------------------------
 
-	// Create a camera (async, returns cameraId via callback)
+	// Create camera with specified properties (async, returns cameraId via callback)
 	// Parameters:
-	//   - position: {x, y, z} world-space position
-	//   - lookAt: {x, y, z} target position to look at
-	//   - type: "world" or "screen" (for overlay cameras)
+	//   - position: {x, y, z} world-space position (X-forward, Y-left, Z-up)
+	//   - orientation: {yaw, pitch, roll} in degrees
+	//   - type: "world" (3D perspective) or "screen" (2D orthographic)
 	//   - callback: JavaScript function (cameraId) => {...}
 	// Returns: CallbackID (for internal tracking)
+	// FOV, aspect ratio, near/far planes auto-configured based on type
 	CallbackID CreateCamera(Vec3 const& position,
-	                        Vec3 const& lookAt,
+	                        EulerAngles const& orientation,
 	                        std::string const& type,
 	                        ScriptCallback const& callback);
 
-	// Move camera to absolute position (world-space)
-	void MoveCamera(EntityID cameraId, Vec3 const& position);
+	// Update camera position (absolute world-space, fire-and-forget)
+	// No callback - command queued and processed asynchronously
+	void UpdateCameraPosition(EntityID cameraId, Vec3 const& position);
 
-	// Move camera by delta (relative movement)
+	// Update camera orientation (absolute yaw/pitch/roll, fire-and-forget)
+	// No callback - command queued and processed asynchronously
+	void UpdateCameraOrientation(EntityID cameraId, EulerAngles const& orientation);
+
+	// Move camera by delta (relative movement, fire-and-forget)
 	// Delta convention: +X = forward, +Y = left, +Z = up
+	// No callback - command queued and processed asynchronously
 	void MoveCameraBy(EntityID cameraId, Vec3 const& delta);
 
-	// Point camera at target position
+	// Point camera at target position (calculates orientation, fire-and-forget)
+	// Target: world-space position to look at
+	// No callback - command queued and processed asynchronously
 	void LookAtCamera(EntityID cameraId, Vec3 const& target);
+
+	// Set active camera (async with callback - rendering switches immediately)
+	// Callback notifies JavaScript when camera switch is confirmed
+	CallbackID SetActiveCamera(EntityID cameraId, ScriptCallback const& callback);
+
+	// Update camera type (async with callback - requires reconfiguring FOV/etc)
+	// Type: "world" (3D perspective) or "screen" (2D orthographic)
+	// Callback notifies when reconfiguration is complete
+	CallbackID UpdateCameraType(EntityID cameraId, std::string const& type, ScriptCallback const& callback);
+
+	// Destroy camera (async with callback)
+	CallbackID DestroyCamera(EntityID cameraId, ScriptCallback const& callback);
+
+	// Get camera pointer by ID (for debug rendering)
+	// Returns: Camera pointer as uintptr_t (to pass to JavaScript as number)
+	// Returns 0 if camera not found
+	// Note: Pointer valid until next SwapBuffers() call
+	uintptr_t GetCameraHandle(EntityID cameraId) const;
 
 	//------------------------------------------------------------------------------------------------
 	// Light API (3 methods - Phase 2b, deferred)
@@ -232,6 +261,7 @@ private:
 	RenderCommandQueue* m_commandQueue;     // Queue for submitting render commands
 	ScriptSubsystem*    m_scriptSubsystem;  // Script subsystem for callback execution
 	Renderer*           m_renderer;         // Renderer for geometry creation
+	CameraStateBuffer*  m_cameraBuffer;     // Camera state buffer for camera lookups
 
 	// Entity ID generation
 	EntityID m_nextEntityId;   // Auto-incremented entity ID counter

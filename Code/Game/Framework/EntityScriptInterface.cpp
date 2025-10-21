@@ -40,10 +40,15 @@ void EntityScriptInterface::InitializeMethodRegistry()
 	m_methodRegistry["destroy"]             = [this](ScriptArgs const& args) { return ExecuteDestroyEntity(args); };
 
 	// Camera management methods
-	m_methodRegistry["createCamera"]        = [this](ScriptArgs const& args) { return ExecuteCreateCamera(args); };
-	m_methodRegistry["moveCamera"]          = [this](ScriptArgs const& args) { return ExecuteMoveCamera(args); };
-	m_methodRegistry["moveCameraBy"]        = [this](ScriptArgs const& args) { return ExecuteMoveCameraBy(args); };
-	m_methodRegistry["lookAtCamera"]        = [this](ScriptArgs const& args) { return ExecuteLookAtCamera(args); };
+	m_methodRegistry["createCamera"]             = [this](ScriptArgs const& args) { return ExecuteCreateCamera(args); };
+	m_methodRegistry["updateCameraPosition"]     = [this](ScriptArgs const& args) { return ExecuteUpdateCameraPosition(args); };
+	m_methodRegistry["updateCameraOrientation"]  = [this](ScriptArgs const& args) { return ExecuteUpdateCameraOrientation(args); };
+	m_methodRegistry["moveCameraBy"]             = [this](ScriptArgs const& args) { return ExecuteMoveCameraBy(args); };
+	m_methodRegistry["lookAtCamera"]             = [this](ScriptArgs const& args) { return ExecuteLookAtCamera(args); };
+	m_methodRegistry["setActiveCamera"]          = [this](ScriptArgs const& args) { return ExecuteSetActiveCamera(args); };
+	m_methodRegistry["updateCameraType"]         = [this](ScriptArgs const& args) { return ExecuteUpdateCameraType(args); };
+	m_methodRegistry["destroyCamera"]            = [this](ScriptArgs const& args) { return ExecuteDestroyCamera(args); };
+	m_methodRegistry["getCameraHandle"]          = [this](ScriptArgs const& args) { return ExecuteGetCameraHandle(args); };
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -94,20 +99,40 @@ std::vector<ScriptMethodInfo> EntityScriptInterface::GetAvailableMethods() const
 		// Camera management
 		ScriptMethodInfo("createCamera",
 		                 "Create a camera (async with callback)",
-		                 {"object properties", "function callback"},
+		                 {"number posX", "number posY", "number posZ", "number yaw", "number pitch", "number roll", "string type", "function callback"},
 		                 "number callbackId"),
-		ScriptMethodInfo("moveCamera",
-		                 "Move camera to absolute position",
-		                 {"number cameraId", "object position"},
+		ScriptMethodInfo("updateCameraPosition",
+		                 "Move camera to absolute position (flattened API)",
+		                 {"number cameraId", "number posX", "number posY", "number posZ"},
+		                 "void"),
+		ScriptMethodInfo("updateCameraOrientation",
+		                 "Update camera rotation (absolute, flattened API)",
+		                 {"number cameraId", "number yaw", "number pitch", "number roll"},
 		                 "void"),
 		ScriptMethodInfo("moveCameraBy",
-		                 "Move camera by delta (relative)",
-		                 {"number cameraId", "object delta"},
+		                 "Move camera by delta (relative, flattened API)",
+		                 {"number cameraId", "number dx", "number dy", "number dz"},
 		                 "void"),
 		ScriptMethodInfo("lookAtCamera",
-		                 "Point camera at target position",
-		                 {"number cameraId", "object target"},
-		                 "void")
+		                 "Point camera at target position (flattened API)",
+		                 {"number cameraId", "number targetX", "number targetY", "number targetZ"},
+		                 "void"),
+		ScriptMethodInfo("setActiveCamera",
+		                 "Set active camera for rendering (async with callback)",
+		                 {"number cameraId", "function callback"},
+		                 "number callbackId"),
+		ScriptMethodInfo("updateCameraType",
+		                 "Change camera type (async with callback)",
+		                 {"number cameraId", "string type", "function callback"},
+		                 "number callbackId"),
+		ScriptMethodInfo("destroyCamera",
+		                 "Destroy camera (async with callback)",
+		                 {"number cameraId", "function callback"},
+		                 "number callbackId"),
+		ScriptMethodInfo("getCameraHandle",
+		                 "Get camera pointer by ID (for debug rendering)",
+		                 {"number cameraId"},
+		                 "number cameraHandle")
 	};
 }
 
@@ -412,50 +437,42 @@ ScriptMethodResult EntityScriptInterface::ExecuteDestroyEntity(ScriptArgs const&
 
 ScriptMethodResult EntityScriptInterface::ExecuteCreateCamera(ScriptArgs const& args)
 {
-	// Validate argument count
-	if (args.size() != 2)
+	// FLATTENED API: V8 binding cannot handle nested objects
+	// Signature: createCamera(posX, posY, posZ, yaw, pitch, roll, type, callback)
+	// Total: 8 arguments (6 doubles + 1 string + 1 function)
+	if (args.size() != 8)
 	{
-		return ScriptMethodResult::Error("createCamera: Expected 2 arguments (properties, callback), got " +
+		return ScriptMethodResult::Error("createCamera: Expected 8 arguments (posX, posY, posZ, yaw, pitch, roll, type, callback), got " +
 		                                  std::to_string(args.size()));
 	}
 
 	try
 	{
-		// Extract properties object
-		// Expected: {position: {x, y, z}, lookAt: {x, y, z}, type: string}
-		auto propertiesMap = std::any_cast<std::unordered_map<std::string, std::any>>(args[0]);
+		// Extract position components (3 doubles)
+		double posX = std::any_cast<double>(args[0]);
+		double posY = std::any_cast<double>(args[1]);
+		double posZ = std::any_cast<double>(args[2]);
+		Vec3 position(static_cast<float>(posX), static_cast<float>(posY), static_cast<float>(posZ));
 
-		// Extract position
-		auto positionOpt = ExtractVec3(propertiesMap["position"]);
-		if (!positionOpt.has_value())
-		{
-			return ScriptMethodResult::Error("createCamera: Invalid or missing 'position' in properties");
-		}
+		// Extract orientation components (3 doubles)
+		double yaw = std::any_cast<double>(args[3]);
+		double pitch = std::any_cast<double>(args[4]);
+		double roll = std::any_cast<double>(args[5]);
+		EulerAngles orientation(static_cast<float>(yaw), static_cast<float>(pitch), static_cast<float>(roll));
 
-		// Extract lookAt
-		auto lookAtOpt = ExtractVec3(propertiesMap["lookAt"]);
-		if (!lookAtOpt.has_value())
-		{
-			return ScriptMethodResult::Error("createCamera: Invalid or missing 'lookAt' in properties");
-		}
+		// Extract type (string)
+		std::string type = std::any_cast<std::string>(args[6]);
 
-		// Extract type
-		std::string type = "world";  // Default
-		if (propertiesMap.find("type") != propertiesMap.end())
-		{
-			type = std::any_cast<std::string>(propertiesMap["type"]);
-		}
-
-		// Extract callback
-		auto callbackOpt = ExtractCallback(args[1]);
+		// Extract callback (function)
+		auto callbackOpt = ExtractCallback(args[7]);
 		if (!callbackOpt.has_value())
 		{
 			return ScriptMethodResult::Error("createCamera: Invalid callback function");
 		}
 
 		// Call HighLevelEntityAPI
-		CallbackID callbackId = m_entityAPI->CreateCamera(positionOpt.value(),
-		                                                   lookAtOpt.value(),
+		CallbackID callbackId = m_entityAPI->CreateCamera(position,
+		                                                   orientation,
 		                                                   type,
 		                                                   callbackOpt.value());
 
@@ -471,12 +488,14 @@ ScriptMethodResult EntityScriptInterface::ExecuteCreateCamera(ScriptArgs const& 
 }
 
 //----------------------------------------------------------------------------------------------------
-ScriptMethodResult EntityScriptInterface::ExecuteMoveCamera(ScriptArgs const& args)
+ScriptMethodResult EntityScriptInterface::ExecuteUpdateCameraPosition(ScriptArgs const& args)
 {
+	// FLATTENED API: V8 cannot handle nested objects, expect individual primitive arguments
+	// Signature: updateCameraPosition(cameraId, posX, posY, posZ)
 	// Validate argument count
-	if (args.size() != 2)
+	if (args.size() != 4)
 	{
-		return ScriptMethodResult::Error("moveCamera: Expected 2 arguments (cameraId, position), got " +
+		return ScriptMethodResult::Error("updateCameraPosition: Expected 4 arguments (cameraId, posX, posY, posZ), got " +
 		                                  std::to_string(args.size()));
 	}
 
@@ -486,34 +505,38 @@ ScriptMethodResult EntityScriptInterface::ExecuteMoveCamera(ScriptArgs const& ar
 		auto cameraIdOpt = ExtractEntityID(args[0]);
 		if (!cameraIdOpt.has_value())
 		{
-			return ScriptMethodResult::Error("moveCamera: Invalid cameraId");
+			return ScriptMethodResult::Error("updateCameraPosition: Invalid cameraId");
 		}
 
-		// Extract position
-		auto positionOpt = ExtractVec3(args[1]);
-		if (!positionOpt.has_value())
-		{
-			return ScriptMethodResult::Error("moveCamera: Invalid position object");
-		}
+		// Extract position components (flattened - doubles from JavaScript)
+		double posX = std::any_cast<double>(args[1]);
+		double posY = std::any_cast<double>(args[2]);
+		double posZ = std::any_cast<double>(args[3]);
+
+		Vec3 position(static_cast<float>(posX),
+		              static_cast<float>(posY),
+		              static_cast<float>(posZ));
 
 		// Call HighLevelEntityAPI
-		m_entityAPI->MoveCamera(cameraIdOpt.value(), positionOpt.value());
+		m_entityAPI->UpdateCameraPosition(cameraIdOpt.value(), position);
 
 		return ScriptMethodResult::Success();
 	}
 	catch (std::bad_any_cast const& e)
 	{
-		return ScriptMethodResult::Error("moveCamera: Type conversion error - " + std::string(e.what()));
+		return ScriptMethodResult::Error("updateCameraPosition: Type conversion error - " + std::string(e.what()));
 	}
 }
 
 //----------------------------------------------------------------------------------------------------
 ScriptMethodResult EntityScriptInterface::ExecuteMoveCameraBy(ScriptArgs const& args)
 {
+	// FLATTENED API: V8 cannot handle nested objects, expect individual primitive arguments
+	// Signature: moveCameraBy(cameraId, dx, dy, dz)
 	// Validate argument count
-	if (args.size() != 2)
+	if (args.size() != 4)
 	{
-		return ScriptMethodResult::Error("moveCameraBy: Expected 2 arguments (cameraId, delta), got " +
+		return ScriptMethodResult::Error("moveCameraBy: Expected 4 arguments (cameraId, dx, dy, dz), got " +
 		                                  std::to_string(args.size()));
 	}
 
@@ -526,15 +549,17 @@ ScriptMethodResult EntityScriptInterface::ExecuteMoveCameraBy(ScriptArgs const& 
 			return ScriptMethodResult::Error("moveCameraBy: Invalid cameraId");
 		}
 
-		// Extract delta
-		auto deltaOpt = ExtractVec3(args[1]);
-		if (!deltaOpt.has_value())
-		{
-			return ScriptMethodResult::Error("moveCameraBy: Invalid delta object");
-		}
+		// Extract delta components (flattened - doubles from JavaScript)
+		double dx = std::any_cast<double>(args[1]);
+		double dy = std::any_cast<double>(args[2]);
+		double dz = std::any_cast<double>(args[3]);
+
+		Vec3 delta(static_cast<float>(dx),
+		           static_cast<float>(dy),
+		           static_cast<float>(dz));
 
 		// Call HighLevelEntityAPI
-		m_entityAPI->MoveCameraBy(cameraIdOpt.value(), deltaOpt.value());
+		m_entityAPI->MoveCameraBy(cameraIdOpt.value(), delta);
 
 		return ScriptMethodResult::Success();
 	}
@@ -547,10 +572,12 @@ ScriptMethodResult EntityScriptInterface::ExecuteMoveCameraBy(ScriptArgs const& 
 //----------------------------------------------------------------------------------------------------
 ScriptMethodResult EntityScriptInterface::ExecuteLookAtCamera(ScriptArgs const& args)
 {
+	// FLATTENED API: V8 cannot handle nested objects, expect individual primitive arguments
+	// Signature: lookAtCamera(cameraId, targetX, targetY, targetZ)
 	// Validate argument count
-	if (args.size() != 2)
+	if (args.size() != 4)
 	{
-		return ScriptMethodResult::Error("lookAtCamera: Expected 2 arguments (cameraId, target), got " +
+		return ScriptMethodResult::Error("lookAtCamera: Expected 4 arguments (cameraId, targetX, targetY, targetZ), got " +
 		                                  std::to_string(args.size()));
 	}
 
@@ -563,21 +590,216 @@ ScriptMethodResult EntityScriptInterface::ExecuteLookAtCamera(ScriptArgs const& 
 			return ScriptMethodResult::Error("lookAtCamera: Invalid cameraId");
 		}
 
-		// Extract target
-		auto targetOpt = ExtractVec3(args[1]);
-		if (!targetOpt.has_value())
-		{
-			return ScriptMethodResult::Error("lookAtCamera: Invalid target object");
-		}
+		// Extract target components (flattened - doubles from JavaScript)
+		double targetX = std::any_cast<double>(args[1]);
+		double targetY = std::any_cast<double>(args[2]);
+		double targetZ = std::any_cast<double>(args[3]);
+
+		Vec3 target(static_cast<float>(targetX),
+		            static_cast<float>(targetY),
+		            static_cast<float>(targetZ));
 
 		// Call HighLevelEntityAPI
-		m_entityAPI->LookAtCamera(cameraIdOpt.value(), targetOpt.value());
+		m_entityAPI->LookAtCamera(cameraIdOpt.value(), target);
 
 		return ScriptMethodResult::Success();
 	}
 	catch (std::bad_any_cast const& e)
 	{
 		return ScriptMethodResult::Error("lookAtCamera: Type conversion error - " + std::string(e.what()));
+	}
+}
+
+//----------------------------------------------------------------------------------------------------
+ScriptMethodResult EntityScriptInterface::ExecuteUpdateCameraOrientation(ScriptArgs const& args)
+{
+	// FLATTENED API: V8 cannot handle nested objects, expect individual primitive arguments
+	// Signature: updateCameraOrientation(cameraId, yaw, pitch, roll)
+	// Validate argument count
+	if (args.size() != 4)
+	{
+		return ScriptMethodResult::Error("updateCameraOrientation: Expected 4 arguments (cameraId, yaw, pitch, roll), got " +
+		                                  std::to_string(args.size()));
+	}
+
+	try
+	{
+		// Extract camera ID
+		auto cameraIdOpt = ExtractEntityID(args[0]);
+		if (!cameraIdOpt.has_value())
+		{
+			return ScriptMethodResult::Error("updateCameraOrientation: Invalid cameraId");
+		}
+
+		// Extract orientation components (flattened - doubles from JavaScript)
+		double yaw   = std::any_cast<double>(args[1]);
+		double pitch = std::any_cast<double>(args[2]);
+		double roll  = std::any_cast<double>(args[3]);
+
+		EulerAngles orientation(static_cast<float>(yaw),
+		                        static_cast<float>(pitch),
+		                        static_cast<float>(roll));
+
+		// Call HighLevelEntityAPI
+		m_entityAPI->UpdateCameraOrientation(cameraIdOpt.value(), orientation);
+
+		return ScriptMethodResult::Success();
+	}
+	catch (std::bad_any_cast const& e)
+	{
+		return ScriptMethodResult::Error("updateCameraOrientation: Type conversion error - " + std::string(e.what()));
+	}
+}
+
+//----------------------------------------------------------------------------------------------------
+ScriptMethodResult EntityScriptInterface::ExecuteSetActiveCamera(ScriptArgs const& args)
+{
+	// Validate argument count
+	if (args.size() != 2)
+	{
+		return ScriptMethodResult::Error("setActiveCamera: Expected 2 arguments (cameraId, callback), got " +
+		                                  std::to_string(args.size()));
+	}
+
+	try
+	{
+		// Extract camera ID
+		auto cameraIdOpt = ExtractEntityID(args[0]);
+		if (!cameraIdOpt.has_value())
+		{
+			return ScriptMethodResult::Error("setActiveCamera: Invalid cameraId");
+		}
+
+		// Extract callback
+		auto callbackOpt = ExtractCallback(args[1]);
+		if (!callbackOpt.has_value())
+		{
+			return ScriptMethodResult::Error("setActiveCamera: Invalid callback function");
+		}
+
+		// Call HighLevelEntityAPI
+		CallbackID callbackId = m_entityAPI->SetActiveCamera(cameraIdOpt.value(), callbackOpt.value());
+
+		// Return callback ID as double
+		double callbackIdDouble = static_cast<double>(callbackId);
+		return ScriptMethodResult::Success(callbackIdDouble);
+	}
+	catch (std::bad_any_cast const& e)
+	{
+		return ScriptMethodResult::Error("setActiveCamera: Type conversion error - " + std::string(e.what()));
+	}
+}
+
+//----------------------------------------------------------------------------------------------------
+ScriptMethodResult EntityScriptInterface::ExecuteUpdateCameraType(ScriptArgs const& args)
+{
+	// Validate argument count
+	if (args.size() != 3)
+	{
+		return ScriptMethodResult::Error("updateCameraType: Expected 3 arguments (cameraId, type, callback), got " +
+		                                  std::to_string(args.size()));
+	}
+
+	try
+	{
+		// Extract camera ID
+		auto cameraIdOpt = ExtractEntityID(args[0]);
+		if (!cameraIdOpt.has_value())
+		{
+			return ScriptMethodResult::Error("updateCameraType: Invalid cameraId");
+		}
+
+		// Extract type string
+		std::string type = std::any_cast<std::string>(args[1]);
+
+		// Extract callback
+		auto callbackOpt = ExtractCallback(args[2]);
+		if (!callbackOpt.has_value())
+		{
+			return ScriptMethodResult::Error("updateCameraType: Invalid callback function");
+		}
+
+		// Call HighLevelEntityAPI
+		CallbackID callbackId = m_entityAPI->UpdateCameraType(cameraIdOpt.value(), type, callbackOpt.value());
+
+		// Return callback ID as double
+		double callbackIdDouble = static_cast<double>(callbackId);
+		return ScriptMethodResult::Success(callbackIdDouble);
+	}
+	catch (std::bad_any_cast const& e)
+	{
+		return ScriptMethodResult::Error("updateCameraType: Type conversion error - " + std::string(e.what()));
+	}
+}
+
+//----------------------------------------------------------------------------------------------------
+ScriptMethodResult EntityScriptInterface::ExecuteDestroyCamera(ScriptArgs const& args)
+{
+	// Validate argument count
+	if (args.size() != 2)
+	{
+		return ScriptMethodResult::Error("destroyCamera: Expected 2 arguments (cameraId, callback), got " +
+		                                  std::to_string(args.size()));
+	}
+
+	try
+	{
+		// Extract camera ID
+		auto cameraIdOpt = ExtractEntityID(args[0]);
+		if (!cameraIdOpt.has_value())
+		{
+			return ScriptMethodResult::Error("destroyCamera: Invalid cameraId");
+		}
+
+		// Extract callback
+		auto callbackOpt = ExtractCallback(args[1]);
+		if (!callbackOpt.has_value())
+		{
+			return ScriptMethodResult::Error("destroyCamera: Invalid callback function");
+		}
+
+		// Call HighLevelEntityAPI
+		CallbackID callbackId = m_entityAPI->DestroyCamera(cameraIdOpt.value(), callbackOpt.value());
+
+		// Return callback ID as double
+		double callbackIdDouble = static_cast<double>(callbackId);
+		return ScriptMethodResult::Success(callbackIdDouble);
+	}
+	catch (std::bad_any_cast const& e)
+	{
+		return ScriptMethodResult::Error("destroyCamera: Type conversion error - " + std::string(e.what()));
+	}
+}
+
+//----------------------------------------------------------------------------------------------------
+ScriptMethodResult EntityScriptInterface::ExecuteGetCameraHandle(ScriptArgs const& args)
+{
+	// Validate argument count
+	if (args.size() != 1)
+	{
+		return ScriptMethodResult::Error("getCameraHandle: Expected 1 argument (cameraId), got " +
+		                                  std::to_string(args.size()));
+	}
+
+	try
+	{
+		// Extract camera ID
+		auto cameraIdOpt = ExtractEntityID(args[0]);
+		if (!cameraIdOpt.has_value())
+		{
+			return ScriptMethodResult::Error("getCameraHandle: Invalid cameraId");
+		}
+
+		// Call HighLevelEntityAPI to get camera handle
+		uintptr_t cameraHandle = m_entityAPI->GetCameraHandle(cameraIdOpt.value());
+
+		// Return camera handle as double (JavaScript number type)
+		double cameraHandleDouble = static_cast<double>(cameraHandle);
+		return ScriptMethodResult::Success(cameraHandleDouble);
+	}
+	catch (std::bad_any_cast const& e)
+	{
+		return ScriptMethodResult::Error("getCameraHandle: Type conversion error - " + std::string(e.what()));
 	}
 }
 

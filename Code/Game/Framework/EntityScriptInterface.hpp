@@ -159,9 +159,12 @@ private:
 	//------------------------------------------------------------------------------------------------
 
 	// Create a camera (async with callback)
-	// JavaScript signature: createCamera(properties, callback)
+	// JavaScript signature: createCamera(posX, posY, posZ, yaw, pitch, roll, type, callback)
+	// FLATTENED API: V8 binding cannot handle nested objects
 	// Parameters:
-	//   - properties: object {position: {x, y, z}, lookAt: {x, y, z}, type: string}
+	//   - posX, posY, posZ: double (camera position)
+	//   - yaw, pitch, roll: double (camera orientation in degrees)
+	//   - type: string ("world" or "screen")
 	//   - callback: function (cameraId) => {...}
 	ScriptMethodResult ExecuteCreateCamera(ScriptArgs const& args);
 
@@ -170,7 +173,7 @@ private:
 	// Parameters:
 	//   - cameraId: number
 	//   - position: object {x, y, z}
-	ScriptMethodResult ExecuteMoveCamera(ScriptArgs const& args);
+	ScriptMethodResult ExecuteUpdateCameraPosition(ScriptArgs const& args);
 
 	// Move camera by delta (relative movement)
 	// JavaScript signature: moveCameraBy(cameraId, delta)
@@ -185,6 +188,42 @@ private:
 	//   - cameraId: number
 	//   - target: object {x, y, z}
 	ScriptMethodResult ExecuteLookAtCamera(ScriptArgs const& args);
+
+	// Update camera orientation (absolute rotation)
+	// JavaScript signature: updateCameraOrientation(cameraId, orientation)
+	// Parameters:
+	//   - cameraId: number
+	//   - orientation: object {yaw, pitch, roll}
+	ScriptMethodResult ExecuteUpdateCameraOrientation(ScriptArgs const& args);
+
+	// Set active camera for rendering (async with callback)
+	// JavaScript signature: setActiveCamera(cameraId, callback)
+	// Parameters:
+	//   - cameraId: number
+	//   - callback: function
+	ScriptMethodResult ExecuteSetActiveCamera(ScriptArgs const& args);
+
+	// Update camera type (async with callback)
+	// JavaScript signature: updateCameraType(cameraId, type, callback)
+	// Parameters:
+	//   - cameraId: number
+	//   - type: string ("world" or "screen")
+	//   - callback: function
+	ScriptMethodResult ExecuteUpdateCameraType(ScriptArgs const& args);
+
+	// Destroy camera (async with callback)
+	// JavaScript signature: destroyCamera(cameraId, callback)
+	// Parameters:
+	//   - cameraId: number
+	//   - callback: function
+	ScriptMethodResult ExecuteDestroyCamera(ScriptArgs const& args);
+
+	// Get camera handle by ID (for debug rendering)
+	// JavaScript signature: getCameraHandle(cameraId)
+	// Parameters:
+	//   - cameraId: number
+	// Returns: Camera pointer as number (uintptr_t), or 0 if not found
+	ScriptMethodResult ExecuteGetCameraHandle(ScriptArgs const& args);
 
 	//------------------------------------------------------------------------------------------------
 	// Helper Methods
