@@ -11,7 +11,7 @@ export const GameControlTools = [
     {
         name: "spawn_cube",
         description: "Create a new cube at specified position with optional color",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 position: {
@@ -49,7 +49,7 @@ export const GameControlTools = [
     {
         name: "move_cube",
         description: "Move an existing cube to a new position",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 entityId: {
@@ -71,7 +71,7 @@ export const GameControlTools = [
     {
         name: "get_game_state",
         description: "Query current game state (minimal information)",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {},
             description: "No parameters required"
@@ -80,7 +80,7 @@ export const GameControlTools = [
     {
         name: "remove_cube",
         description: "Remove a cube from the game",
-        parameters: {
+        inputSchema: {
             type: "object",
             properties: {
                 entityId: {

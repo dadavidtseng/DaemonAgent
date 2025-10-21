@@ -131,7 +131,7 @@ export class InputSystem extends Subsystem
                 const tools = [{
                     name: 'test_heartbeat',
                     description: 'Test tool for heartbeat monitoring',
-                    parameters: { type: 'object', properties: {} }
+                    inputSchema: { type: 'object', properties: {} }
                 }];
 
                 kadi.registerTools(JSON.stringify(tools));
