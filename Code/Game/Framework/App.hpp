@@ -12,7 +12,8 @@
 
 //-Forward-Declaration--------------------------------------------------------------------------------
 class AudioScriptInterface;
-class CameraScriptInterface;
+// Phase 2b: CameraScriptInterface removed - replaced by CameraStateBuffer
+// class CameraScriptInterface;
 class Camera;
 class ClockScriptInterface;
 class DebugRenderSystemScriptInterface;
@@ -26,6 +27,7 @@ struct Rgba8;
 // Phase 1: Async Architecture Forward Declarations
 class RenderCommandQueue;
 class EntityStateBuffer;
+class CameraStateBuffer;
 class JSGameLogicJob;
 
 // Phase 2: High-Level Entity API Forward Declarations
@@ -73,7 +75,8 @@ private:
 
     std::shared_ptr<InputScriptInterface>             m_inputScriptInterface;
     std::shared_ptr<AudioScriptInterface>             m_audioScriptInterface;
-    std::shared_ptr<CameraScriptInterface>            m_cameraScriptInterface;
+    // Phase 2b: CameraScriptInterface removed - replaced by CameraStateBuffer
+    // std::shared_ptr<CameraScriptInterface>            m_cameraScriptInterface;
     std::shared_ptr<ClockScriptInterface>             m_clockScriptInterface;
     std::shared_ptr<DebugRenderSystemScriptInterface> m_debugRenderSystemScriptInterface;
     std::shared_ptr<GameScriptInterface>              m_gameScriptInterface;
@@ -84,6 +87,7 @@ private:
     // Phase 1: Async Architecture Infrastructure
     RenderCommandQueue* m_renderCommandQueue;    // Lock-free command queue (JS → C++)
     EntityStateBuffer*  m_entityStateBuffer;     // Double-buffered entity state
+    CameraStateBuffer*  m_cameraStateBuffer;     // Double-buffered camera state (Phase 2b)
     JSGameLogicJob*     m_jsGameLogicJob;        // Worker thread job for JavaScript
     Camera*             m_mainCamera;            // Main perspective camera for rendering entities
 

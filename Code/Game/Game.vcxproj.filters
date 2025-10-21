@@ -26,6 +26,9 @@
     <ClCompile Include="Framework\App.cpp">
       <Filter>Framework</Filter>
     </ClCompile>
+    <ClCompile Include="Framework\CameraStateBuffer.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
     <ClCompile Include="Framework\EntityScriptInterface.cpp">
       <Filter>Framework</Filter>
     </ClCompile>
@@ -59,6 +62,9 @@
       <Filter>Framework</Filter>
     </ClInclude>
     <ClInclude Include="Framework\App.hpp">
+      <Filter>Framework</Filter>
+    </ClInclude>
+    <ClInclude Include="Framework\CameraStateBuffer.hpp">
       <Filter>Framework</Filter>
     </ClInclude>
     <ClInclude Include="Framework\EntityScriptInterface.hpp">

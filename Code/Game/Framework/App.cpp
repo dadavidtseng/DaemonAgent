@@ -28,7 +28,8 @@
 #include "Engine/Input/InputSystem.hpp"
 #include "Engine/Platform/Window.hpp"
 #include "Engine/Renderer/Camera.hpp"
-#include "Engine/Renderer/CameraScriptInterface.hpp"
+// Phase 2b: CameraScriptInterface removed - replaced by CameraStateBuffer
+// #include "Engine/Renderer/CameraScriptInterface.hpp"
 #include "Engine/Renderer/DebugRenderSystem.hpp"
 #include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Resource/ResourceSubsystem.hpp"
@@ -45,6 +46,7 @@
 // Phase 1: Async Architecture Includes
 #include "Engine/Renderer/RenderCommandQueue.hpp"
 #include "Game/Framework/EntityStateBuffer.hpp"
+#include "Game/Framework/CameraStateBuffer.hpp"
 #include "Game/Framework/JSGameLogicJob.hpp"
 
 // Phase 2: High-Level Entity API Includes
@@ -78,6 +80,7 @@ STATIC bool App::m_isQuitting = false;
 App::App()
     : m_renderCommandQueue(nullptr)
     , m_entityStateBuffer(nullptr)
+    , m_cameraStateBuffer(nullptr)
     , m_jsGameLogicJob(nullptr)
     , m_mainCamera(nullptr)
     , m_highLevelEntityAPI(nullptr)
@@ -103,9 +106,10 @@ void App::Startup()
     // Phase 1: Initialize async architecture infrastructure BEFORE game initialization
     m_renderCommandQueue = new RenderCommandQueue();
     m_entityStateBuffer  = new EntityStateBuffer();
+    m_cameraStateBuffer  = new CameraStateBuffer();
 
     // Phase 2: Initialize high-level entity API (requires RenderCommandQueue)
-    m_highLevelEntityAPI = new HighLevelEntityAPI(m_renderCommandQueue, g_scriptSubsystem, g_renderer);
+    m_highLevelEntityAPI = new HighLevelEntityAPI(m_renderCommandQueue, g_scriptSubsystem, g_renderer, m_cameraStateBuffer);
     DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - HighLevelEntityAPI initialized (Phase 2)");
 
     // Phase 3: Initialize main camera for rendering entities
@@ -235,6 +239,12 @@ void App::Shutdown()
         m_entityStateBuffer = nullptr;
     }
 
+    if (m_cameraStateBuffer)
+    {
+        delete m_cameraStateBuffer;
+        m_cameraStateBuffer = nullptr;
+    }
+
     if (m_renderCommandQueue)
     {
         delete m_renderCommandQueue;
@@ -320,6 +330,12 @@ void App::Update()
         if (m_entityStateBuffer)
         {
             m_entityStateBuffer->SwapBuffers();
+        }
+
+        // Swap camera state buffers (copy back buffer → front buffer)
+        if (m_cameraStateBuffer)
+        {
+            m_cameraStateBuffer->SwapBuffers();
         }
 
         // Trigger next JavaScript frame on worker thread
@@ -494,8 +510,9 @@ void App::SetupScriptingBindings()
     m_audioScriptInterface = std::make_shared<AudioScriptInterface>(g_audio);
     g_scriptSubsystem->RegisterScriptableObject("audio", m_audioScriptInterface);
 
-    m_cameraScriptInterface = std::make_shared<CameraScriptInterface>();
-    g_scriptSubsystem->RegisterScriptableObject("cameraInterface", m_cameraScriptInterface);
+    // Phase 2b: CameraScriptInterface removed - replaced by CameraStateBuffer
+    // m_cameraScriptInterface = std::make_shared<CameraScriptInterface>();
+    // g_scriptSubsystem->RegisterScriptableObject("cameraInterface", m_cameraScriptInterface);
 
     // Phase 2: RendererScriptInterface removed - replaced by EntityScriptInterface
     // m_rendererScriptInterface = std::make_shared<RendererScriptInterface>(g_renderer);
@@ -548,7 +565,7 @@ void App::SetupScriptingBindings()
 //----------------------------------------------------------------------------------------------------
 void App::ProcessRenderCommands()
 {
-    if (!m_renderCommandQueue || !m_entityStateBuffer || !m_highLevelEntityAPI)
+    if (!m_renderCommandQueue || !m_entityStateBuffer || !m_cameraStateBuffer || !m_highLevelEntityAPI)
     {
         return;
     }
@@ -618,6 +635,117 @@ void App::ProcessRenderCommands()
                 break;
             }
 
+            case RenderCommandType::CREATE_CAMERA:
+            {
+                auto const& cameraData = std::get<CameraCreationData>(cmd.data);
+                DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_CAMERA: cameraId=%llu, pos=(%.1f,%.1f,%.1f), type=%s\n",
+                               cmd.entityId, cameraData.position.x, cameraData.position.y, cameraData.position.z, cameraData.type.c_str());
+
+                CameraState state;
+                state.position = cameraData.position;
+                state.orientation = cameraData.orientation;
+                state.type = cameraData.type;
+                state.isActive = true;
+
+                // Auto-configure camera mode based on type
+                if (cameraData.type == "world")
+                {
+                    state.mode = Camera::eMode_Perspective;
+                    state.perspectiveFOV = 60.0f;
+                    state.perspectiveAspect = 16.0f / 9.0f;
+                    state.perspectiveNear = 0.1f;
+                    state.perspectiveFar = 100.0f;
+                }
+                else if (cameraData.type == "screen")
+                {
+                    state.mode = Camera::eMode_Orthographic;
+                    state.orthoLeft = 0.0f;
+                    state.orthoBottom = 0.0f;
+                    state.orthoRight = 1920.0f;
+                    state.orthoTop = 1080.0f;
+                    state.orthoNear = 0.0f;
+                    state.orthoFar = 1.0f;
+                }
+
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                (*backBuffer)[cmd.entityId] = state;
+
+                DebuggerPrintf("[TRACE] ProcessRenderCommands - Camera %llu added to back buffer\n", cmd.entityId);
+                break;
+            }
+
+            case RenderCommandType::UPDATE_CAMERA:
+            {
+                auto const& updateData = std::get<CameraUpdateData>(cmd.data);
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto it = backBuffer->find(cmd.entityId);
+
+                if (it != backBuffer->end())
+                {
+                    // Update camera position and orientation
+                    // UpdateCameraPosition and UpdateCameraOrientation send separate commands
+                    // so we update both fields from the command data
+                    it->second.position = updateData.position;
+                    it->second.orientation = updateData.orientation;
+                    DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA: cameraId=%llu updated\n", cmd.entityId);
+                }
+                break;
+            }
+
+            case RenderCommandType::SET_ACTIVE_CAMERA:
+            {
+                m_cameraStateBuffer->SetActiveCameraID(cmd.entityId);
+                DebuggerPrintf("[TRACE] ProcessRenderCommands - SET_ACTIVE_CAMERA: cameraId=%llu\n", cmd.entityId);
+                break;
+            }
+
+            case RenderCommandType::UPDATE_CAMERA_TYPE:
+            {
+                auto const& typeData = std::get<CameraTypeUpdateData>(cmd.data);
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto it = backBuffer->find(cmd.entityId);
+
+                if (it != backBuffer->end())
+                {
+                    it->second.type = typeData.type;
+
+                    // Reconfigure camera based on new type
+                    if (typeData.type == "world")
+                    {
+                        it->second.mode = Camera::eMode_Perspective;
+                        it->second.perspectiveFOV = 60.0f;
+                        it->second.perspectiveAspect = 16.0f / 9.0f;
+                        it->second.perspectiveNear = 0.1f;
+                        it->second.perspectiveFar = 100.0f;
+                    }
+                    else if (typeData.type == "screen")
+                    {
+                        it->second.mode = Camera::eMode_Orthographic;
+                        it->second.orthoLeft = 0.0f;
+                        it->second.orthoBottom = 0.0f;
+                        it->second.orthoRight = 1920.0f;
+                        it->second.orthoTop = 1080.0f;
+                        it->second.orthoNear = 0.0f;
+                        it->second.orthoFar = 1.0f;
+                    }
+                    DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA_TYPE: cameraId=%llu, type=%s\n",
+                                   cmd.entityId, typeData.type.c_str());
+                }
+                break;
+            }
+
+            case RenderCommandType::DESTROY_CAMERA:
+            {
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto it = backBuffer->find(cmd.entityId);
+                if (it != backBuffer->end())
+                {
+                    it->second.isActive = false;
+                    DebuggerPrintf("[TRACE] ProcessRenderCommands - DESTROY_CAMERA: cameraId=%llu\n", cmd.entityId);
+                }
+                break;
+            }
+
             default:
                 break;
         }
@@ -657,21 +785,26 @@ void App::RenderEntities() const
     //========================================
     // BLOCK 1: World Camera (3D Entities)
     //========================================
-    // Phase 2: Entity-based camera selection - render entities tagged with "world" camera type
+    // Phase 2b: NEW Camera System - Use CameraStateBuffer for active camera lookup
 
-    Camera* worldCamera = m_cameraScriptInterface->GetCameraByRole("world");
-    if (!worldCamera)
+    Camera const* worldCamera = nullptr;
+    if (m_cameraStateBuffer)
     {
-        // Fallback to active world camera (backward compatibility)
-        worldCamera = m_cameraScriptInterface->GetActiveWorldCameraPtr();
+        // Get active camera from NEW camera system
+        EntityID activeCameraId = m_cameraStateBuffer->GetActiveCameraID();
+        if (activeCameraId != 0)
+        {
+            worldCamera = m_cameraStateBuffer->GetCameraById(activeCameraId);
+        }
     }
+
     if (!worldCamera)
     {
-        // Final fallback to m_mainCamera
+        // Fallback to m_mainCamera if no active camera set
         worldCamera = m_mainCamera;
         if (s_frameCount % 300 == 0) // Log warning every 5 seconds
         {
-            DebuggerPrintf("[WARNING] RenderEntities - No world camera set, using fallback m_mainCamera\n");
+            DebuggerPrintf("[WARNING] RenderEntities - No active camera set in CameraStateBuffer, using fallback m_mainCamera\n");
         }
     }
 
@@ -718,8 +851,11 @@ void App::RenderEntities() const
     //========================================
     // BLOCK 2: Screen Camera (2D UI/Attract Mode)
     //========================================
-    // Phase 2: Render entities tagged with "screen" camera type (2D UI, attract mode)
+    // Phase 2b: Screen camera rendering temporarily disabled during NEW camera system migration
+    // TODO: Implement multi-camera support or separate screen camera ID in CameraStateBuffer
 
+    /*
+    // OLD camera system code - commented out during Phase 2b migration
     Camera* screenCamera = m_cameraScriptInterface->GetCameraByRole("screen");
     if (screenCamera)
     {
@@ -766,6 +902,7 @@ void App::RenderEntities() const
             DebuggerPrintf("[TRACE] RenderEntities - Rendered %d screen entities this frame\n", screenRenderedCount);
         }
     }
+    */
 
     // Log world render count periodically
     if (s_frameCount % 60 == 0 && worldRenderedCount > 0)

@@ -308,6 +308,7 @@
     <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
     <ItemGroup>
         <ClCompile Include="Framework\App.cpp"/>
+        <ClCompile Include="Framework\CameraStateBuffer.cpp"/>
         <ClCompile Include="Framework\EntityScriptInterface.cpp"/>
         <ClCompile Include="Framework\EntityStateBuffer.cpp"/>
         <ClCompile Include="Framework\GameCommon.cpp"/>
@@ -323,6 +324,7 @@
     <ItemGroup>
         <ClInclude Include="EngineBuildPreferences.hpp"/>
         <ClInclude Include="Framework\App.hpp"/>
+        <ClInclude Include="Framework\CameraStateBuffer.hpp"/>
         <ClInclude Include="Framework\EntityScriptInterface.hpp"/>
         <ClInclude Include="Framework\EntityStateBuffer.hpp"/>
         <ClInclude Include="Framework\GameCommon.hpp"/>
