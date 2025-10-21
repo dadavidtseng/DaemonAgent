@@ -1,6 +1,11 @@
 //----------------------------------------------------------------------------------------------------
 // FlyingMovementComponent.js
 // Flying camera movement (migrated from PlayerEntity.js)
+//
+// COORDINATE SYSTEM: X-forward, Y-left, Z-up (right-handed)
+// - X-axis: Forward direction (positive X is forward)
+// - Y-axis: Left direction (positive Y is left, negative Y is right)
+// - Z-axis: Up direction (positive Z is up, negative Z is down)
 //----------------------------------------------------------------------------------------------------
 
 import {Component} from '../../core/Component.js';
@@ -18,6 +23,11 @@ import {InputInterface} from '../../interfaces/InputInterface.js';
  * - SHIFT: 10x speed boost
  * - Q/E: Roll left/right
  * - Mouse: Look around (yaw/pitch)
+ *
+ * Coordinate System Note:
+ * - This component uses X-forward, Y-left, Z-up coordinate system
+ * - Vector calculations are adjusted for this unusual coordinate system
+ * - Do not replace with standard game engine vector math!
  *
  * Requires:
  * - InputComponent attached to GameObject (reads input state)
@@ -91,6 +101,36 @@ export class FlyingMovementComponent extends Component
 
         // Handle input and calculate velocity
         this.handleInput(deltaSeconds);
+
+        // Diagnostic logging (occasional)
+        if (!this.frameCount) this.frameCount = 0;
+        this.frameCount++;
+
+        if (this.frameCount % 60 === 0)
+        {
+            const anyInputActive = this.inputComponent.upIsDown || this.inputComponent.downIsDown ||
+                                   this.inputComponent.leftIsDown || this.inputComponent.rightIsDown ||
+                                   this.inputComponent.zIsDown || this.inputComponent.cIsDown;
+
+            if (anyInputActive)
+            {
+                console.log('=== MOVEMENT DIAGNOSTIC ===');
+                console.log('Input State:', {
+                    W: this.inputComponent.upIsDown,
+                    S: this.inputComponent.downIsDown,
+                    A: this.inputComponent.leftIsDown,
+                    D: this.inputComponent.rightIsDown,
+                    Z: this.inputComponent.zIsDown,
+                    C: this.inputComponent.cIsDown
+                });
+                const forward = this.getForwardVector();
+                const left = this.getLeftVector();
+                console.log('Forward Vector:', JSON.stringify(forward));
+                console.log('Left Vector:', JSON.stringify(left));
+                console.log('Calculated Velocity:', JSON.stringify(this.velocity));
+                console.log('DeltaSeconds:', deltaSeconds);
+            }
+        }
 
         // Update position
         this.gameObject.position.x += this.velocity.x * deltaSeconds;
@@ -203,7 +243,12 @@ export class FlyingMovementComponent extends Component
     }
 
     /**
-     * Get forward vector from orientation (from EntityBase)
+     * Get forward vector from orientation
+     * Coordinate System: X-forward, Y-left, Z-up (right-handed)
+     *
+     * When yaw=0°, pitch=0°: forward = (1, 0, 0) - pointing along +X axis
+     * Yaw rotates around Z-axis (affects X and Y components)
+     * Pitch rotates around Y-axis (affects X and Z components)
      */
     getForwardVector()
     {
@@ -211,23 +256,29 @@ export class FlyingMovementComponent extends Component
         const pitchRad = this.gameObject.orientation.pitch * (Math.PI / 180.0);
 
         return {
-            x: Math.cos(yawRad) * Math.cos(pitchRad),
-            y: Math.sin(yawRad) * Math.cos(pitchRad),
-            z: Math.sin(pitchRad)
+            x: Math.cos(yawRad) * Math.cos(pitchRad),   // X is forward
+            y: -Math.sin(yawRad) * Math.cos(pitchRad),  // Y is left (negative for right-handed)
+            z: Math.sin(pitchRad)                       // Z is up
         };
     }
 
     /**
-     * Get left vector from orientation (from EntityBase)
+     * Get left vector from orientation
+     * Coordinate System: X-forward, Y-left, Z-up (right-handed)
+     *
+     * When yaw=0°: left = (0, 1, 0) - pointing along +Y axis
+     * Left vector is perpendicular to forward in the XY plane
+     * Yaw rotates around Z-axis (affects X and Y components)
+     * No Z component (left is always horizontal)
      */
     getLeftVector()
     {
         const yawRad = this.gameObject.orientation.yaw * (Math.PI / 180.0);
 
         return {
-            x: Math.cos(yawRad + Math.PI / 2.0),
-            y: Math.sin(yawRad + Math.PI / 2.0),
-            z: 0.0
+            x: -Math.sin(yawRad),  // X component for left (perpendicular to forward)
+            y: Math.cos(yawRad),   // Y component for left
+            z: 0.0                 // Left is horizontal (no Z component)
         };
     }
 

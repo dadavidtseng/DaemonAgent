@@ -66,6 +66,10 @@ export class KeyboardInputComponent extends InputComponent
             return;
         }
 
+        if(this.inputInterface.isKeyDown(KEYCODE_A))
+        {
+            console.log('KeyboardInputComponent: KeyDown key down');
+        }
         // Left: Arrow Left OR 'A'
         this._left = this.inputInterface.isKeyDown(KEYCODE_LEFT) ||
                      this.inputInterface.isKeyDown(KEYCODE_A);

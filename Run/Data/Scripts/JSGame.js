@@ -5,7 +5,8 @@
 import {CppBridgeSystem} from './components/CppBridgeSystem.js';
 import {InputSystem} from './components/InputSystem.js';
 import {AudioSystem} from './components/AudioSystem.js';
-import {CameraSystem} from './components/CameraSystem.js';
+// Phase 2b: CameraSystem removed - replaced by CameraAPI
+// import {CameraSystem} from './components/CameraSystem.js';
 // Phase 2: RendererSystem removed - replaced by EntityAPI
 // import {RendererSystem} from './components/RendererSystem.js';
 import {DebugRenderSystem} from './components/DebugRenderSystem.js';
@@ -14,6 +15,7 @@ import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon";
 import {Player} from './objects/Player.js';
 import {Prop} from './objects/Prop.js';
 import {hotReloadRegistry} from './core/HotReloadRegistry.js';
+import {CameraAPI} from './interfaces/CameraAPI.js';  // Phase 2b: Screen camera creation
 
 // import {NewFeatureSystem} from './components/NewFeatureSystem.js';
 
@@ -88,7 +90,9 @@ export class JSGame
         // Register all component systems with JSEngine
         this.registerGameSystems();
 
-        this.gameState = GameState.ATTRACT;  // 'ATTRACT', 'GAME', 'PAUSED'
+        // Phase 2 Validation: Start in GAME mode to render entities immediately
+        // (Grid entity won't render in ATTRACT mode due to rendering skip at line 501)
+        this.gameState = GameState.GAME;  // Changed from ATTRACT to GAME
 
         // Create game clock (uses ClockInterface wrapper for C++ clock)
         // Matches C++ Game::Game() which creates: m_gameClock = new Clock(Clock::GetSystemClock())
@@ -124,8 +128,8 @@ export class JSGame
         // Core C++ bridge (priority: 0)
         this.cppBridge = new CppBridgeSystem(this.engine);
 
-        // Camera system (priority: 3) - Initialize camera interface early
-        this.cameraSystem = new CameraSystem();
+        // Phase 2b: CameraSystem removed - camera management now via CameraAPI
+        // this.cameraSystem = new CameraSystem();
 
         // Audio system (priority: 5) - must create before InputSystem
         this.audioSystem = new AudioSystem();
@@ -145,14 +149,29 @@ export class JSGame
 
         console.log('JSGame: KADIGameControl subsystem created successfully');
 
-        // Create screen-space camera for UI/debug rendering
-        this.screenCamera = cameraInterface.createCamera();
-        cameraInterface.setOrthographicView(this.screenCamera, 0.0, 0.0, 1920.0, 1080.0);
-        cameraInterface.setNormalizedViewport(this.screenCamera, 0.0, 0.0, 1.0, 1.0);
+        // Phase 2b: Create screen-space camera for UI/debug rendering using CameraAPI
+        this.screenCamera = null;  // Will be set in async callback
+        this.cameraAPI = new CameraAPI();
 
-        // Phase 2: Set camera role for entity-based rendering
-        console.log('JSGame: Setting screenCamera role to "screen"...');
-        cameraInterface.setCameraRole(this.screenCamera, "screen");
+        console.log('JSGame: Creating screen camera (Phase 2b CameraAPI)...');
+        this.cameraAPI.createCamera(
+            [0, 0, 0],  // position (not used for screen cameras)
+            [0, 0, 0],  // orientation (not used for screen cameras)
+            'screen',   // type: orthographic 2D camera for UI
+            (cameraId) => {
+                if (cameraId === 0) {
+                    console.error('JSGame: ERROR - Screen camera creation failed!');
+                    return;
+                }
+
+                this.screenCamera = cameraId;
+                console.log('JSGame: Screen camera created with ID:', cameraId);
+
+                // Note: Phase 2b CameraAPI auto-configures orthographic view for 'screen' type
+                // No need for manual setOrthographicView/setNormalizedViewport calls
+                console.log('JSGame: Screen camera ready (auto-configured for UI rendering)');
+            }
+        );
 
         // === Phase 4: Game entities (matching C++ architecture) ===
         // PlayerEntity (like C++ Player* m_player)
@@ -392,7 +411,8 @@ export class JSGame
 
         // Register subsystems using Subsystem pattern (null, componentInstance)
         this.engine.registerSystem(null, this.cppBridge);       // Priority: 0
-        this.engine.registerSystem(null, this.cameraSystem);    // Priority: 3
+        // Phase 2b: CameraSystem removed - camera management now via CameraAPI
+        // this.engine.registerSystem(null, this.cameraSystem);    // Priority: 3
         this.engine.registerSystem(null, this.audioSystem);     // Priority: 5
         this.engine.registerSystem(null, this.inputSystem);     // Priority: 10
         this.engine.registerSystem(null, this.kadiGameControl);  // Priority: 11

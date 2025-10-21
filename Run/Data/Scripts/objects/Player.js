@@ -43,7 +43,7 @@ export class Player extends GameObject
         console.log('Player: Constructing Player GameObject');
 
         // Set initial position and orientation (matches PlayerEntity.js)
-        this.position = {x: -2.0, y: 0.0, z: 1.0};
+        this.position = {x: 0.0, y: -5.0, z: 2.0};
         this.orientation = {yaw: 0.0, pitch: 0.0, roll: 0.0};
 
         // Component composition
@@ -83,9 +83,12 @@ export class Player extends GameObject
         if (this.logTimer >= this.logInterval)
         {
             const inputState = this.keyboardInput.getInputState();
+            console.log('=== PLAYER DIAGNOSTIC ===');
             console.log('Player GameObject: Active, input:', inputState);
-            console.log('Player GameObject: Position:', this.position);
-            console.log('Player GameObject: Orientation:', this.orientation);
+            console.log('Player Position:', JSON.stringify(this.position));
+            console.log('Player Orientation:', JSON.stringify(this.orientation));
+            console.log('Camera ID:', this.camera.cameraId);
+            console.log('Camera Ready:', this.camera.cameraReady);
             this.logTimer = 0;
         }
     }

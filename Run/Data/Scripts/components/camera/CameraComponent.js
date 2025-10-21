@@ -1,183 +1,215 @@
 //----------------------------------------------------------------------------------------------------
 // CameraComponent.js
-// Camera management (migrated from PlayerEntity.js)
+// Camera management using Phase 2b CameraAPI (High-Level Camera Interface)
 //----------------------------------------------------------------------------------------------------
 
 import {Component} from '../../core/Component.js';
-import {CameraInterface} from '../../interfaces/CameraInterface.js';
+import {CameraAPI} from '../../interfaces/CameraAPI.js';
 
 /**
- * CameraComponent - Manages world camera lifecycle and configuration
+ * CameraComponent - Manages world camera lifecycle using Phase 2b CameraAPI
  *
- * Migrated from PlayerEntity.js initializeCamera() and updateCameraTransform() methods.
- * Handles camera creation, configuration, and per-frame position/orientation updates.
+ * Phase 2b Migration: Replaced legacy CameraInterface with new CameraAPI
+ * - Uses async callback pattern for camera creation
+ * - Integrates with CameraStateBuffer double-buffering
+ * - Simplified API with position/orientation updates
  *
  * Features:
- * - Creates C++ world camera via cameraInterface.createCamera()
- * - Configures perspective view, viewport, and camera-to-render transform
- * - Updates camera position/orientation every frame from GameObject transform
- * - Provides getCamera() for rendering system access
- * - Destroys camera on component destruction
+ * - Creates world camera via CameraAPI.createCamera() (async)
+ * - Activates camera via CameraAPI.setActive() (async)
+ * - Updates camera position/orientation every frame (fire-and-forget)
+ * - Destroys camera on component destruction (async)
  *
  * Requires:
  * - GameObject with position {x, y, z} and orientation {yaw, pitch, roll} properties
- * - CameraInterface (wrapper for C++ cameraInterface bridge)
+ * - CameraAPI (Phase 2b wrapper for C++ HighLevelEntityAPI)
  *
  * Usage:
  * ```javascript
  * const camera = new CameraComponent();
  * player.addComponent(camera);
- * const worldCamera = camera.getCamera(); // For rendering
+ * const cameraId = camera.getCameraId(); // Camera ID from Phase 2b API
  * ```
  */
 export class CameraComponent extends Component
 {
-    static version = 2;  // Hot-reload version tracking (incremented after adding setCameraRole)
+    static version = 3;  // Hot-reload version tracking (incremented for Phase 2b migration)
 
     constructor()
     {
         super('camera');
 
-        this.worldCamera = null;
+        this.cameraId = null;           // Phase 2b: Camera ID instead of camera handle
+        this.cameraReady = false;       // Flag to indicate camera creation completed
         this.cameraUpdateCount = 0;
-        this.cameraInterface = new CameraInterface();
+        this.cameraAPI = new CameraAPI();  // Phase 2b: New high-level API
 
-        console.log('CameraComponent: Created');
+        console.log('CameraComponent: Created (Phase 2b - using CameraAPI)');
     }
 
     /**
      * Initialize component (called when attached to GameObject)
-     * Creates and configures the world camera
+     * Creates and configures the world camera using Phase 2b API
      * @param {GameObject} gameObject
      */
     initialize(gameObject)
     {
         super.initialize(gameObject);
 
-        // Ensure cameraInterface is available
-        if (!this.cameraInterface.isAvailable())
+        // Ensure CameraAPI is available
+        if (!this.cameraAPI.isAvailable())
         {
-            console.error('CameraComponent: CameraInterface not available!');
+            console.error('CameraComponent: CameraAPI not available!');
             return;
         }
 
-        // Create camera through CameraScriptInterface
-        console.log('CameraComponent: Creating world camera...');
-        try
-        {
-            this.worldCamera = this.cameraInterface.createCamera();
-            console.log('CameraComponent: World camera created:', this.worldCamera);
-        }
-        catch (error)
-        {
-            console.error('CameraComponent: ERROR creating camera:', error);
-            throw error;
-        }
-
-        // Configure camera (matches PlayerEntity.js lines 66-82)
-        this.configureCamera();
-
-        // Set initial position and orientation
-        this.updateCameraTransform();
-
-        // Mark this camera as the active world camera for 3D rendering (Phase 2)
-        console.log('CameraComponent: Setting as active world camera...');
-        this.cameraInterface.setActiveWorldCamera(this.worldCamera);
-
-        // Phase 2: Set camera role for entity-based rendering
-        console.log('CameraComponent: Setting camera role to "world"...');
-        this.cameraInterface.setCameraRole(this.worldCamera, "world");
-
-        console.log('CameraComponent: Initialized successfully');
-    }
-
-    /**
-     * Configure camera perspective and transform (from PlayerEntity)
-     */
-    configureCamera()
-    {
-        // SetPerspectiveGraphicView(aspect=2.0, fov=60.0, near=0.1, far=100.0)
-        console.log('CameraComponent: Setting perspective view (aspect=2.0, fov=60.0, near=0.1, far=100.0)');
-        this.cameraInterface.setPerspectiveView(this.worldCamera, 2.0, 60.0, 0.1, 100.0);
-
-        // SetNormalizedViewport(0, 0, 1, 1)
-        console.log('CameraComponent: Setting normalized viewport (0, 0, 1, 1)');
-        this.cameraInterface.setNormalizedViewport(this.worldCamera, 0.0, 0.0, 1.0, 1.0);
-
-        // SetCameraToRenderTransform (custom matrix matching C++ Player.cpp)
-        const c2r = [
-            0.0, 0.0, 1.0, 0.0,  // Ix=0, Iy=0, Iz=1
-            -1.0, 0.0, 0.0, 0.0, // Jx=-1, Jy=0, Jz=0
-            0.0, 1.0, 0.0, 0.0,  // Kx=0, Ky=1, Kz=0
-            0.0, 0.0, 0.0, 1.0   // Tx=0, Ty=0, Tz=0, Tw=1
+        // Get initial position and orientation from GameObject
+        const position = [
+            gameObject.position.x,
+            gameObject.position.y,
+            gameObject.position.z
         ];
-        console.log('CameraComponent: Setting camera-to-render transform matrix');
-        this.cameraInterface.setCameraToRenderTransform(this.worldCamera, ...c2r);
+
+        const orientation = [
+            gameObject.orientation.yaw,
+            gameObject.orientation.pitch,
+            gameObject.orientation.roll
+        ];
+
+        // Phase 2b: Create camera with async callback
+        console.log('CameraComponent: Creating world camera (Phase 2b API)...');
+        console.log('  position:', position);
+        console.log('  orientation:', orientation);
+        console.log('  type: world');
+
+        this.cameraAPI.createCamera(position, orientation, 'world', (cameraId) => {
+            if (cameraId === 0) {
+                console.error('CameraComponent: ERROR - Camera creation failed!');
+                return;
+            }
+
+            this.cameraId = cameraId;
+            console.log('CameraComponent: World camera created with ID:', cameraId);
+
+            // Activate this camera for rendering
+            console.log('CameraComponent: Setting camera as active...');
+            this.cameraAPI.setActive(cameraId, (result) => {
+                if (result === 0) {
+                    console.error('CameraComponent: ERROR - Failed to set camera active!');
+                    return;
+                }
+
+                this.cameraReady = true;
+                console.log('CameraComponent: Camera activated successfully');
+            });
+        });
+
+        console.log('CameraComponent: Camera creation initiated (async)');
     }
 
     /**
      * Update camera transform every frame
+     * Uses fire-and-forget updates for position and orientation
      * @param {number} deltaTime - Time since last frame in milliseconds
      */
     update(deltaTime)
     {
-        if (!this.gameObject || !this.worldCamera)
+        if (!this.gameObject || !this.cameraReady || this.cameraId === null)
         {
             return;
         }
 
-        // Update camera position/orientation from GameObject transform
+        // Update camera position and orientation from GameObject transform
         this.updateCameraTransform();
     }
 
     /**
-     * Update C++ camera position and orientation (from PlayerEntity)
+     * Update C++ camera position and orientation using Phase 2b API
+     * Phase 2b: Uses fire-and-forget updatePosition() and updateOrientation()
      */
     updateCameraTransform()
     {
-        if (!this.worldCamera || !this.gameObject)
+        if (!this.cameraId || !this.gameObject)
         {
             return;
         }
 
         // Log camera updates occasionally (every 60 frames) to avoid spam
         this.cameraUpdateCount++;
-        if (this.cameraUpdateCount % 60 === 0)
+        const shouldLog = (this.cameraUpdateCount % 60 === 0);
+
+        if (shouldLog)
         {
-            console.log(`CameraComponent: Update Camera Transform (frame ${this.cameraUpdateCount})`);
-            console.log('  position:', JSON.stringify(this.gameObject.position));
-            console.log('  orientation:', JSON.stringify(this.gameObject.orientation));
+            console.log('=== CAMERA DIAGNOSTIC ===');
+            console.log(`Camera ID: ${this.cameraId}`);
+            console.log('Camera Position (from GameObject):', JSON.stringify(this.gameObject.position));
+            console.log('Camera Orientation (from GameObject):', JSON.stringify(this.gameObject.orientation));
         }
 
-        this.cameraInterface.setCameraPositionAndOrientation(
-            this.worldCamera,
+        // Phase 2b: Fire-and-forget position update
+        const position = [
             this.gameObject.position.x,
             this.gameObject.position.y,
-            this.gameObject.position.z,
+            this.gameObject.position.z
+        ];
+        this.cameraAPI.updatePosition(this.cameraId, position);
+
+        // Phase 2b: Fire-and-forget orientation update
+        const orientation = [
             this.gameObject.orientation.yaw,
             this.gameObject.orientation.pitch,
             this.gameObject.orientation.roll
-        );
+        ];
+        this.cameraAPI.updateOrientation(this.cameraId, orientation);
     }
 
     /**
-     * Get camera handle for rendering
+     * Get camera ID for rendering (Phase 2b)
+     * @returns {number|null} Camera ID or null if not created yet
+     */
+    getCameraId()
+    {
+        return this.cameraId;
+    }
+
+    /**
+     * Legacy method for compatibility (returns camera ID)
+     * @deprecated Use getCameraId() instead
      */
     getCamera()
     {
-        return this.worldCamera;
+        return this.cameraId;
     }
 
     /**
-     * Cleanup - Destroy camera when component is destroyed
+     * Check if camera is ready for use
+     * @returns {boolean} True if camera created and activated
+     */
+    isCameraReady()
+    {
+        return this.cameraReady && this.cameraId !== null;
+    }
+
+    /**
+     * Cleanup - Destroy camera when component is destroyed (Phase 2b async)
      */
     destroy()
     {
-        if (this.worldCamera)
+        if (this.cameraId !== null)
         {
-            console.log('CameraComponent: Destroying world camera');
-            this.cameraInterface.destroyCamera(this.worldCamera);
-            this.worldCamera = null;
+            console.log('CameraComponent: Destroying camera ID:', this.cameraId);
+
+            // Phase 2b: Async destroy with callback
+            this.cameraAPI.destroy(this.cameraId, (result) => {
+                if (result === 0) {
+                    console.error('CameraComponent: ERROR - Camera destruction failed!');
+                } else {
+                    console.log('CameraComponent: Camera destroyed successfully');
+                }
+            });
+
+            this.cameraId = null;
+            this.cameraReady = false;
         }
 
         super.destroy();
@@ -190,8 +222,10 @@ export class CameraComponent extends Component
     {
         return {
             ...super.getStatus(),
-            hasCamera: this.worldCamera !== null,
-            cameraUpdateCount: this.cameraUpdateCount
+            cameraId: this.cameraId,
+            cameraReady: this.cameraReady,
+            cameraUpdateCount: this.cameraUpdateCount,
+            apiAvailable: this.cameraAPI.isAvailable()
         };
     }
 }
@@ -202,4 +236,4 @@ export default CameraComponent;
 // Export to globalThis for hot-reload detection
 globalThis.CameraComponent = CameraComponent;
 
-console.log('CameraComponent: Loaded (Phase 2 - Camera System)');
+console.log('CameraComponent: Loaded (Phase 2b - CameraAPI Migration)');
