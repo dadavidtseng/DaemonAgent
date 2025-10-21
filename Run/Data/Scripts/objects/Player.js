@@ -83,9 +83,9 @@ export class Player extends GameObject
         if (this.logTimer >= this.logInterval)
         {
             const inputState = this.keyboardInput.getInputState();
-            console.log('Player GameObject: Active, input:', inputState);
-            console.log('Player GameObject: Position:', this.position);
-            console.log('Player GameObject: Orientation:', this.orientation);
+            // console.log('Player GameObject: Active, input:', inputState);
+            // console.log('Player GameObject: Position:', this.position);
+            // console.log('Player GameObject: Orientation:', this.orientation);
             this.logTimer = 0;
         }
     }
