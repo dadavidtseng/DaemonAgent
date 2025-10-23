@@ -18,6 +18,9 @@ public:
     void UpdateJS();
     void RenderJS();
 
+    // Game state queries
+    bool IsAttractMode() const;
+
     // JavaScript callback functions
     void ExecuteJavaScriptCommand(String const& command);
     void ExecuteJavaScriptFile(String const& filename);

@@ -5,14 +5,17 @@
 import {CppBridgeSystem} from './components/CppBridgeSystem.js';
 import {InputSystem} from './components/InputSystem.js';
 import {AudioSystem} from './components/AudioSystem.js';
-import {CameraSystem} from './components/CameraSystem.js';
-import {RendererSystem} from './components/RendererSystem.js';
+// Phase 2b: CameraSystem removed - replaced by CameraAPI
+// import {CameraSystem} from './components/CameraSystem.js';
+// Phase 2: RendererSystem removed - replaced by EntityAPI
+// import {RendererSystem} from './components/RendererSystem.js';
 import {DebugRenderSystem} from './components/DebugRenderSystem.js';
 import {KADIGameControl} from './kadi/KADIGameControl.js';
 import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon";
 import {Player} from './objects/Player.js';
 import {Prop} from './objects/Prop.js';
 import {hotReloadRegistry} from './core/HotReloadRegistry.js';
+import {CameraAPI} from './interfaces/CameraAPI.js';  // Phase 2b: Screen camera creation
 
 // import {NewFeatureSystem} from './components/NewFeatureSystem.js';
 
@@ -21,6 +24,26 @@ export const GameState = Object.freeze({
     GAME: 'GAME',
     PAUSED: 'PAUSED'
 });
+
+// Vec2 constants (matching C++ Vec2 constants)
+const Vec2 = {
+    ZERO: {x: 0, y: 0},
+    ONE: {x: 1, y: 1}
+};
+
+// Vec3 basis constants (matching C++ Vec3 basis vectors)
+const Vec3 = {
+    X_BASIS: {x: 1, y: 0, z: 0},
+    Y_BASIS: {x: 0, y: 1, z: 0},
+    Z_BASIS: {x: 0, y: 0, z: 1}
+};
+
+// Rgba8 color constants (matching C++ Rgba8 colors)
+const Rgba8 = {
+    RED: {r: 255, g: 0, b: 0, a: 255},
+    GREEN: {r: 0, g: 255, b: 0, a: 255},
+    BLUE: {r: 0, g: 0, b: 255, a: 255}
+};
 
 /**
  * Create a 4x4 transformation matrix from I, J, K basis vectors and translation T
@@ -87,7 +110,9 @@ export class JSGame
         // Register all component systems with JSEngine
         this.registerGameSystems();
 
-        this.gameState = GameState.ATTRACT;  // 'ATTRACT', 'GAME', 'PAUSED'
+        // Default game state: Start in ATTRACT mode
+        // Press SPACE to transition to GAME mode
+        this.gameState = GameState.ATTRACT;
 
         // Create game clock (uses ClockInterface wrapper for C++ clock)
         // Matches C++ Game::Game() which creates: m_gameClock = new Clock(Clock::GetSystemClock())
@@ -97,7 +122,7 @@ export class JSGame
             console.log('JSGame: Game clock created successfully');
         } catch (error)
         {
-            console.error('JSGame: Clock creation failed:', error);
+            console.log('JSGame: ERROR - Clock creation failed:', error);
         }
 
         // === Debug Visualization Setup (migrated from C++ Game constructor) ===
@@ -123,8 +148,8 @@ export class JSGame
         // Core C++ bridge (priority: 0)
         this.cppBridge = new CppBridgeSystem(this.engine);
 
-        // Camera system (priority: 3) - Initialize camera interface early
-        this.cameraSystem = new CameraSystem();
+        // Phase 2b: CameraSystem removed - camera management now via CameraAPI
+        // this.cameraSystem = new CameraSystem();
 
         // Audio system (priority: 5) - must create before InputSystem
         this.audioSystem = new AudioSystem();
@@ -132,8 +157,9 @@ export class JSGame
         // Input system (priority: 10)
         this.inputSystem = new InputSystem();
 
+        // Phase 2: RendererSystem removed - replaced by EntityAPI
         // === Phase 4: Renderer system (priority: 100) - must create BEFORE entities ===
-        this.rendererSystem = new RendererSystem();
+        // this.rendererSystem = new RendererSystem();
 
         // Debug Render system (priority: 95) - debug visualization
         this.debugRenderSystem = new DebugRenderSystem();
@@ -143,10 +169,29 @@ export class JSGame
 
         console.log('JSGame: KADIGameControl subsystem created successfully');
 
-        // Create screen-space camera for UI/debug rendering
-        this.screenCamera = cameraInterface.createCamera();
-        cameraInterface.setOrthographicView(this.screenCamera, 0.0, 0.0, 1920.0, 1080.0);
-        cameraInterface.setNormalizedViewport(this.screenCamera, 0.0, 0.0, 1.0, 1.0);
+        // Phase 2b: Create screen-space camera for UI/debug rendering using CameraAPI
+        this.screenCamera = null;  // Will be set in async callback
+        this.cameraAPI = new CameraAPI();
+
+        console.log('JSGame: Creating screen camera (Phase 2b CameraAPI)...');
+        this.cameraAPI.createCamera(
+            [0, 0, 0],  // position (not used for screen cameras)
+            [0, 0, 0],  // orientation (not used for screen cameras)
+            'screen',   // type: orthographic 2D camera for UI
+            (cameraId) => {
+                if (cameraId === 0) {
+                    console.error('JSGame: ERROR - Screen camera creation failed!');
+                    return;
+                }
+
+                this.screenCamera = cameraId;
+                console.log('JSGame: Screen camera created with ID:', cameraId);
+
+                // Note: Phase 2b CameraAPI auto-configures orthographic view for 'screen' type
+                // No need for manual setOrthographicView/setNormalizedViewport calls
+                console.log('JSGame: Screen camera ready (auto-configured for UI rendering)');
+            }
+        );
 
         // === Phase 4: Game entities (matching C++ architecture) ===
         // PlayerEntity (like C++ Player* m_player)
@@ -157,8 +202,8 @@ export class JSGame
             console.log('JSGame: PlayerEntity created successfully');
         } catch (error)
         {
-            console.error('JSGame: ERROR creating PlayerEntity:', error);
-            console.error('JSGame: Error stack:', error.stack);
+            console.log('JSGame: ERROR creating PlayerEntity:', error);
+            console.log('JSGame: Error stack:', error.stack);
             throw error;
         }
 
@@ -171,8 +216,8 @@ export class JSGame
             console.log('JSGame: Player GameObject created successfully');
         } catch (error)
         {
-            console.error('JSGame: ERROR creating Player GameObject:', error);
-            console.error('JSGame: Error stack:', error.stack);
+            console.log('JSGame: ERROR creating Player GameObject:', error);
+            console.log('JSGame: Error stack:', error.stack);
             throw error;
         }
 
@@ -185,8 +230,8 @@ export class JSGame
             console.log('JSGame: Prop GameObjects created successfully');
         } catch (error)
         {
-            console.error('JSGame: ERROR creating Prop GameObjects:', error);
-            console.error('JSGame: Error stack:', error.stack);
+            console.log('JSGame: ERROR creating Prop GameObjects:', error);
+            console.log('JSGame: Error stack:', error.stack);
             throw error;
         }
 
@@ -204,23 +249,43 @@ export class JSGame
     {
         console.log('JSGame: Creating 4 Prop GameObjects matching C++ Game behavior...');
 
-        // Prop 0: Rotating cube at (2, 2, 0) - pitch+roll += 30°/s
-        const prop0 = new Prop(this.rendererSystem, 'cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll');
-        this.propGameObjects.push(prop0);
+        try {
+            // Prop 0: Rotating cube at (2, 2, 0) - pitch+roll += 30°/s (Phase 2)
+            const prop0 = new Prop('cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll');
+            this.propGameObjects.push(prop0);
+            console.log('JSGame: Prop 0 created successfully');
+        } catch (error) {
+            console.log('JSGame: ERROR creating Prop 0:', error);
+        }
 
-        // Prop 1: Pulsing color cube at (-2, -2, 0) - sin wave color
-        const prop1 = new Prop(this.rendererSystem, 'cube', {x: -2, y: -2, z: 0}, 'pulse-color');
-        this.propGameObjects.push(prop1);
+        try {
+            // Prop 1: Pulsing color cube at (-2, -2, 0) - sin wave color (Phase 2)
+            const prop1 = new Prop('cube', {x: -2, y: -2, z: 0}, 'pulse-color');
+            this.propGameObjects.push(prop1);
+            console.log('JSGame: Prop 1 created successfully');
+        } catch (error) {
+            console.log('JSGame: ERROR creating Prop 1:', error);
+        }
 
-        // Prop 2: Rotating sphere at (10, -5, 1) - yaw += 45°/s
-        const prop2 = new Prop(this.rendererSystem, 'sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw');
-        this.propGameObjects.push(prop2);
+        try {
+            // Prop 2: Rotating sphere at (10, -5, 1) - yaw += 45°/s (Phase 2)
+            const prop2 = new Prop('sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw');
+            this.propGameObjects.push(prop2);
+            console.log('JSGame: Prop 2 created successfully');
+        } catch (error) {
+            console.log('JSGame: ERROR creating Prop 2:', error);
+        }
 
-        // Prop 3: Static grid at (0, 0, 0)
-        const prop3 = new Prop(this.rendererSystem, 'grid', {x: 0, y: 0, z: 0}, 'static');
-        this.propGameObjects.push(prop3);
+        try {
+            // Prop 3: Static grid at (0, 0, 0) (Phase 2)
+            const prop3 = new Prop('grid', {x: 0, y: 0, z: 0}, 'static');
+            this.propGameObjects.push(prop3);
+            console.log('JSGame: Prop 3 created successfully');
+        } catch (error) {
+            console.log('JSGame: ERROR creating Prop 3:', error);
+        }
 
-        console.log(`JSGame: Created ${this.propGameObjects.length} Prop GameObjects`);
+        console.log(`JSGame: Created ${this.propGameObjects.length} Prop GameObjects (Phase 2)`);
     }
 
     /**
@@ -246,25 +311,7 @@ export class JSGame
             this.debugRenderSystem.addWorldBasis(identityMatrix(), -1.0, "USE_DEPTH");
             console.log('JSGame: World basis added successfully');
 
-            // Vec3 basis constants (matching C++ Vec3 basis vectors)
-            const Vec3 = {
-                X_BASIS: {x: 1, y: 0, z: 0},
-                Y_BASIS: {x: 0, y: 1, z: 0},
-                Z_BASIS: {x: 0, y: 0, z: 1}
-            };
-
-            // Vec2 constants (matching C++ Vec2 constants)
-            const Vec2 = {
-                ZERO: {x: 0, y: 0},
-                ONE: {x: 1, y: 1}
-            };
-
-            // Rgba8 color constants (matching C++ Rgba8 colors)
-            const Rgba8 = {
-                RED: {r: 255, g: 0, b: 0, a: 255},
-                GREEN: {r: 0, g: 255, b: 0, a: 255},
-                BLUE: {r: 0, g: 0, b: 255, a: 255}
-            };
+            // Note: Vec2, Vec3, Rgba8 constants now defined at module level (top of file)
 
             // Add "X-Forward" label
             console.log('JSGame: Adding X-Forward label...');
@@ -328,24 +375,15 @@ export class JSGame
 
             // Add screen text
             console.log('JSGame: Adding screen text...');
-            this.debugRenderSystem.addScreenText(
-                "TEST",
-                0,              // x
-                100,            // y
-                20.0,           // size
-                Vec2.ZERO.x,    // alignX
-                Vec2.ZERO.y,    // alignY
-                10.0,           // duration
-                255, 255, 255, 255  // White color (default)
-            );
-            console.log('JSGame: Screen text added successfully');
+            // Removed static "TEST" text - will be added dynamically based on game mode in gameRender()
+            console.log('JSGame: Screen text setup complete (dynamic mode-based text)');
 
             console.log('JSGame: Debug visualization setup complete');
         } catch (error)
         {
-            console.error('JSGame: Error setting up debug visualization:', error);
-            console.error('JSGame: Error message:', error.message);
-            console.error('JSGame: Error stack:', error.stack);
+            console.log('JSGame: ERROR - Error setting up debug visualization:', error);
+            console.log('JSGame: ERROR - Error message:', error.message);
+            console.log('JSGame: ERROR - Error stack:', error.stack);
             // Don't rethrow - allow constructor to complete even if debug viz fails
         }
     }
@@ -366,7 +404,8 @@ export class JSGame
 
         // Register subsystems using Subsystem pattern (null, componentInstance)
         this.engine.registerSystem(null, this.cppBridge);       // Priority: 0
-        this.engine.registerSystem(null, this.cameraSystem);    // Priority: 3
+        // Phase 2b: CameraSystem removed - camera management now via CameraAPI
+        // this.engine.registerSystem(null, this.cameraSystem);    // Priority: 3
         this.engine.registerSystem(null, this.audioSystem);     // Priority: 5
         this.engine.registerSystem(null, this.inputSystem);     // Priority: 10
         this.engine.registerSystem(null, this.kadiGameControl);  // Priority: 11
@@ -402,12 +441,12 @@ export class JSGame
                     // Get updated Prop class from registry
                     const PropClass = hotReloadRegistry.getClass('Prop');
 
-                    // Recreate all prop GameObjects with new class
+                    // Recreate all prop GameObjects with new class (Phase 2: no rendererSystem parameter)
                     this.propGameObjects = [];
-                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll'));
-                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'cube', {x: -2, y: -2, z: 0}, 'pulse-color'));
-                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw'));
-                    this.propGameObjects.push(new PropClass(this.rendererSystem, 'grid', {x: 0, y: 0, z: 0}, 'static'));
+                    this.propGameObjects.push(new PropClass('cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll'));
+                    this.propGameObjects.push(new PropClass('cube', {x: -2, y: -2, z: 0}, 'pulse-color'));
+                    this.propGameObjects.push(new PropClass('sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw'));
+                    this.propGameObjects.push(new PropClass('grid', {x: 0, y: 0, z: 0}, 'static'));
 
                     // Update tracked version
                     this.propVersion = newVersion;
@@ -419,10 +458,20 @@ export class JSGame
                     this.playerGameObject.update(deltaTimeMs);
                 }
 
-                // Update Prop GameObjects (Phase 6: Prop migration)
-                for (const prop of this.propGameObjects)
+                // Update Prop GameObjects (Phase 2: High-level entity API)
+                if (this.propGameObjects && Array.isArray(this.propGameObjects))
                 {
-                    prop.update(deltaTimeMs);
+                    for (const prop of this.propGameObjects)
+                    {
+                        if (prop && typeof prop.update === 'function')
+                        {
+                            prop.update(deltaTimeMs);
+                        }
+                        else if (!prop)
+                        {
+                            console.log('JSGame: ERROR - Prop in propGameObjects array is null/undefined!');
+                        }
+                    }
                 }
 
 
@@ -460,6 +509,40 @@ export class JSGame
             {
                 renderFrameCount++;
 
+                // Add game mode-specific screen text FIRST (before any early returns)
+                // This ensures text is rendered in both ATTRACT and GAME modes
+                if (this.gameState === GameState.ATTRACT)
+                {
+                    // ATTRACT mode: Show "Attract" text
+                    this.debugRenderSystem.addScreenText(
+                        "Attract",
+                        10,             // x (10 pixels from left)
+                        10,             // y (10 pixels from bottom)
+                        30.0,           // size (larger for attract mode)
+                        Vec2.ZERO.x,    // alignX
+                        Vec2.ZERO.y,    // alignY
+                        0,             // duration (-1 = infinite, persists until cleared)
+                        255, 255, 0, 255  // Yellow color
+                    );
+                }
+                else if (this.gameState === GameState.GAME)
+                {
+                    // GAME mode: Show "Game" text
+                    this.debugRenderSystem.addScreenText(
+                        "Game",
+                        10,             // x (10 pixels from left)
+                        10,             // y (10 pixels from bottom)
+                        30.0,           // size
+                        Vec2.ZERO.x,    // alignX
+                        Vec2.ZERO.y,    // alignY
+                        0,             // duration (-1 = infinite, persists until cleared)
+                        0, 255, 0, 255  // Green color
+                    );
+                }
+
+                // Render screen text using screen camera (works in both modes)
+                this.debugRenderSystem.renderScreen(this.screenCamera);
+
                 // Only render JavaScript entities when in GAME mode
                 // (CppBridgeSystem handles ATTRACT mode rendering)
                 if (this.gameState !== GameState.GAME)
@@ -491,27 +574,37 @@ export class JSGame
 
                 if (!camera)
                 {
-                    console.error('JSGame: Player camera not available!');
+                    console.log('JSGame: ERROR - Player camera not available!');
                     return;
                 }
 
                 // Render debug visualization (use same camera as main rendering)
                 this.debugRenderSystem.renderWorld(camera);
-                this.debugRenderSystem.renderScreen(this.screenCamera);
 
-                // Begin camera rendering
-                renderer.beginCamera(camera);
+                // Phase 2: No need for begin/end camera calls - C++ handles rendering automatically
+                // renderer.beginCamera(camera);  // REMOVED - replaced by EntityAPI system
 
 
-                // Render Prop GameObjects (Phase 6: Prop migration)
-                for (const prop of this.propGameObjects)
+                // Render Prop GameObjects (Phase 2: High-level entity API)
+                // JavaScript calls prop.render() but actual rendering happens in C++ via EntityStateBuffer
+                if (this.propGameObjects && Array.isArray(this.propGameObjects))
                 {
-                    prop.render();
+                    for (const prop of this.propGameObjects)
+                    {
+                        if (prop && typeof prop.render === 'function')
+                        {
+                            prop.render();
+                        }
+                        else if (!prop)
+                        {
+                            console.log('JSGame: ERROR - Prop in propGameObjects array is null/undefined during render!');
+                        }
+                    }
                 }
 
 
-                // End camera rendering
-                renderer.endCamera(camera);
+                // Phase 2: No need for end camera call - C++ handles rendering automatically
+                // renderer.endCamera(camera);  // REMOVED - replaced by EntityAPI system
             },
             priority: 90,
             enabled: true,
@@ -521,8 +614,9 @@ export class JSGame
         // === Phase 4: Debug Render system (priority: 95) - debug visualization ===
         this.engine.registerSystem(null, this.debugRenderSystem);  // Priority: 95
 
+        // Phase 2: RendererSystem removed - replaced by EntityAPI
         // === Phase 4: Renderer system (priority: 100) - renders LAST ===
-        this.engine.registerSystem(null, this.rendererSystem);  // Priority: 100
+        // this.engine.registerSystem(null, this.rendererSystem);  // Priority: 100 - REMOVED
         // this.engine.registerSystem(null, this.newFeature);
 
         console.log('(JSGame::registerGameSystems)(end) - All systems registered (Entity-based architecture)');

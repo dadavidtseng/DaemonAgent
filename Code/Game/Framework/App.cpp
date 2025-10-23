@@ -27,7 +27,9 @@
 #include "Engine/Core/LogSubsystem.hpp"
 #include "Engine/Input/InputSystem.hpp"
 #include "Engine/Platform/Window.hpp"
-#include "Engine/Renderer/CameraScriptInterface.hpp"
+#include "Engine/Renderer/Camera.hpp"
+// Phase 2b: CameraScriptInterface removed - replaced by CameraStateBuffer
+// #include "Engine/Renderer/CameraScriptInterface.hpp"
 #include "Engine/Renderer/DebugRenderSystem.hpp"
 #include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Resource/ResourceSubsystem.hpp"
@@ -37,8 +39,27 @@
 #include "Engine/Input/InputScriptInterface.hpp"
 #include "Engine/Network/KADIScriptInterface.hpp"
 #include "Engine/Renderer/DebugRenderSystemScriptInterface.hpp"
-#include "Engine/Renderer/RendererScriptInterface.hpp"
+// Phase 2: RendererScriptInterface removed - replaced by EntityScriptInterface
+// #include "Engine/Renderer/RendererScriptInterface.hpp"
 #include "ThirdParty/json/json.hpp"
+
+// Phase 1: Async Architecture Includes
+#include "Engine/Renderer/RenderCommandQueue.hpp"
+#include "Game/Framework/EntityStateBuffer.hpp"
+#include "Game/Framework/CameraStateBuffer.hpp"
+#include "Game/Framework/JSGameLogicJob.hpp"
+
+// Phase 2: High-Level Entity API Includes
+#include "Game/Framework/HighLevelEntityAPI.hpp"
+#include "Game/Framework/EntityScriptInterface.hpp"
+
+// Phase 2: Geometry Creation Utilities
+#include "Engine/Renderer/VertexUtils.hpp"
+#include "Engine/Math/AABB3.hpp"
+
+// Standard library for threading
+#include <chrono>
+#include <thread>
 
 
 
@@ -46,12 +67,23 @@
 App*  g_app  = nullptr;       // Created and owned by Main_Windows.cpp
 Game* g_game = nullptr;       // Created and owned by the App
 
+//----------------------------------------------------------------------------------------------------
+// Phase 2: Static Vertex Buffer Storage
+// Shared between CreateGeometryForMeshType() and RenderEntities()
+static std::unordered_map<int, VertexList_PCU> g_vertexBuffers;
+static int g_nextVertexBufferHandle = 1;
 
 //----------------------------------------------------------------------------------------------------
 STATIC bool App::m_isQuitting = false;
 
 //----------------------------------------------------------------------------------------------------
 App::App()
+    : m_renderCommandQueue(nullptr)
+    , m_entityStateBuffer(nullptr)
+    , m_cameraStateBuffer(nullptr)
+    , m_jsGameLogicJob(nullptr)
+    , m_mainCamera(nullptr)
+    , m_highLevelEntityAPI(nullptr)
 {
     GEngine::Get().Construct();
 }
@@ -71,9 +103,58 @@ void App::Startup()
     g_eventSystem->SubscribeEventCallbackFunction("OnCloseButtonClicked", OnCloseButtonClicked);
     g_eventSystem->SubscribeEventCallbackFunction("quit", OnCloseButtonClicked);
 
+    // Phase 1: Initialize async architecture infrastructure BEFORE game initialization
+    m_renderCommandQueue = new RenderCommandQueue();
+    m_entityStateBuffer  = new EntityStateBuffer();
+    m_cameraStateBuffer  = new CameraStateBuffer();
+
+    // Phase 2: Initialize high-level entity API (requires RenderCommandQueue)
+    m_highLevelEntityAPI = new HighLevelEntityAPI(m_renderCommandQueue, g_scriptSubsystem, g_renderer, m_cameraStateBuffer);
+    DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - HighLevelEntityAPI initialized (Phase 2)");
+
+    // Phase 3: Initialize main camera for rendering entities
+    m_mainCamera = new Camera();
+    m_mainCamera->m_mode = Camera::eMode_Perspective;
+    m_mainCamera->SetPerspectiveGraphicView(16.0f / 9.0f, 60.0f, 0.1f, 100.0f);  // aspect, fov, near, far
+    m_mainCamera->SetNormalizedViewport(AABB2(Vec2::ZERO, Vec2::ONE));  // Full screen viewport (0,0) to (1,1)
+
+    // Phase 3 FIX: Set camera-to-render transform to correct coordinate system rotation
+    // The engine uses I-Forward/J-Left/K-Up (X-Forward/Y-Left/Z-Up)
+    // But rendering expects a 90° CCW rotation around Z-axis to match screen orientation
+    // This 90° CCW rotation swaps: X→Y, Y→-X (keeps Z unchanged)
+    Mat44 cameraToRender;
+    cameraToRender.m_values[Mat44::Ix] =  0.0f;  // New I-basis X component (was pointing X, now points Y)
+    cameraToRender.m_values[Mat44::Iy] =  1.0f;  // New I-basis Y component
+    cameraToRender.m_values[Mat44::Iz] =  0.0f;  // New I-basis Z component
+    cameraToRender.m_values[Mat44::Iw] =  0.0f;
+
+    cameraToRender.m_values[Mat44::Jx] = -1.0f;  // New J-basis X component (was pointing Y, now points -X)
+    cameraToRender.m_values[Mat44::Jy] =  0.0f;  // New J-basis Y component
+    cameraToRender.m_values[Mat44::Jz] =  0.0f;  // New J-basis Z component
+    cameraToRender.m_values[Mat44::Jw] =  0.0f;
+
+    cameraToRender.m_values[Mat44::Kx] =  0.0f;  // New K-basis X component (Z stays Z)
+    cameraToRender.m_values[Mat44::Ky] =  0.0f;  // New K-basis Y component
+    cameraToRender.m_values[Mat44::Kz] =  1.0f;  // New K-basis Z component
+    cameraToRender.m_values[Mat44::Kw] =  0.0f;
+
+    cameraToRender.m_values[Mat44::Tx] =  0.0f;  // No translation
+    cameraToRender.m_values[Mat44::Ty] =  0.0f;
+    cameraToRender.m_values[Mat44::Tz] =  0.0f;
+    cameraToRender.m_values[Mat44::Tw] =  1.0f;
+
+    m_mainCamera->SetCameraToRenderTransform(cameraToRender);
+    DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - Main camera initialized with 90° CCW Z-rotation camera-to-render transform");
+
     g_game = new Game();
     SetupScriptingBindings();
     g_game->PostInit();
+
+    // Phase 1: Submit JavaScript worker thread job AFTER game and script initialization
+    m_jsGameLogicJob = new JSGameLogicJob(g_game, m_renderCommandQueue, m_entityStateBuffer);
+    g_jobSystem->SubmitJob(m_jsGameLogicJob);
+
+    DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - Async architecture initialized (Phase 1)");
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -81,6 +162,46 @@ void App::Startup()
 //
 void App::Shutdown()
 {
+    // Phase 1: Shutdown async architecture BEFORE game destruction
+    // Order: Request shutdown → Wait for worker → Retrieve from JobSystem → Cleanup resources
+    if (m_jsGameLogicJob)
+    {
+        DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - Requesting worker thread shutdown...");
+        m_jsGameLogicJob->RequestShutdown();
+
+        // Wait for worker thread to complete (max 5 seconds timeout)
+        int waitCount = 0;
+        while (!m_jsGameLogicJob->IsShutdownComplete() && waitCount < 500)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            ++waitCount;
+        }
+
+        if (m_jsGameLogicJob->IsShutdownComplete())
+        {
+            DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - Worker thread exited successfully");
+        }
+        else
+        {
+            DAEMON_LOG(LogScript, eLogVerbosity::Warning, "App::Shutdown - Worker thread shutdown timeout!");
+        }
+
+        // CRITICAL: Retrieve job from JobSystem before manual deletion
+        // This prevents double-delete when JobSystem::Shutdown() tries to clean up
+        // The job is in m_completedJobs queue, so retrieve it first
+        Job* retrievedJob = g_jobSystem->RetrieveCompletedJob();
+        while (retrievedJob != nullptr && retrievedJob != m_jsGameLogicJob)
+        {
+            // If there are other completed jobs, delete them first
+            delete retrievedJob;
+            retrievedJob = g_jobSystem->RetrieveCompletedJob();
+        }
+
+        // Now safe to delete our job (it's no longer tracked by JobSystem)
+        delete m_jsGameLogicJob;
+        m_jsGameLogicJob = nullptr;
+    }
+
     // Phase 2: Clear V8::Persistent callbacks BEFORE V8 isolate destruction
     if (m_kadiScriptInterface)
     {
@@ -91,10 +212,44 @@ void App::Shutdown()
     // m_inputScriptInterface.reset();
     // m_audioScriptInterface.reset();
     // m_cameraScriptInterface.reset();
+    // Phase 2: RendererScriptInterface removed
     // m_rendererScriptInterface.reset();  // ← Clear vertex arrays before g_renderer destructs
     // m_clockScriptInterface.reset();
 
     GAME_SAFE_RELEASE(g_game);
+
+    // Phase 2: Cleanup high-level entity API BEFORE async infrastructure
+    if (m_highLevelEntityAPI)
+    {
+        delete m_highLevelEntityAPI;
+        m_highLevelEntityAPI = nullptr;
+        DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - HighLevelEntityAPI destroyed (Phase 2)");
+    }
+
+    // Phase 1: Cleanup async infrastructure AFTER game destruction
+    if (m_mainCamera)
+    {
+        delete m_mainCamera;
+        m_mainCamera = nullptr;
+    }
+
+    if (m_entityStateBuffer)
+    {
+        delete m_entityStateBuffer;
+        m_entityStateBuffer = nullptr;
+    }
+
+    if (m_cameraStateBuffer)
+    {
+        delete m_cameraStateBuffer;
+        m_cameraStateBuffer = nullptr;
+    }
+
+    if (m_renderCommandQueue)
+    {
+        delete m_renderCommandQueue;
+        m_renderCommandQueue = nullptr;
+    }
 
     GEngine::Get().Shutdown();
 }
@@ -167,7 +322,55 @@ void App::Update()
         g_scriptSubsystem->Update();
     }
 
+    // Phase 1: Async Frame Synchronization
+    // Check if worker thread completed previous JavaScript frame
+    if (m_jsGameLogicJob && m_jsGameLogicJob->IsFrameComplete())
+    {
+        // Swap entity state buffers (copy back buffer → front buffer)
+        if (m_entityStateBuffer)
+        {
+            m_entityStateBuffer->SwapBuffers();
+        }
+
+        // Swap camera state buffers (copy back buffer → front buffer)
+        if (m_cameraStateBuffer)
+        {
+            m_cameraStateBuffer->SwapBuffers();
+        }
+
+        // Trigger next JavaScript frame on worker thread
+        m_jsGameLogicJob->TriggerNextFrame();
+    }
+    else if (m_jsGameLogicJob)
+    {
+        // Frame skip: Worker still executing, continue with last state
+        // This maintains stable 60 FPS rendering regardless of JavaScript performance
+        static uint64_t frameSkipCount = 0;
+        if (frameSkipCount % 60 == 0)  // Log every 60 frame skips
+        {
+            DAEMON_LOG(LogScript, eLogVerbosity::Warning,
+                       Stringf("App::Update - JavaScript frame skip (worker still executing) - Total skips: %llu",
+                               frameSkipCount));
+        }
+        ++frameSkipCount;
+    }
+
+    // Phase 1: Process render commands from queue (placeholder implementation)
+    // Phase 2 will implement actual command processing
+    ProcessRenderCommands();
+
+    // Legacy synchronous JavaScript update (TODO: Remove after Phase 1 validation)
+    // Kept temporarily to avoid breaking existing JavaScript functionality
+    // NOTE: This runs synchronously on main thread but accesses V8 via ScriptSubsystem's thread-safe interface
     g_game->UpdateJS();
+
+    // Phase 2: Execute pending JavaScript callbacks AFTER JavaScript frame completes
+    // CRITICAL: Must be called AFTER UpdateJS() so V8 context exists from the JavaScript execution
+    // The callbacks will execute using the V8 isolate that was just active during UpdateJS()
+    if (m_highLevelEntityAPI)
+    {
+        m_highLevelEntityAPI->ExecutePendingCallbacks();
+    }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -183,6 +386,62 @@ void App::Render() const
 
     g_renderer->ClearScreen(clearColor, Rgba8::BLACK);
     g_game->RenderJS();
+
+    // Phase 2: Render all entities from EntityStateBuffer
+    // Only render entities in GAME mode, not in ATTRACT mode
+    if (g_game && !g_game->IsAttractMode())
+    {
+        RenderEntities();
+    }
+
+    //========================================
+    // Debug Rendering (World + Screen)
+    //========================================
+    // Get world camera (active camera - typically the player camera)
+    Camera const* worldCamera = nullptr;
+    if (m_cameraStateBuffer)
+    {
+        EntityID activeCameraId = m_cameraStateBuffer->GetActiveCameraID();
+        if (activeCameraId != 0)
+        {
+            worldCamera = m_cameraStateBuffer->GetCameraById(activeCameraId);
+        }
+    }
+
+    // Render 3D debug visualization (world space)
+    // Only render world debug objects in GAME mode, not in ATTRACT mode
+    if (worldCamera && g_game && !g_game->IsAttractMode())
+    {
+        DebugRenderWorld(*worldCamera);
+    }
+
+    // Get screen camera (orthographic 2D camera for UI text)
+    // Note: Screen camera is created by JSGame.js but not set as active
+    // We need to find it by iterating through cameras or store its ID separately
+    Camera const* screenCamera = nullptr;
+    if (m_cameraStateBuffer)
+    {
+        // TEMPORARY: Find screen camera by checking all cameras for orthographic mode
+        // TODO: Store screen camera ID separately for direct lookup
+        CameraStateMap const* frontBuffer = m_cameraStateBuffer->GetFrontBuffer();
+        if (frontBuffer)
+        {
+            for (auto const& [cameraId, cameraState] : *frontBuffer)
+            {
+                if (cameraState.type == "screen")
+                {
+                    screenCamera = m_cameraStateBuffer->GetCameraById(cameraId);
+                    break;  // Found the screen camera
+                }
+            }
+        }
+    }
+
+    // Render 2D debug visualization (screen space text/UI)
+    if (screenCamera)
+    {
+        DebugRenderScreen(*screenCamera);
+    }
 
     AABB2 const box = AABB2(Vec2::ZERO, Vec2(1600.f, 30.f));
 
@@ -304,17 +563,27 @@ void App::SetupScriptingBindings()
     m_audioScriptInterface = std::make_shared<AudioScriptInterface>(g_audio);
     g_scriptSubsystem->RegisterScriptableObject("audio", m_audioScriptInterface);
 
-    m_cameraScriptInterface = std::make_shared<CameraScriptInterface>();
-    g_scriptSubsystem->RegisterScriptableObject("cameraInterface", m_cameraScriptInterface);
+    // Phase 2b: CameraScriptInterface removed - replaced by CameraStateBuffer
+    // m_cameraScriptInterface = std::make_shared<CameraScriptInterface>();
+    // g_scriptSubsystem->RegisterScriptableObject("cameraInterface", m_cameraScriptInterface);
 
-    m_rendererScriptInterface = std::make_shared<RendererScriptInterface>(g_renderer);
-    g_scriptSubsystem->RegisterScriptableObject("renderer", m_rendererScriptInterface);
+    // Phase 2: RendererScriptInterface removed - replaced by EntityScriptInterface
+    // m_rendererScriptInterface = std::make_shared<RendererScriptInterface>(g_renderer);
+    // g_scriptSubsystem->RegisterScriptableObject("renderer", m_rendererScriptInterface);
 
     m_debugRenderSystemScriptInterface = std::make_shared<DebugRenderSystemScriptInterface>();
     g_scriptSubsystem->RegisterScriptableObject("debugRenderInterface", m_debugRenderSystemScriptInterface);
 
     m_clockScriptInterface = std::make_shared<ClockScriptInterface>();
     g_scriptSubsystem->RegisterScriptableObject("clock", m_clockScriptInterface);
+
+    // Phase 2: Register high-level entity API for JavaScript
+    if (m_highLevelEntityAPI)
+    {
+        m_entityScriptInterface = std::make_shared<EntityScriptInterface>(m_highLevelEntityAPI);
+        g_scriptSubsystem->RegisterScriptableObject("entity", m_entityScriptInterface);
+        DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings) Entity script interface registered (Phase 2)"));
+    }
 
     // Register KADI broker integration for distributed agent communication
     if (g_kadiSubsystem)
@@ -337,4 +606,551 @@ void App::SetupScriptingBindings()
     g_scriptSubsystem->RegisterGlobalFunction("gc", OnGarbageCollection);
 
     DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings)(end)"));
+}
+
+//----------------------------------------------------------------------------------------------------
+// ProcessRenderCommands (Phase 1: Placeholder Implementation)
+//
+// Consumes render commands from lock-free queue and processes them.
+//
+// Phase 1: Placeholder - only logs commands, no actual processing
+// Phase 2: Implement actual command processing (CREATE_MESH, UPDATE_ENTITY, etc.)
+//----------------------------------------------------------------------------------------------------
+void App::ProcessRenderCommands()
+{
+    if (!m_renderCommandQueue || !m_entityStateBuffer || !m_cameraStateBuffer || !m_highLevelEntityAPI)
+    {
+        return;
+    }
+
+    static int s_commandCount = 0;
+
+    // Process all commands from queue
+    m_renderCommandQueue->ConsumeAll([this](RenderCommand const& cmd) {
+        s_commandCount++;
+        DebuggerPrintf("[TRACE] ProcessRenderCommands - Processing command #%d, type=%d, entityId=%llu\n",
+                       s_commandCount, static_cast<int>(cmd.type), cmd.entityId);
+
+        switch (cmd.type)
+        {
+            case RenderCommandType::CREATE_MESH:
+            {
+                auto const& meshData = std::get<MeshCreationData>(cmd.data);
+                DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_MESH: meshType=%s, pos=(%.1f,%.1f,%.1f), radius=%.1f\n",
+                               meshData.meshType.c_str(), meshData.position.x, meshData.position.y, meshData.position.z, meshData.radius);
+                int vbHandle = CreateGeometryForMeshType(meshData.meshType, meshData.radius, meshData.color);
+
+                if (vbHandle != 0)
+                {
+                    EntityState state;
+                    state.position = meshData.position;
+                    state.orientation = EulerAngles::ZERO;
+                    state.color = meshData.color;
+                    state.radius = meshData.radius;
+                    state.meshType = meshData.meshType;
+                    state.isActive = true;
+                    state.vertexBufferHandle = vbHandle;
+                    state.cameraType = "world";  // Phase 2: All mesh entities use world camera by default
+
+                    auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+                    (*backBuffer)[cmd.entityId] = state;
+
+                    DebuggerPrintf("[TRACE] ProcessRenderCommands - Entity %llu added to back buffer (vbHandle=%d, vertCount=%zu)\n",
+                                   cmd.entityId, vbHandle, backBuffer->size());
+                }
+                else
+                {
+                    DebuggerPrintf("[TRACE] ProcessRenderCommands - ERROR: CreateGeometryForMeshType returned 0 (failed)!\n");
+                }
+                break;
+            }
+
+            case RenderCommandType::UPDATE_ENTITY:
+            {
+                auto const& updateData = std::get<EntityUpdateData>(cmd.data);
+                auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+                auto it = backBuffer->find(cmd.entityId);
+
+                if (it != backBuffer->end())
+                {
+                    if (updateData.position.has_value()) it->second.position = updateData.position.value();
+                    if (updateData.orientation.has_value()) it->second.orientation = updateData.orientation.value();
+                    if (updateData.color.has_value()) it->second.color = updateData.color.value();
+                }
+                break;
+            }
+
+            case RenderCommandType::DESTROY_ENTITY:
+            {
+                auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+                auto it = backBuffer->find(cmd.entityId);
+                if (it != backBuffer->end()) it->second.isActive = false;
+                break;
+            }
+
+            case RenderCommandType::CREATE_CAMERA:
+            {
+                auto const& cameraData = std::get<CameraCreationData>(cmd.data);
+                DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_CAMERA: cameraId=%llu, pos=(%.1f,%.1f,%.1f), type=%s\n",
+                               cmd.entityId, cameraData.position.x, cameraData.position.y, cameraData.position.z, cameraData.type.c_str());
+
+                CameraState state;
+                state.position = cameraData.position;
+                state.orientation = cameraData.orientation;
+                state.type = cameraData.type;
+                state.isActive = true;
+
+                // Auto-configure camera mode based on type
+                if (cameraData.type == "world")
+                {
+                    state.mode = Camera::eMode_Perspective;
+                    state.perspectiveFOV = 60.0f;
+                    state.perspectiveAspect = 16.0f / 9.0f;
+                    state.perspectiveNear = 0.1f;
+                    state.perspectiveFar = 100.0f;
+                }
+                else if (cameraData.type == "screen")
+                {
+                    // Get viewport dimensions for screen camera orthographic bounds
+                    // Use viewport dimensions (not client dimensions) to match actual rendering area
+                    Vec2 viewportDimensions = Vec2(1600.f, 800.f);  // Default fallback
+                    if (Window::s_mainWindow)
+                    {
+                        viewportDimensions = Window::s_mainWindow->GetViewportDimensions();
+                    }
+
+                    state.mode = Camera::eMode_Orthographic;
+                    state.orthoLeft = 0.0f;
+                    state.orthoBottom = 0.0f;
+                    state.orthoRight = viewportDimensions.x;  // Match viewport width
+                    state.orthoTop = viewportDimensions.y;    // Match viewport height
+                    state.orthoNear = 0.0f;
+                    state.orthoFar = 1.0f;
+                    state.viewport = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
+
+                    // DIAGNOSTIC: Log screen camera orthographic bounds
+                    DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                               StringFormat("[DIAGNOSTIC] CREATE_CAMERA screen: ortho bounds = ({:.2f}, {:.2f}) to ({:.2f}, {:.2f}), viewport dims = ({:.2f}, {:.2f})",
+                                            state.orthoLeft, state.orthoBottom, state.orthoRight, state.orthoTop,
+                                            viewportDimensions.x, viewportDimensions.y));
+                }
+
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                (*backBuffer)[cmd.entityId] = state;
+
+                // DIAGNOSTIC: Log camera creation
+                DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                           StringFormat("[DIAGNOSTIC] ProcessRenderCommands CREATE_CAMERA: cameraId={}, type={}, position=({:.2f}, {:.2f}, {:.2f}), orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}), backBuffer size after insert={}",
+                                        cmd.entityId, state.type, state.position.x, state.position.y, state.position.z,
+                                        state.orientation.m_yawDegrees, state.orientation.m_pitchDegrees, state.orientation.m_rollDegrees,
+                                        backBuffer->size()));
+
+                DebuggerPrintf("[TRACE] ProcessRenderCommands - Camera %llu added to back buffer\n", cmd.entityId);
+                break;
+            }
+
+            case RenderCommandType::UPDATE_CAMERA:
+            {
+                auto const& updateData = std::get<CameraUpdateData>(cmd.data);
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto it = backBuffer->find(cmd.entityId);
+
+                // DIAGNOSTIC: Log UPDATE_CAMERA command processing
+                static int s_updateCameraCount = 0;
+                s_updateCameraCount++;
+                if (s_updateCameraCount % 60 == 0)
+                {
+                    DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                               StringFormat("[DIAGNOSTIC] ProcessRenderCommands UPDATE_CAMERA: cameraId={}, position=({:.2f}, {:.2f}, {:.2f}), orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}), found={}",
+                                            cmd.entityId, updateData.position.x, updateData.position.y, updateData.position.z,
+                                            updateData.orientation.m_yawDegrees, updateData.orientation.m_pitchDegrees, updateData.orientation.m_rollDegrees,
+                                            it != backBuffer->end() ? 1 : 0));
+                }
+
+                if (it != backBuffer->end())
+                {
+                    // OPTION A FIX: Always apply both position and orientation
+                    // HighLevelEntityAPI now reads the current state and sends complete updates
+                    // So we can safely apply both fields without zeroing anything out
+
+                    it->second.position = updateData.position;
+                    it->second.orientation = updateData.orientation;
+
+                    DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA: cameraId=%llu updated\n", cmd.entityId);
+                }
+                else
+                {
+                    // Camera not found in back buffer!
+                    DAEMON_LOG(LogScript, eLogVerbosity::Warning,
+                               StringFormat("[DIAGNOSTIC] ProcessRenderCommands UPDATE_CAMERA: Camera {} NOT FOUND in back buffer!", cmd.entityId));
+                }
+                break;
+            }
+
+            case RenderCommandType::SET_ACTIVE_CAMERA:
+            {
+                m_cameraStateBuffer->SetActiveCameraID(cmd.entityId);
+                DebuggerPrintf("[TRACE] ProcessRenderCommands - SET_ACTIVE_CAMERA: cameraId=%llu\n", cmd.entityId);
+                break;
+            }
+
+            case RenderCommandType::UPDATE_CAMERA_TYPE:
+            {
+                auto const& typeData = std::get<CameraTypeUpdateData>(cmd.data);
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto it = backBuffer->find(cmd.entityId);
+
+                if (it != backBuffer->end())
+                {
+                    it->second.type = typeData.type;
+
+                    // Reconfigure camera based on new type
+                    if (typeData.type == "world")
+                    {
+                        it->second.mode = Camera::eMode_Perspective;
+                        it->second.perspectiveFOV = 60.0f;
+                        it->second.perspectiveAspect = 16.0f / 9.0f;
+                        it->second.perspectiveNear = 0.1f;
+                        it->second.perspectiveFar = 100.0f;
+                    }
+                    else if (typeData.type == "screen")
+                    {
+                        // Get actual client dimensions for screen camera orthographic bounds
+                        Vec2 clientDimensions = Vec2(1600.f, 800.f);  // Default fallback
+                        if (Window::s_mainWindow)
+                        {
+                            clientDimensions = Window::s_mainWindow->GetClientDimensions();
+                        }
+
+                        it->second.mode = Camera::eMode_Orthographic;
+                        it->second.orthoLeft = 0.0f;
+                        it->second.orthoBottom = 0.0f;
+                        it->second.orthoRight = clientDimensions.x;  // Match window width
+                        it->second.orthoTop = clientDimensions.y;    // Match window height
+                        it->second.orthoNear = 0.0f;
+                        it->second.orthoFar = 1.0f;
+                        it->second.viewport = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
+                    }
+                    DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA_TYPE: cameraId=%llu, type=%s\n",
+                                   cmd.entityId, typeData.type.c_str());
+                }
+                break;
+            }
+
+            case RenderCommandType::DESTROY_CAMERA:
+            {
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto it = backBuffer->find(cmd.entityId);
+                if (it != backBuffer->end())
+                {
+                    it->second.isActive = false;
+                    DebuggerPrintf("[TRACE] ProcessRenderCommands - DESTROY_CAMERA: cameraId=%llu\n", cmd.entityId);
+                }
+                break;
+            }
+
+            default:
+                break;
+        }
+    });
+}
+
+//----------------------------------------------------------------------------------------------------
+// RenderEntities (Phase 2 Entity Rendering)
+//
+// Renders all active entities from EntityStateBuffer.
+// Reads front buffer (thread-safe, no locking) and draws each entity using stored vertex buffers.
+//----------------------------------------------------------------------------------------------------
+void App::RenderEntities() const
+{
+    if (!m_entityStateBuffer || !m_mainCamera)
+    {
+        return;
+    }
+
+    // Get front buffer for reading (thread-safe, no locking)
+    EntityStateMap const* frontBuffer = m_entityStateBuffer->GetFrontBuffer();
+    if (!frontBuffer)
+    {
+        return;
+    }
+
+    static int s_frameCount = 0;
+    s_frameCount++;
+
+    // Log entity count periodically (every 60 frames = ~1 second)
+    if (s_frameCount % 60 == 0)
+    {
+        DebuggerPrintf("[TRACE] RenderEntities - Frame %d: Front buffer has %zu entities\n",
+                       s_frameCount, frontBuffer->size());
+    }
+
+    //========================================
+    // BLOCK 1: World Camera (3D Entities)
+    //========================================
+    // Phase 2b: NEW Camera System - Use CameraStateBuffer for active camera lookup
+
+    Camera const* worldCamera = nullptr;
+    if (m_cameraStateBuffer)
+    {
+        // Get active camera from NEW camera system
+        EntityID activeCameraId = m_cameraStateBuffer->GetActiveCameraID();
+        if (activeCameraId != 0)
+        {
+            worldCamera = m_cameraStateBuffer->GetCameraById(activeCameraId);
+        }
+    }
+
+    if (!worldCamera)
+    {
+        // Fallback to m_mainCamera if no active camera set
+        worldCamera = m_mainCamera;
+        if (s_frameCount % 300 == 0) // Log warning every 5 seconds
+        {
+            DebuggerPrintf("[WARNING] RenderEntities - No active camera set in CameraStateBuffer, using fallback m_mainCamera\n");
+        }
+    }
+
+    // DIAGNOSTIC: Log camera position/orientation every 60 frames
+    if (s_frameCount % 60 == 0 && worldCamera)
+    {
+        Vec3 camPos = worldCamera->GetPosition();
+        EulerAngles camOrient = worldCamera->GetOrientation();
+        DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                   StringFormat("[DIAGNOSTIC] CAMERA: pos=({:.2f}, {:.2f}, {:.2f}) orient=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}) activeCameraId={}",
+                                camPos.x, camPos.y, camPos.z,
+                                camOrient.m_yawDegrees, camOrient.m_pitchDegrees, camOrient.m_rollDegrees,
+                                m_cameraStateBuffer ? m_cameraStateBuffer->GetActiveCameraID() : 0));
+    }
+
+    g_renderer->BeginCamera(*worldCamera);
+
+    int worldRenderedCount = 0;
+
+    // DIAGNOSTIC: Log all entities every 60 frames
+    if (s_frameCount % 60 == 0)
+    {
+        DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                   StringFormat("[DIAGNOSTIC] ===== ENTITY LIST (frame {}) =====", s_frameCount));
+        for (auto const& [entityId, state] : *frontBuffer)
+        {
+            if (state.cameraType == "world")
+            {
+                DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                           StringFormat("[DIAGNOSTIC] Entity {}: pos=({:.2f}, {:.2f}, {:.2f}) orient=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}) active={} vbHandle={}",
+                                        entityId, state.position.x, state.position.y, state.position.z,
+                                        state.orientation.m_yawDegrees, state.orientation.m_pitchDegrees, state.orientation.m_rollDegrees,
+                                        state.isActive, state.vertexBufferHandle));
+            }
+        }
+        DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                   StringFormat("[DIAGNOSTIC] ===== END ENTITY LIST ====="));
+    }
+
+    // Render all entities with cameraType == "world" (3D entities)
+    for (auto const& [entityId, state] : *frontBuffer)
+    {
+        // Skip inactive entities
+        if (!state.isActive) continue;
+
+        // Skip entities not tagged for world camera
+        if (state.cameraType != "world") continue;
+
+        // Skip entities without valid vertex buffer handles
+        if (state.vertexBufferHandle == 0) continue;
+
+        // Find vertex data in global vertex buffer storage
+        auto it = g_vertexBuffers.find(state.vertexBufferHandle);
+        if (it == g_vertexBuffers.end()) continue;
+
+        VertexList_PCU const& verts = it->second;
+        if (verts.empty()) continue;
+
+        // Set model transformation matrix
+        // Coordinate System: X-forward, Y-left, Z-up
+        // FIXED: Use same pattern as Entity::GetModelToWorldTransform()
+        // SetTranslation + Append(orientation matrix) instead of separate axis rotations
+        Mat44 modelMatrix;
+        modelMatrix.SetTranslation3D(state.position);
+        modelMatrix.Append(state.orientation.GetAsMatrix_IFwd_JLeft_KUp());
+
+        g_renderer->SetModelConstants(modelMatrix, state.color);
+        g_renderer->BindTexture(nullptr);  // Phase 2.5: Will be replaced with per-entity texture binding
+
+        // Draw entity geometry
+        g_renderer->DrawVertexArray(static_cast<int>(verts.size()), verts.data());
+        worldRenderedCount++;
+    }
+
+    g_renderer->EndCamera(*worldCamera);
+
+    //========================================
+    // BLOCK 2: Screen Camera (2D UI/Attract Mode)
+    //========================================
+    // Phase 2b: Screen camera rendering temporarily disabled during NEW camera system migration
+    // TODO: Implement multi-camera support or separate screen camera ID in CameraStateBuffer
+
+    /*
+    // OLD camera system code - commented out during Phase 2b migration
+    Camera* screenCamera = m_cameraScriptInterface->GetCameraByRole("screen");
+    if (screenCamera)
+    {
+        g_renderer->BeginCamera(*screenCamera);
+
+        int screenRenderedCount = 0;
+
+        // Render all entities with cameraType == "screen" (2D UI entities)
+        for (auto const& [entityId, state] : *frontBuffer)
+        {
+            // Skip inactive entities
+            if (!state.isActive) continue;
+
+            // Skip entities not tagged for screen camera
+            if (state.cameraType != "screen") continue;
+
+            // Skip entities without valid vertex buffer handles
+            if (state.vertexBufferHandle == 0) continue;
+
+            // Find vertex data in global vertex buffer storage
+            auto it = g_vertexBuffers.find(state.vertexBufferHandle);
+            if (it == g_vertexBuffers.end()) continue;
+
+            VertexList_PCU const& verts = it->second;
+            if (verts.empty()) continue;
+
+            // Set model transformation matrix (2D UI typically has simpler transforms)
+            Mat44 modelMatrix = Mat44::MakeTranslation3D(state.position);
+            modelMatrix.Append(Mat44::MakeZRotationDegrees(state.orientation.m_yawDegrees));
+
+            g_renderer->SetModelConstants(modelMatrix, state.color);
+            g_renderer->BindTexture(nullptr);  // Phase 2.5: Will be replaced with per-entity texture binding
+
+            // Draw UI geometry
+            g_renderer->DrawVertexArray(static_cast<int>(verts.size()), verts.data());
+            screenRenderedCount++;
+        }
+
+        g_renderer->EndCamera(*screenCamera);
+
+        // Log screen render count periodically
+        if (s_frameCount % 60 == 0 && screenRenderedCount > 0)
+        {
+            DebuggerPrintf("[TRACE] RenderEntities - Rendered %d screen entities this frame\n", screenRenderedCount);
+        }
+    }
+    */
+
+    // Log world render count periodically
+    if (s_frameCount % 60 == 0 && worldRenderedCount > 0)
+    {
+        DebuggerPrintf("[TRACE] RenderEntities - Rendered %d world entities this frame\n", worldRenderedCount);
+    }
+}
+
+//----------------------------------------------------------------------------------------------------
+// CreateGeometryForMeshType (Phase 2 Helper Method)
+//
+// Creates geometry for a given mesh type and returns vertex buffer handle.
+// Returns 0 on failure.
+//----------------------------------------------------------------------------------------------------
+int App::CreateGeometryForMeshType(std::string const& meshType, float radius, Rgba8 const& color)
+{
+    // Create vertex list
+    VertexList_PCU verts;
+
+    if (meshType == "cube")
+    {
+        // Create cube geometry
+        // AABB3 cubeBox(Vec3(-radius, -radius, -radius), Vec3(radius, radius, radius));
+        // AddVertsForAABB3D(verts, cubeBox, color);
+
+        Vec3 const frontBottomLeft(0.5f, -0.5f, -0.5f);
+        Vec3 const frontBottomRight(0.5f, 0.5f, -0.5f);
+        Vec3 const frontTopLeft(0.5f, -0.5f, 0.5f);
+        Vec3 const frontTopRight(0.5f, 0.5f, 0.5f);
+        Vec3 const backBottomLeft(-0.5f, 0.5f, -0.5f);
+        Vec3 const backBottomRight(-0.5f, -0.5f, -0.5f);
+        Vec3 const backTopLeft(-0.5f, 0.5f, 0.5f);
+        Vec3 const backTopRight(-0.5f, -0.5f, 0.5f);
+
+        AddVertsForQuad3D(verts, frontBottomLeft, frontBottomRight, frontTopLeft, frontTopRight, Rgba8::RED);          // +X Red
+        AddVertsForQuad3D(verts, backBottomLeft, backBottomRight, backTopLeft, backTopRight, Rgba8::CYAN);             // -X -Red (Cyan)
+        AddVertsForQuad3D(verts, frontBottomRight, backBottomLeft, frontTopRight, backTopLeft, Rgba8::GREEN);          // -Y -Green (Magenta)
+        AddVertsForQuad3D(verts, backBottomRight, frontBottomLeft, backTopRight, frontTopLeft, Rgba8::MAGENTA);        // +Y Green
+        AddVertsForQuad3D(verts, frontTopLeft, frontTopRight, backTopRight, backTopLeft, Rgba8::BLUE);                 // +Z Blue
+        AddVertsForQuad3D(verts, backBottomRight, backBottomLeft, frontBottomLeft, frontBottomRight, Rgba8::YELLOW);   // -Z -Blue (Yellow)
+    }
+    else if (meshType == "sphere")
+    {
+        // Create sphere geometry
+        AddVertsForSphere3D(verts, Vec3::ZERO, radius, color, AABB2::ZERO_TO_ONE, 32, 16);
+    }
+    else if (meshType == "grid")
+    {
+        // Create grid geometry with multiple colored lines
+        // Based on original Prop::InitializeLocalVertsForGrid() implementation
+        // Grid lies in XY plane (horizontal when looking down Z-axis)
+        float gridLineLength = 100.f;
+
+        for (int i = -(int)gridLineLength / 2; i < (int)gridLineLength / 2; i++)
+        {
+            float lineWidth = 0.05f;
+            if (i == 0)
+            {
+                lineWidth = 0.3f;  // Center lines are thicker
+            }
+
+            // Create line boxes in X direction (X-axis lines)
+            AABB3 boundsX(
+                Vec3(-gridLineLength / 2.f, -lineWidth / 2.f + (float)i, -lineWidth / 2.f),
+                Vec3(gridLineLength / 2.f, lineWidth / 2.f + (float)i, lineWidth / 2.f)
+            );
+
+            // Create line boxes in Y direction (Y-axis lines)
+            AABB3 boundsY(
+                Vec3(-lineWidth / 2.f + (float)i, -gridLineLength / 2.f, -lineWidth / 2.f),
+                Vec3(lineWidth / 2.f + (float)i, gridLineLength / 2.f, lineWidth / 2.f)
+            );
+
+            // Determine line colors
+            Rgba8 colorX = Rgba8::DARK_GREY;
+            Rgba8 colorY = Rgba8::DARK_GREY;
+
+            if (i % 5 == 0)  // Every 5th line is colored
+            {
+                colorX = Rgba8::RED;    // X-axis lines are red
+                colorY = Rgba8::GREEN;  // Y-axis lines are green
+            }
+
+            // Add geometry for both X and Y direction lines
+            AddVertsForAABB3D(verts, boundsX, colorX);
+            AddVertsForAABB3D(verts, boundsY, colorY);
+        }
+    }
+    else if (meshType == "plane")
+    {
+        // Create plane geometry (simple quad)
+        float halfSize = radius;
+        Vec3 bottomLeft(-halfSize, -halfSize, 0.0f);
+        Vec3 bottomRight(halfSize, -halfSize, 0.0f);
+        Vec3 topLeft(-halfSize, halfSize, 0.0f);
+        Vec3 topRight(halfSize, halfSize, 0.0f);
+        AddVertsForQuad3D(verts, bottomLeft, bottomRight, topLeft, topRight, color);
+    }
+    else
+    {
+        return 0;  // Unknown mesh type
+    }
+
+    // Check if geometry was created
+    if (verts.empty())
+    {
+        return 0;
+    }
+
+    // Allocate handle and store vertex data in global storage
+    int handle = g_nextVertexBufferHandle++;
+    g_vertexBuffers[handle] = verts;
+
+    return handle;
 }

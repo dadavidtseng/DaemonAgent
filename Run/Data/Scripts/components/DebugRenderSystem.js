@@ -48,13 +48,13 @@ export class DebugRenderSystem extends Subsystem
             }
             else
             {
-                console.error('DebugRenderSystem: C++ debugRenderInterface NOT available!');
+                console.log('DebugRenderSystem: C++ debugRenderInterface NOT available!');
                 this.isInitialized = false;
             }
         }
         catch (error)
         {
-            console.error('DebugRenderSystem: Initialization failed:', error);
+            console.log('DebugRenderSystem: Initialization failed:', error);
             this.isInitialized = false;
         }
     }
@@ -130,19 +130,49 @@ export class DebugRenderSystem extends Subsystem
 
     /**
      * Render world-space debug objects with specified camera
-     * @param {number} cameraHandle - Camera handle (pointer as number)
+     * @param {number} cameraId - Camera ID (will be looked up to get camera handle)
      */
-    renderWorld(cameraHandle)
+    renderWorld(cameraId)
     {
+        // Look up camera handle from camera ID
+        // getCameraHandle is exposed through globalThis.entity (EntityScriptInterface)
+        if (!globalThis.entity || !globalThis.entity.getCameraHandle)
+        {
+            console.log('DebugRenderSystem.renderWorld: entity.getCameraHandle not available');
+            return;
+        }
+
+        const cameraHandle = globalThis.entity.getCameraHandle(cameraId);
+        if (cameraHandle === 0)
+        {
+            console.log(`DebugRenderSystem.renderWorld: Camera ${cameraId} not found`);
+            return;
+        }
+
         return this.debugRenderInterface.renderWorld(cameraHandle);
     }
 
     /**
      * Render screen-space debug objects with specified camera
-     * @param {number} cameraHandle - Camera handle (pointer as number)
+     * @param {number} cameraId - Camera ID (will be looked up to get camera handle)
      */
-    renderScreen(cameraHandle)
+    renderScreen(cameraId)
     {
+        // Look up camera handle from camera ID
+        // getCameraHandle is exposed through globalThis.entity (EntityScriptInterface)
+        if (!globalThis.entity || !globalThis.entity.getCameraHandle)
+        {
+            console.log('DebugRenderSystem.renderScreen: entity.getCameraHandle not available');
+            return;
+        }
+
+        const cameraHandle = globalThis.entity.getCameraHandle(cameraId);
+        if (cameraHandle === 0)
+        {
+            console.log(`DebugRenderSystem.renderScreen: Camera ${cameraId} not found`);
+            return;
+        }
+
         return this.debugRenderInterface.renderScreen(cameraHandle);
     }
 
