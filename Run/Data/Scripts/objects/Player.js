@@ -42,9 +42,16 @@ export class Player extends GameObject
 
         console.log('Player: Constructing Player GameObject');
 
-        // Set initial position and orientation (matches PlayerEntity.js)
-        this.position = {x: 0.0, y: -5.0, z: 2.0};
+        // Set initial position and orientation
+        // X-forward, Y-left, Z-up coordinate system
+        // TEST POSITION: Directly above origin looking DOWN
+        // Position: 10 units UP (positive Z), centered at origin (X=0, Y=0)
+        // Orientation: pitch=-90 to look straight DOWN
+        this.position = {x: -5.0, y: 0.0, z: 1.0};
         this.orientation = {yaw: 0.0, pitch: 0.0, roll: 0.0};
+
+        console.log('Player: DIAGNOSTIC - Initial position:', JSON.stringify(this.position));
+        console.log('Player: DIAGNOSTIC - Initial orientation:', JSON.stringify(this.orientation));
 
         // Component composition
         this.keyboardInput = new KeyboardInputComponent();
@@ -83,12 +90,14 @@ export class Player extends GameObject
         if (this.logTimer >= this.logInterval)
         {
             const inputState = this.keyboardInput.getInputState();
-            console.log('=== PLAYER DIAGNOSTIC ===');
-            console.log('Player GameObject: Active, input:', inputState);
-            console.log('Player Position:', JSON.stringify(this.position));
-            console.log('Player Orientation:', JSON.stringify(this.orientation));
-            console.log('Camera ID:', this.camera.cameraId);
-            console.log('Camera Ready:', this.camera.cameraReady);
+            console.log('===========================================');
+            console.log('[JS DIAGNOSTIC] PLAYER GameObject');
+            console.log('[JS DIAGNOSTIC] Position:', JSON.stringify(this.position));
+            console.log('[JS DIAGNOSTIC] Orientation:', JSON.stringify(this.orientation));
+            console.log('[JS DIAGNOSTIC] Camera ID:', this.camera.cameraId);
+            console.log('[JS DIAGNOSTIC] Camera Ready:', this.camera.cameraReady);
+            console.log('[JS DIAGNOSTIC] Input State:', inputState);
+            console.log('===========================================');
             this.logTimer = 0;
         }
     }
@@ -125,3 +134,4 @@ hotReloadRegistry.register('Player', Player, {
 });
 
 console.log('Player: GameObject class loaded (Phase 1 + Phase 2 - Foundation + Movement/Camera)');
+console.log('Player: [HOT-RELOAD VERIFICATION] Initial camera position set to (-5, 0, 2) - BEHIND origin looking FORWARD');

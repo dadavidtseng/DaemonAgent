@@ -146,21 +146,19 @@ export class CameraComponent extends Component
             console.log('Camera Orientation (from GameObject):', JSON.stringify(this.gameObject.orientation));
         }
 
-        // Phase 2b: Fire-and-forget position update
-        const position = [
+        // OPTION 1 FIX: Combined atomic update (eliminates race condition)
+        // Send BOTH position and orientation in a single command
+        // Old approach: Two separate commands caused race condition where second command
+        // would read stale position from back buffer before first command was processed
+        this.cameraAPI.update(
+            this.cameraId,
             this.gameObject.position.x,
             this.gameObject.position.y,
-            this.gameObject.position.z
-        ];
-        this.cameraAPI.updatePosition(this.cameraId, position);
-
-        // Phase 2b: Fire-and-forget orientation update
-        const orientation = [
+            this.gameObject.position.z,
             this.gameObject.orientation.yaw,
             this.gameObject.orientation.pitch,
             this.gameObject.orientation.roll
-        ];
-        this.cameraAPI.updateOrientation(this.cameraId, orientation);
+        );
     }
 
     /**

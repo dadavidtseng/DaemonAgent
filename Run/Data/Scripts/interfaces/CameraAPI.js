@@ -34,8 +34,9 @@
  * - destroyCamera(cameraId, callback): callbackId
  *
  * Updates (fire-and-forget, FLATTENED API):
- * - updateCameraPosition(cameraId, posX, posY, posZ): void
- * - updateCameraOrientation(cameraId, yaw, pitch, roll): void
+ * - updateCamera(cameraId, posX, posY, posZ, yaw, pitch, roll): void [RECOMMENDED - atomic update]
+ * - updateCameraPosition(cameraId, posX, posY, posZ): void [DEPRECATED - use updateCamera]
+ * - updateCameraOrientation(cameraId, yaw, pitch, roll): void [DEPRECATED - use updateCamera]
  * - moveCameraBy(cameraId, dx, dy, dz): void
  * - lookAtCamera(cameraId, targetX, targetY, targetZ): void
  *
@@ -246,7 +247,38 @@ export class CameraAPI
     //----------------------------------------------------------------------------------------------------
 
     /**
-     * Update camera position (absolute world-space)
+     * RECOMMENDED: Update camera position AND orientation atomically (eliminates race conditions)
+     * @param {number} cameraId - Camera ID to update
+     * @param {number} posX - X position (forward direction)
+     * @param {number} posY - Y position (left direction)
+     * @param {number} posZ - Z position (up direction)
+     * @param {number} yaw - Yaw rotation in degrees
+     * @param {number} pitch - Pitch rotation in degrees
+     * @param {number} roll - Roll rotation in degrees
+     */
+    update(cameraId, posX, posY, posZ, yaw, pitch, roll)
+    {
+        if (!this.cppEntity || !this.cppEntity.updateCamera)
+        {
+            console.log('CameraAPI: ERROR - updateCamera not available');
+            return;
+        }
+
+        try
+        {
+            // FLATTENED API: V8 binding cannot handle nested objects
+            // Call C++ with individual primitive arguments
+            // Signature: updateCamera(cameraId, posX, posY, posZ, yaw, pitch, roll)
+            this.cppEntity.updateCamera(cameraId, posX, posY, posZ, yaw, pitch, roll);
+        }
+        catch (error)
+        {
+            console.log('CameraAPI: ERROR - updateCamera exception:', error);
+        }
+    }
+
+    /**
+     * DEPRECATED: Update camera position only (use update() instead to avoid race conditions)
      * @param {number} cameraId - Camera ID to update
      * @param {Array<number>} position - [x, y, z] new position (X-forward, Y-left, Z-up)
      */
@@ -401,7 +433,8 @@ export class CameraAPI
                 setActiveCamera: typeof this.cppEntity.setActiveCamera === 'function',
                 updateCameraType: typeof this.cppEntity.updateCameraType === 'function',
                 destroyCamera: typeof this.cppEntity.destroyCamera === 'function',
-                // Update methods
+                // Update methods (RECOMMENDED: use updateCamera for atomic updates)
+                updateCamera: typeof this.cppEntity.updateCamera === 'function',
                 updateCameraPosition: typeof this.cppEntity.updateCameraPosition === 'function',
                 updateCameraOrientation: typeof this.cppEntity.updateCameraOrientation === 'function',
                 moveCameraBy: typeof this.cppEntity.moveCameraBy === 'function',

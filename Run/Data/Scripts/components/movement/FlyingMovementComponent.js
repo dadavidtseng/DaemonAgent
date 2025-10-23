@@ -246,6 +246,9 @@ export class FlyingMovementComponent extends Component
      * Get forward vector from orientation
      * Coordinate System: X-forward, Y-left, Z-up (right-handed)
      *
+     * AUTHORITATIVE C++ FORMULA from EulerAngles::GetAsVectors_IFwd_JLeft_KUp()
+     * out_forwardIBasis = Vec3(cy * cp, sy * cp, -sp);
+     *
      * When yaw=0°, pitch=0°: forward = (1, 0, 0) - pointing along +X axis
      * Yaw rotates around Z-axis (affects X and Y components)
      * Pitch rotates around Y-axis (affects X and Z components)
@@ -255,10 +258,15 @@ export class FlyingMovementComponent extends Component
         const yawRad = this.gameObject.orientation.yaw * (Math.PI / 180.0);
         const pitchRad = this.gameObject.orientation.pitch * (Math.PI / 180.0);
 
+        const cy = Math.cos(yawRad);
+        const sy = Math.sin(yawRad);
+        const cp = Math.cos(pitchRad);
+        const sp = Math.sin(pitchRad);
+
         return {
-            x: Math.cos(yawRad) * Math.cos(pitchRad),   // X is forward
-            y: -Math.sin(yawRad) * Math.cos(pitchRad),  // Y is left (negative for right-handed)
-            z: Math.sin(pitchRad)                       // Z is up
+            x: cy * cp,   // X is forward
+            y: sy * cp,   // Y is left (NO negative - matches C++)
+            z: -sp        // Z is up (NEGATIVE sp - matches C++)
         };
     }
 
@@ -266,19 +274,30 @@ export class FlyingMovementComponent extends Component
      * Get left vector from orientation
      * Coordinate System: X-forward, Y-left, Z-up (right-handed)
      *
-     * When yaw=0°: left = (0, 1, 0) - pointing along +Y axis
-     * Left vector is perpendicular to forward in the XY plane
-     * Yaw rotates around Z-axis (affects X and Y components)
-     * No Z component (left is always horizontal)
+     * AUTHORITATIVE C++ FORMULA from EulerAngles::GetAsVectors_IFwd_JLeft_KUp()
+     * out_leftJBasis = Vec3(sr * sp * cy - sy * cr, cr * cy + sr * sp * sy, cp * sr);
+     *
+     * When yaw=0°, pitch=0°, roll=0°: left = (0, 1, 0) - pointing along +Y axis
+     * Left vector accounts for full 3D rotation including roll
+     * Yaw rotates around Z-axis, Pitch rotates around Y-axis, Roll rotates around X-axis
      */
     getLeftVector()
     {
         const yawRad = this.gameObject.orientation.yaw * (Math.PI / 180.0);
+        const pitchRad = this.gameObject.orientation.pitch * (Math.PI / 180.0);
+        const rollRad = this.gameObject.orientation.roll * (Math.PI / 180.0);
+
+        const cy = Math.cos(yawRad);
+        const sy = Math.sin(yawRad);
+        const cp = Math.cos(pitchRad);
+        const sp = Math.sin(pitchRad);
+        const cr = Math.cos(rollRad);
+        const sr = Math.sin(rollRad);
 
         return {
-            x: -Math.sin(yawRad),  // X component for left (perpendicular to forward)
-            y: Math.cos(yawRad),   // Y component for left
-            z: 0.0                 // Left is horizontal (no Z component)
+            x: sr * sp * cy - sy * cr,   // Full formula with roll
+            y: cr * cy + sr * sp * sy,   // Full formula with roll
+            z: cp * sr                   // Z component depends on pitch and roll
         };
     }
 
@@ -312,3 +331,4 @@ export default FlyingMovementComponent;
 globalThis.FlyingMovementComponent = FlyingMovementComponent;
 
 console.log('FlyingMovementComponent: Loaded (Phase 2 + Phase 3 - Complete Movement System)');
+console.log('FlyingMovementComponent: [HOT-RELOAD VERIFICATION] Using C++ EulerAngles formulas: forward=(cy*cp, sy*cp, -sp), left=(full 3D formula with roll)');
