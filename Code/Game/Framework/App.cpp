@@ -628,16 +628,16 @@ void App::ProcessRenderCommands()
     // Process all commands from queue
     m_renderCommandQueue->ConsumeAll([this](RenderCommand const& cmd) {
         s_commandCount++;
-        DebuggerPrintf("[TRACE] ProcessRenderCommands - Processing command #%d, type=%d, entityId=%llu\n",
-                       s_commandCount, static_cast<int>(cmd.type), cmd.entityId);
+        // DebuggerPrintf("[TRACE] ProcessRenderCommands - Processing command #%d, type=%d, entityId=%llu\n",
+        //                s_commandCount, static_cast<int>(cmd.type), cmd.entityId);
 
         switch (cmd.type)
         {
             case RenderCommandType::CREATE_MESH:
             {
                 auto const& meshData = std::get<MeshCreationData>(cmd.data);
-                DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_MESH: meshType=%s, pos=(%.1f,%.1f,%.1f), radius=%.1f\n",
-                               meshData.meshType.c_str(), meshData.position.x, meshData.position.y, meshData.position.z, meshData.radius);
+                // DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_MESH: meshType=%s, pos=(%.1f,%.1f,%.1f), radius=%.1f\n",
+                //                meshData.meshType.c_str(), meshData.position.x, meshData.position.y, meshData.position.z, meshData.radius);
                 int vbHandle = CreateGeometryForMeshType(meshData.meshType, meshData.radius, meshData.color);
 
                 if (vbHandle != 0)
@@ -655,12 +655,12 @@ void App::ProcessRenderCommands()
                     auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
                     (*backBuffer)[cmd.entityId] = state;
 
-                    DebuggerPrintf("[TRACE] ProcessRenderCommands - Entity %llu added to back buffer (vbHandle=%d, vertCount=%zu)\n",
-                                   cmd.entityId, vbHandle, backBuffer->size());
+                    // DebuggerPrintf("[TRACE] ProcessRenderCommands - Entity %llu added to back buffer (vbHandle=%d, vertCount=%zu)\n",
+                    //                cmd.entityId, vbHandle, backBuffer->size());
                 }
                 else
                 {
-                    DebuggerPrintf("[TRACE] ProcessRenderCommands - ERROR: CreateGeometryForMeshType returned 0 (failed)!\n");
+                    // DebuggerPrintf("[TRACE] ProcessRenderCommands - ERROR: CreateGeometryForMeshType returned 0 (failed)!\n");
                 }
                 break;
             }
@@ -691,8 +691,8 @@ void App::ProcessRenderCommands()
             case RenderCommandType::CREATE_CAMERA:
             {
                 auto const& cameraData = std::get<CameraCreationData>(cmd.data);
-                DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_CAMERA: cameraId=%llu, pos=(%.1f,%.1f,%.1f), type=%s\n",
-                               cmd.entityId, cameraData.position.x, cameraData.position.y, cameraData.position.z, cameraData.type.c_str());
+                // DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_CAMERA: cameraId=%llu, pos=(%.1f,%.1f,%.1f), type=%s\n",
+                //                cmd.entityId, cameraData.position.x, cameraData.position.y, cameraData.position.z, cameraData.type.c_str());
 
                 CameraState state;
                 state.position = cameraData.position;
@@ -745,7 +745,7 @@ void App::ProcessRenderCommands()
                                         state.orientation.m_yawDegrees, state.orientation.m_pitchDegrees, state.orientation.m_rollDegrees,
                                         backBuffer->size()));
 
-                DebuggerPrintf("[TRACE] ProcessRenderCommands - Camera %llu added to back buffer\n", cmd.entityId);
+                // DebuggerPrintf("[TRACE] ProcessRenderCommands - Camera %llu added to back buffer\n", cmd.entityId);
                 break;
             }
 
@@ -776,7 +776,7 @@ void App::ProcessRenderCommands()
                     it->second.position = updateData.position;
                     it->second.orientation = updateData.orientation;
 
-                    DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA: cameraId=%llu updated\n", cmd.entityId);
+                    // DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA: cameraId=%llu updated\n", cmd.entityId);
                 }
                 else
                 {
@@ -790,7 +790,7 @@ void App::ProcessRenderCommands()
             case RenderCommandType::SET_ACTIVE_CAMERA:
             {
                 m_cameraStateBuffer->SetActiveCameraID(cmd.entityId);
-                DebuggerPrintf("[TRACE] ProcessRenderCommands - SET_ACTIVE_CAMERA: cameraId=%llu\n", cmd.entityId);
+                // DebuggerPrintf("[TRACE] ProcessRenderCommands - SET_ACTIVE_CAMERA: cameraId=%llu\n", cmd.entityId);
                 break;
             }
 
@@ -831,8 +831,8 @@ void App::ProcessRenderCommands()
                         it->second.orthoFar = 1.0f;
                         it->second.viewport = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
                     }
-                    DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA_TYPE: cameraId=%llu, type=%s\n",
-                                   cmd.entityId, typeData.type.c_str());
+                    // DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA_TYPE: cameraId=%llu, type=%s\n",
+                    //                cmd.entityId, typeData.type.c_str());
                 }
                 break;
             }
@@ -844,7 +844,7 @@ void App::ProcessRenderCommands()
                 if (it != backBuffer->end())
                 {
                     it->second.isActive = false;
-                    DebuggerPrintf("[TRACE] ProcessRenderCommands - DESTROY_CAMERA: cameraId=%llu\n", cmd.entityId);
+                    // DebuggerPrintf("[TRACE] ProcessRenderCommands - DESTROY_CAMERA: cameraId=%llu\n", cmd.entityId);
                 }
                 break;
             }
@@ -881,8 +881,8 @@ void App::RenderEntities() const
     // Log entity count periodically (every 60 frames = ~1 second)
     if (s_frameCount % 60 == 0)
     {
-        DebuggerPrintf("[TRACE] RenderEntities - Frame %d: Front buffer has %zu entities\n",
-                       s_frameCount, frontBuffer->size());
+        // DebuggerPrintf("[TRACE] RenderEntities - Frame %d: Front buffer has %zu entities\n",
+        //                s_frameCount, frontBuffer->size());
     }
 
     //========================================
@@ -1043,7 +1043,7 @@ void App::RenderEntities() const
     // Log world render count periodically
     if (s_frameCount % 60 == 0 && worldRenderedCount > 0)
     {
-        DebuggerPrintf("[TRACE] RenderEntities - Rendered %d world entities this frame\n", worldRenderedCount);
+        // DebuggerPrintf("[TRACE] RenderEntities - Rendered %d world entities this frame\n", worldRenderedCount);
     }
 }
 
