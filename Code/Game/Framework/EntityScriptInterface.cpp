@@ -10,6 +10,9 @@
 
 #include <unordered_map>
 
+#include "Engine/Core/LogSubsystem.hpp"
+#include "Engine/Core/EngineCommon.hpp"
+
 //----------------------------------------------------------------------------------------------------
 // Construction / Destruction
 //----------------------------------------------------------------------------------------------------
@@ -20,7 +23,7 @@ EntityScriptInterface::EntityScriptInterface(HighLevelEntityAPI* entityAPI)
 	GUARANTEE_OR_DIE(m_entityAPI != nullptr, "EntityScriptInterface: HighLevelEntityAPI is nullptr!");
 
 	// CRITICAL: Initialize method registry so CallMethod() can find methods
-	InitializeMethodRegistry();
+	EntityScriptInterface::InitializeMethodRegistry();
 
 	DebuggerPrintf("EntityScriptInterface: Initialized with %zu methods (Phase 2)\n", m_methodRegistry.size());
 }
@@ -41,8 +44,9 @@ void EntityScriptInterface::InitializeMethodRegistry()
 
 	// Camera management methods
 	m_methodRegistry["createCamera"]             = [this](ScriptArgs const& args) { return ExecuteCreateCamera(args); };
-	m_methodRegistry["updateCameraPosition"]     = [this](ScriptArgs const& args) { return ExecuteUpdateCameraPosition(args); };
-	m_methodRegistry["updateCameraOrientation"]  = [this](ScriptArgs const& args) { return ExecuteUpdateCameraOrientation(args); };
+	m_methodRegistry["updateCamera"]             = [this](ScriptArgs const& args) { return ExecuteUpdateCamera(args); };  // RECOMMENDED: Atomic position+orientation update
+	m_methodRegistry["updateCameraPosition"]     = [this](ScriptArgs const& args) { return ExecuteUpdateCameraPosition(args); };  // DEPRECATED: Use updateCamera
+	m_methodRegistry["updateCameraOrientation"]  = [this](ScriptArgs const& args) { return ExecuteUpdateCameraOrientation(args); };  // DEPRECATED: Use updateCamera
 	m_methodRegistry["moveCameraBy"]             = [this](ScriptArgs const& args) { return ExecuteMoveCameraBy(args); };
 	m_methodRegistry["lookAtCamera"]             = [this](ScriptArgs const& args) { return ExecuteLookAtCamera(args); };
 	m_methodRegistry["setActiveCamera"]          = [this](ScriptArgs const& args) { return ExecuteSetActiveCamera(args); };
@@ -101,12 +105,16 @@ std::vector<ScriptMethodInfo> EntityScriptInterface::GetAvailableMethods() const
 		                 "Create a camera (async with callback)",
 		                 {"number posX", "number posY", "number posZ", "number yaw", "number pitch", "number roll", "string type", "function callback"},
 		                 "number callbackId"),
+		ScriptMethodInfo("updateCamera",
+		                 "RECOMMENDED: Update camera position AND orientation atomically (eliminates race conditions)",
+		                 {"number cameraId", "number posX", "number posY", "number posZ", "number yaw", "number pitch", "number roll"},
+		                 "void"),
 		ScriptMethodInfo("updateCameraPosition",
-		                 "Move camera to absolute position (flattened API)",
+		                 "DEPRECATED: Move camera to absolute position (may cause race conditions, use updateCamera instead)",
 		                 {"number cameraId", "number posX", "number posY", "number posZ"},
 		                 "void"),
 		ScriptMethodInfo("updateCameraOrientation",
-		                 "Update camera rotation (absolute, flattened API)",
+		                 "DEPRECATED: Update camera rotation (may cause race conditions, use updateCamera instead)",
 		                 {"number cameraId", "number yaw", "number pitch", "number roll"},
 		                 "void"),
 		ScriptMethodInfo("moveCameraBy",
@@ -488,6 +496,68 @@ ScriptMethodResult EntityScriptInterface::ExecuteCreateCamera(ScriptArgs const& 
 }
 
 //----------------------------------------------------------------------------------------------------
+// OPTION 1 FIX: Combined atomic camera update method
+ScriptMethodResult EntityScriptInterface::ExecuteUpdateCamera(ScriptArgs const& args)
+{
+	// FLATTENED API: V8 cannot handle nested objects, expect individual primitive arguments
+	// Signature: updateCamera(cameraId, posX, posY, posZ, yaw, pitch, roll)
+	// Validate argument count
+	if (args.size() != 7)
+	{
+		return ScriptMethodResult::Error("updateCamera: Expected 7 arguments (cameraId, posX, posY, posZ, yaw, pitch, roll), got " +
+		                                  std::to_string(args.size()));
+	}
+
+	try
+	{
+		// Extract camera ID
+		auto cameraIdOpt = ExtractEntityID(args[0]);
+		if (!cameraIdOpt.has_value())
+		{
+			return ScriptMethodResult::Error("updateCamera: Invalid cameraId");
+		}
+
+		// Extract position components (flattened - doubles from JavaScript)
+		double posX = std::any_cast<double>(args[1]);
+		double posY = std::any_cast<double>(args[2]);
+		double posZ = std::any_cast<double>(args[3]);
+
+		Vec3 position(static_cast<float>(posX),
+		              static_cast<float>(posY),
+		              static_cast<float>(posZ));
+
+		// Extract orientation components (flattened - doubles from JavaScript)
+		double yaw   = std::any_cast<double>(args[4]);
+		double pitch = std::any_cast<double>(args[5]);
+		double roll  = std::any_cast<double>(args[6]);
+
+		EulerAngles orientation(static_cast<float>(yaw),
+		                        static_cast<float>(pitch),
+		                        static_cast<float>(roll));
+
+		// DIAGNOSTIC: Log combined camera update from JavaScript
+		static int s_updateCount = 0;
+		s_updateCount++;
+		if (s_updateCount % 60 == 0)
+		{
+			DAEMON_LOG(LogScript, eLogVerbosity::Display,
+			           StringFormat("[DIAGNOSTIC] ExecuteUpdateCamera: cameraId={}, position=({:.2f}, {:.2f}, {:.2f}), orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f})",
+			                        cameraIdOpt.value(), position.x, position.y, position.z,
+			                        orientation.m_yawDegrees, orientation.m_pitchDegrees, orientation.m_rollDegrees));
+		}
+
+		// Call HighLevelEntityAPI with combined update
+		m_entityAPI->UpdateCamera(cameraIdOpt.value(), position, orientation);
+
+		return ScriptMethodResult::Success();
+	}
+	catch (std::bad_any_cast const& e)
+	{
+		return ScriptMethodResult::Error("updateCamera: Type conversion error - " + std::string(e.what()));
+	}
+}
+
+//----------------------------------------------------------------------------------------------------
 ScriptMethodResult EntityScriptInterface::ExecuteUpdateCameraPosition(ScriptArgs const& args)
 {
 	// FLATTENED API: V8 cannot handle nested objects, expect individual primitive arguments
@@ -516,6 +586,16 @@ ScriptMethodResult EntityScriptInterface::ExecuteUpdateCameraPosition(ScriptArgs
 		Vec3 position(static_cast<float>(posX),
 		              static_cast<float>(posY),
 		              static_cast<float>(posZ));
+
+		// DIAGNOSTIC: Log camera position update from JavaScript
+		static int s_updateCount = 0;
+		s_updateCount++;
+		if (s_updateCount % 60 == 0)
+		{
+			DAEMON_LOG(LogScript, eLogVerbosity::Display,
+			           StringFormat("[DIAGNOSTIC] ExecuteUpdateCameraPosition: cameraId={}, position=({:.2f}, {:.2f}, {:.2f})",
+			                        cameraIdOpt.value(), position.x, position.y, position.z));
+		}
 
 		// Call HighLevelEntityAPI
 		m_entityAPI->UpdateCameraPosition(cameraIdOpt.value(), position);
@@ -639,6 +719,16 @@ ScriptMethodResult EntityScriptInterface::ExecuteUpdateCameraOrientation(ScriptA
 		EulerAngles orientation(static_cast<float>(yaw),
 		                        static_cast<float>(pitch),
 		                        static_cast<float>(roll));
+
+		// DIAGNOSTIC: Log camera orientation update from JavaScript
+		static int s_updateCount = 0;
+		s_updateCount++;
+		if (s_updateCount % 60 == 0)
+		{
+			DAEMON_LOG(LogScript, eLogVerbosity::Display,
+			           StringFormat("[DIAGNOSTIC] ExecuteUpdateCameraOrientation: cameraId={}, orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f})",
+			                        cameraIdOpt.value(), orientation.m_yawDegrees, orientation.m_pitchDegrees, orientation.m_rollDegrees));
+		}
 
 		// Call HighLevelEntityAPI
 		m_entityAPI->UpdateCameraOrientation(cameraIdOpt.value(), orientation);

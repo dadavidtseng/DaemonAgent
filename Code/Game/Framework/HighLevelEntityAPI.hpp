@@ -186,11 +186,18 @@ public:
 	                        std::string const& type,
 	                        ScriptCallback const& callback);
 
-	// Update camera position (absolute world-space, fire-and-forget)
+	// RECOMMENDED: Update camera position AND orientation atomically (eliminates race conditions)
+	// This is the preferred method - sends both position and orientation in a single command
+	// No callback - command queued and processed asynchronously
+	void UpdateCamera(EntityID cameraId, Vec3 const& position, EulerAngles const& orientation);
+
+	// DEPRECATED: Update camera position only (may cause race conditions with orientation updates)
+	// Use UpdateCamera() instead for atomic updates
 	// No callback - command queued and processed asynchronously
 	void UpdateCameraPosition(EntityID cameraId, Vec3 const& position);
 
-	// Update camera orientation (absolute yaw/pitch/roll, fire-and-forget)
+	// DEPRECATED: Update camera orientation only (may cause race conditions with position updates)
+	// Use UpdateCamera() instead for atomic updates
 	// No callback - command queued and processed asynchronously
 	void UpdateCameraOrientation(EntityID cameraId, EulerAngles const& orientation);
 

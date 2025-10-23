@@ -168,7 +168,15 @@ private:
 	//   - callback: function (cameraId) => {...}
 	ScriptMethodResult ExecuteCreateCamera(ScriptArgs const& args);
 
-	// Move camera to absolute position
+	// RECOMMENDED: Update camera position AND orientation atomically (eliminates race conditions)
+	// JavaScript signature: updateCamera(cameraId, posX, posY, posZ, yaw, pitch, roll)
+	// Parameters:
+	//   - cameraId: number
+	//   - posX, posY, posZ: number (position components)
+	//   - yaw, pitch, roll: number (orientation components in degrees)
+	ScriptMethodResult ExecuteUpdateCamera(ScriptArgs const& args);
+
+	// DEPRECATED: Move camera to absolute position (use ExecuteUpdateCamera instead)
 	// JavaScript signature: moveCamera(cameraId, position)
 	// Parameters:
 	//   - cameraId: number
@@ -189,7 +197,7 @@ private:
 	//   - target: object {x, y, z}
 	ScriptMethodResult ExecuteLookAtCamera(ScriptArgs const& args);
 
-	// Update camera orientation (absolute rotation)
+	// DEPRECATED: Update camera orientation only (use ExecuteUpdateCamera instead)
 	// JavaScript signature: updateCameraOrientation(cameraId, orientation)
 	// Parameters:
 	//   - cameraId: number

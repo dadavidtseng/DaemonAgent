@@ -264,12 +264,65 @@ CallbackID HighLevelEntityAPI::CreateCamera(Vec3 const& position,
 }
 
 //----------------------------------------------------------------------------------------------------
-void HighLevelEntityAPI::UpdateCameraPosition(EntityID cameraId, Vec3 const& position)
+// OPTION 1 FIX: Combined atomic camera update (eliminates race condition)
+void HighLevelEntityAPI::UpdateCamera(EntityID cameraId, Vec3 const& position, EulerAngles const& orientation)
 {
-	// Create camera update command
+	// DIAGNOSTIC: Log combined camera updates
+	static int s_updateCount = 0;
+	s_updateCount++;
+	if (s_updateCount % 60 == 0)
+	{
+		DAEMON_LOG(LogScript, eLogVerbosity::Display,
+		           StringFormat("[DIAGNOSTIC] UpdateCamera: cameraId={}, position=({:.2f}, {:.2f}, {:.2f}), orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f})",
+		                        cameraId, position.x, position.y, position.z,
+		                        orientation.m_yawDegrees, orientation.m_pitchDegrees, orientation.m_rollDegrees));
+	}
+
+	// Create update data with BOTH position and orientation
+	// No need to read from back buffer - both values provided atomically
 	CameraUpdateData updateData;
 	updateData.position = position;
-	updateData.orientation = EulerAngles::ZERO;  // Keep existing orientation
+	updateData.orientation = orientation;
+
+	RenderCommand command(RenderCommandType::UPDATE_CAMERA, cameraId, updateData);
+
+	bool submitted = this->SubmitCommand(command);
+	if (!submitted)
+	{
+		DebuggerPrintf("HighLevelEntityAPI::UpdateCamera - Queue full! Dropping camera update for camera %llu\n",
+		               cameraId);
+	}
+}
+
+//----------------------------------------------------------------------------------------------------
+// DEPRECATED: Use UpdateCamera() instead to avoid race conditions
+// Kept for backward compatibility but should not be used
+void HighLevelEntityAPI::UpdateCameraPosition(EntityID cameraId, Vec3 const& position)
+{
+	// DIAGNOSTIC: Log position updates
+	static int s_updateCount = 0;
+	s_updateCount++;
+	if (s_updateCount % 60 == 0)
+	{
+		DAEMON_LOG(LogScript, eLogVerbosity::Display,
+		           StringFormat("[DIAGNOSTIC] UpdateCameraPosition: cameraId={}, position=({:.2f}, {:.2f}, {:.2f})",
+		                        cameraId, position.x, position.y, position.z));
+	}
+
+	// OPTION A FIX: Read current orientation from back buffer and send complete state
+	// This ensures we don't accidentally zero out the orientation
+	CameraUpdateData updateData;
+	updateData.position = position;
+	updateData.orientation = EulerAngles::ZERO;  // Default if camera not found
+
+	// Try to read current orientation from back buffer
+	auto* backBuffer = m_cameraBuffer->GetBackBuffer();
+	auto it = backBuffer->find(cameraId);
+	if (it != backBuffer->end())
+	{
+		// Preserve existing orientation
+		updateData.orientation = it->second.orientation;
+	}
 
 	RenderCommand command(RenderCommandType::UPDATE_CAMERA, cameraId, updateData);
 
@@ -312,10 +365,30 @@ void HighLevelEntityAPI::LookAtCamera(EntityID cameraId, Vec3 const& target)
 //----------------------------------------------------------------------------------------------------
 void HighLevelEntityAPI::UpdateCameraOrientation(EntityID cameraId, EulerAngles const& orientation)
 {
-	// Create camera update command (fire-and-forget)
+	// DIAGNOSTIC: Log orientation updates
+	static int s_updateCount = 0;
+	s_updateCount++;
+	if (s_updateCount % 60 == 0)
+	{
+		DAEMON_LOG(LogScript, eLogVerbosity::Display,
+		           StringFormat("[DIAGNOSTIC] UpdateCameraOrientation: cameraId={}, orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f})",
+		                        cameraId, orientation.m_yawDegrees, orientation.m_pitchDegrees, orientation.m_rollDegrees));
+	}
+
+	// OPTION A FIX: Read current position from back buffer and send complete state
+	// This ensures we don't accidentally zero out the position
 	CameraUpdateData updateData;
-	updateData.position = Vec3::ZERO;  // Keep existing position
+	updateData.position = Vec3::ZERO;  // Default if camera not found
 	updateData.orientation = orientation;
+
+	// Try to read current position from back buffer
+	auto* backBuffer = m_cameraBuffer->GetBackBuffer();
+	auto it = backBuffer->find(cameraId);
+	if (it != backBuffer->end())
+	{
+		// Preserve existing position
+		updateData.position = it->second.position;
+	}
 
 	RenderCommand command(RenderCommandType::UPDATE_CAMERA, cameraId, updateData);
 
