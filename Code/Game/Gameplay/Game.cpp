@@ -13,6 +13,9 @@
 //----------------------------------------------------------------------------------------------------
 #include "Game/Framework/App.hpp"
 //----------------------------------------------------------------------------------------------------
+#include <any>
+#include <typeinfo>
+//----------------------------------------------------------------------------------------------------
 #include "Engine/Audio/AudioSystem.hpp"
 #include "Engine/Core/Clock.hpp"
 #include "Engine/Core/EngineCommon.hpp"
@@ -78,6 +81,32 @@ void Game::RenderJS()
     {
         ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.render();"));
     }
+}
+
+//----------------------------------------------------------------------------------------------------
+bool Game::IsAttractMode() const
+{
+    if (g_scriptSubsystem && g_scriptSubsystem->IsInitialized())
+    {
+        try
+        {
+            // Query JavaScript game state
+            // globalThis.jsGameInstance.gameState returns 'ATTRACT' or 'GAME'
+            std::any result = g_scriptSubsystem->ExecuteScriptWithResult("globalThis.jsGameInstance ? globalThis.jsGameInstance.gameState : 'GAME'");
+
+            // Try to cast result to string
+            if (result.type() == typeid(std::string))
+            {
+                std::string gameState = std::any_cast<std::string>(result);
+                return gameState == "ATTRACT";
+            }
+        }
+        catch (...)
+        {
+            // If there's any error, default to non-attract mode
+        }
+    }
+    return false;  // Default to not attract mode if JavaScript not initialized
 }
 
 //----------------------------------------------------------------------------------------------------
