@@ -46,7 +46,7 @@ export class PulseColorBehavior extends BehaviorComponent
 
         if (!this.meshComponent)
         {
-            console.warn('PulseColorBehavior: No MeshComponent found on GameObject!');
+            console.log('PulseColorBehavior: No MeshComponent found on GameObject!');
         }
     }
 

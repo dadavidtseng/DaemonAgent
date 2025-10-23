@@ -58,7 +58,7 @@ export class EntityAPI
 
         if (!this.cppEntity)
         {
-            console.warn('EntityAPI: C++ entity interface (globalThis.entity) not available');
+            console.log('EntityAPI: C++ entity interface (globalThis.entity) not available');
         }
         else
         {

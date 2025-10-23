@@ -59,7 +59,7 @@ export class InputInterface
 
         if (!this.cppInput)
         {
-            console.warn('InputInterface: C++ input interface (globalThis.input) not available');
+            console.log('InputInterface: C++ input interface (globalThis.input) not available');
         }
         else
         {
@@ -160,7 +160,7 @@ export class InputInterface
         }
         catch (error)
         {
-            console.error('InputInterface: Failed to parse getCursorClientDelta:', deltaStr, error);
+            console.log('InputInterface: Failed to parse getCursorClientDelta:', deltaStr, error);
             return {x: 0, y: 0};
         }
     }
@@ -190,7 +190,7 @@ export class InputInterface
     {
         if (index < 0 || index >= 4)
         {
-            console.error(`InputInterface: Invalid controller index ${index} (must be 0-3)`);
+            console.log(`InputInterface: Invalid controller index ${index} (must be 0-3)`);
             return this.controllerCache[0]; // Return controller 0 as fallback
         }
         return this.controllerCache[index];
@@ -332,7 +332,7 @@ class XboxController
         const buttonIndex = this.buttonMap[buttonName];
         if (buttonIndex === undefined)
         {
-            console.error(`XboxController: Unknown button name '${buttonName}'`);
+            console.log(`XboxController: Unknown button name '${buttonName}'`);
             return false;
         }
 

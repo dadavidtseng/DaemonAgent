@@ -147,11 +147,11 @@ export class GameControlHandler
         }
 
         const cube = new PropClass(
-            this.jsGame.rendererSystem,
-            'cube',
-            position,
-            'static',  // No automatic behavior
-            color
+            'cube',      // meshType
+            position,    // position {x, y, z}
+            'static',    // behaviorType - No automatic behavior
+            color,       // color {r, g, b, a}
+            1.0          // scale (default)
         );
 
         // Add to game's prop list

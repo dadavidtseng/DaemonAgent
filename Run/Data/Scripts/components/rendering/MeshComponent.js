@@ -113,7 +113,7 @@ export class MeshComponent extends Component
 
         if (this.isCreating)
         {
-            console.warn('MeshComponent: Entity creation already in progress');
+            console.log('MeshComponent: Entity creation already in progress');
             return;
         }
 

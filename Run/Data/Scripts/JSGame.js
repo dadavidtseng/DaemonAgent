@@ -180,7 +180,7 @@ export class JSGame
             'screen',   // type: orthographic 2D camera for UI
             (cameraId) => {
                 if (cameraId === 0) {
-                    console.error('JSGame: ERROR - Screen camera creation failed!');
+                    console.log('JSGame: ERROR - Screen camera creation failed!');
                     return;
                 }
 
@@ -299,7 +299,7 @@ export class JSGame
         // Check if debugRenderSystem is initialized
         if (!this.debugRenderSystem || !this.debugRenderSystem.isInitialized)
         {
-            console.warn('JSGame: DebugRenderSystem not initialized, skipping debug visualization setup');
+            console.log('JSGame: DebugRenderSystem not initialized, skipping debug visualization setup');
             return;
         }
 

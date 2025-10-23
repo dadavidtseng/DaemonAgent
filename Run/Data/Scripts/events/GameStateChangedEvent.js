@@ -43,12 +43,12 @@ export class GameStateChangedEvent extends Event
 
         if (!validStates.includes(oldState))
         {
-            console.warn(`GameStateChangedEvent: oldState '${oldState}' is not a valid GameState`);
+            console.log(`GameStateChangedEvent: oldState '${oldState}' is not a valid GameState`);
         }
 
         if (!validStates.includes(newState))
         {
-            console.warn(`GameStateChangedEvent: newState '${newState}' is not a valid GameState`);
+            console.log(`GameStateChangedEvent: newState '${newState}' is not a valid GameState`);
         }
 
         // Store event-specific data

@@ -70,7 +70,7 @@ export class CameraAPI
 
         if (!this.cppEntity)
         {
-            console.warn('CameraAPI: C++ entity interface (globalThis.entity) not available');
+            console.log('CameraAPI: C++ entity interface (globalThis.entity) not available');
         }
         else
         {

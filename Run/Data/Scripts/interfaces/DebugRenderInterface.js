@@ -39,7 +39,7 @@ export class DebugRenderInterface
 
         if (!this.cppDebugRender)
         {
-            console.warn('DebugRenderInterface: C++ debug render interface (globalThis.debugRenderInterface) not available');
+            console.log('DebugRenderInterface: C++ debug render interface (globalThis.debugRenderInterface) not available');
         }
         else
         {
@@ -56,7 +56,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.setVisible)
         {
-            console.error('DebugRenderInterface: setVisible not available');
+            console.log('DebugRenderInterface: setVisible not available');
             return;
         }
         return this.cppDebugRender.setVisible();
@@ -69,7 +69,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.setHidden)
         {
-            console.error('DebugRenderInterface: setHidden not available');
+            console.log('DebugRenderInterface: setHidden not available');
             return;
         }
         return this.cppDebugRender.setHidden();
@@ -82,7 +82,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.clear)
         {
-            console.error('DebugRenderInterface: clear not available');
+            console.log('DebugRenderInterface: clear not available');
             return;
         }
         return this.cppDebugRender.clear();
@@ -97,7 +97,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.beginFrame)
         {
-            console.error('DebugRenderInterface: beginFrame not available');
+            console.log('DebugRenderInterface: beginFrame not available');
             return;
         }
         return this.cppDebugRender.beginFrame();
@@ -111,7 +111,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.renderWorld)
         {
-            console.error('DebugRenderInterface: renderWorld not available');
+            console.log('DebugRenderInterface: renderWorld not available');
             return;
         }
         return this.cppDebugRender.renderWorld(cameraHandle);
@@ -125,7 +125,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.renderScreen)
         {
-            console.error('DebugRenderInterface: renderScreen not available');
+            console.log('DebugRenderInterface: renderScreen not available');
             return;
         }
         return this.cppDebugRender.renderScreen(cameraHandle);
@@ -138,7 +138,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.endFrame)
         {
-            console.error('DebugRenderInterface: endFrame not available');
+            console.log('DebugRenderInterface: endFrame not available');
             return;
         }
         return this.cppDebugRender.endFrame();
@@ -163,7 +163,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.addWorldPoint)
         {
-            console.error('DebugRenderInterface: addWorldPoint not available');
+            console.log('DebugRenderInterface: addWorldPoint not available');
             return;
         }
         return this.cppDebugRender.addWorldPoint(x, y, z, radius, duration, r, g, b, a, mode);
@@ -189,7 +189,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.addWorldLine)
         {
-            console.error('DebugRenderInterface: addWorldLine not available');
+            console.log('DebugRenderInterface: addWorldLine not available');
             return;
         }
         return this.cppDebugRender.addWorldLine(x1, y1, z1, x2, y2, z2, radius, duration, r, g, b, a, mode);
@@ -216,7 +216,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.addWorldCylinder)
         {
-            console.error('DebugRenderInterface: addWorldCylinder not available');
+            console.log('DebugRenderInterface: addWorldCylinder not available');
             return;
         }
         return this.cppDebugRender.addWorldCylinder(baseX, baseY, baseZ, topX, topY, topZ, radius, duration, isWireframe, r, g, b, a, mode);
@@ -239,7 +239,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.addWorldWireSphere)
         {
-            console.error('DebugRenderInterface: addWorldWireSphere not available');
+            console.log('DebugRenderInterface: addWorldWireSphere not available');
             return;
         }
         return this.cppDebugRender.addWorldWireSphere(x, y, z, radius, duration, r, g, b, a, mode);
@@ -265,7 +265,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.addWorldArrow)
         {
-            console.error('DebugRenderInterface: addWorldArrow not available');
+            console.log('DebugRenderInterface: addWorldArrow not available');
             return;
         }
         return this.cppDebugRender.addWorldArrow(x1, y1, z1, x2, y2, z2, radius, duration, r, g, b, a, mode);
@@ -289,7 +289,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.addWorldText)
         {
-            console.error('DebugRenderInterface: addWorldText not available');
+            console.log('DebugRenderInterface: addWorldText not available');
             return;
         }
         return this.cppDebugRender.addWorldText(text, transform, textHeight, alignX, alignY, duration, r, g, b, a, mode);
@@ -315,7 +315,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.addBillboardText)
         {
-            console.error('DebugRenderInterface: addBillboardText not available');
+            console.log('DebugRenderInterface: addBillboardText not available');
             return;
         }
         return this.cppDebugRender.addBillboardText(text, x, y, z, textHeight, alignX, alignY, duration, r, g, b, a, mode);
@@ -331,7 +331,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.addWorldBasis)
         {
-            console.error('DebugRenderInterface: addWorldBasis not available');
+            console.log('DebugRenderInterface: addWorldBasis not available');
             return;
         }
         return this.cppDebugRender.addWorldBasis(transform, duration, mode);
@@ -357,7 +357,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.addScreenText)
         {
-            console.error('DebugRenderInterface: addScreenText not available');
+            console.log('DebugRenderInterface: addScreenText not available');
             return;
         }
         return this.cppDebugRender.addScreenText(text, x, y, size, alignX, alignY, duration, r, g, b, a);
@@ -376,7 +376,7 @@ export class DebugRenderInterface
     {
         if (!this.cppDebugRender || !this.cppDebugRender.addMessage)
         {
-            console.error('DebugRenderInterface: addMessage not available');
+            console.log('DebugRenderInterface: addMessage not available');
             return;
         }
         return this.cppDebugRender.addMessage(text, duration, r, g, b, a);

@@ -60,13 +60,13 @@ export class EventBus
         // Validate parameters
         if (typeof eventType !== 'string' || eventType.length === 0)
         {
-            console.error('EventBus.subscribe: eventType must be a non-empty string');
+            console.log('EventBus.subscribe: eventType must be a non-empty string');
             return;
         }
 
         if (typeof handler !== 'function')
         {
-            console.error('EventBus.subscribe: handler must be a function');
+            console.log('EventBus.subscribe: handler must be a function');
             return;
         }
 
@@ -95,7 +95,7 @@ export class EventBus
     {
         if (!this.listeners.has(eventType))
         {
-            console.warn(`EventBus.unsubscribe: No listeners registered for '${eventType}'`);
+            console.log(`EventBus.unsubscribe: No listeners registered for '${eventType}'`);
             return;
         }
 
@@ -107,7 +107,7 @@ export class EventBus
 
         if (filteredHandlers.length === initialLength)
         {
-            console.warn(`EventBus.unsubscribe: Handler not found for '${eventType}'`);
+            console.log(`EventBus.unsubscribe: Handler not found for '${eventType}'`);
             return;
         }
 
@@ -156,8 +156,8 @@ export class EventBus
             catch (error)
             {
                 // Log error but continue processing other handlers
-                console.error(`EventBus: Error in handler for '${eventType}' (priority: ${priority}):`, error);
-                console.error('EventBus: Error stack:', error.stack);
+                console.log(`EventBus: Error in handler for '${eventType}' (priority: ${priority}):`, error);
+                console.log('EventBus: Error stack:', error.stack);
                 this.eventStats.errors++;
             }
         }

@@ -48,7 +48,7 @@ export class ClockInterface
 
         if (!this.cppClock)
         {
-            console.warn('ClockInterface: C++ clock interface (globalThis.clock) not available');
+            console.log('ClockInterface: C++ clock interface (globalThis.clock) not available');
         }
         else
         {
@@ -64,7 +64,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.createClock)
         {
-            console.error('ClockInterface: createClock not available');
+            console.log('ClockInterface: createClock not available');
             return null;
         }
         return this.cppClock.createClock();
@@ -78,7 +78,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.destroyClock)
         {
-            console.error('ClockInterface: destroyClock not available');
+            console.log('ClockInterface: destroyClock not available');
             return;
         }
         this.cppClock.destroyClock(clockHandle);
@@ -92,7 +92,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.pause)
         {
-            console.error('ClockInterface: pause not available');
+            console.log('ClockInterface: pause not available');
             return;
         }
         return this.cppClock.pause(clockHandle);
@@ -106,7 +106,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.unpause)
         {
-            console.error('ClockInterface: unpause not available');
+            console.log('ClockInterface: unpause not available');
             return;
         }
         return this.cppClock.unpause(clockHandle);
@@ -120,7 +120,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.togglePause)
         {
-            console.error('ClockInterface: togglePause not available');
+            console.log('ClockInterface: togglePause not available');
             return;
         }
         return this.cppClock.togglePause(clockHandle);
@@ -135,7 +135,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.isPaused)
         {
-            console.error('ClockInterface: isPaused not available');
+            console.log('ClockInterface: isPaused not available');
             return false;
         }
         return this.cppClock.isPaused(clockHandle);
@@ -149,7 +149,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.stepSingleFrame)
         {
-            console.error('ClockInterface: stepSingleFrame not available');
+            console.log('ClockInterface: stepSingleFrame not available');
             return;
         }
         return this.cppClock.stepSingleFrame(clockHandle);
@@ -164,7 +164,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.setTimeScale)
         {
-            console.error('ClockInterface: setTimeScale not available');
+            console.log('ClockInterface: setTimeScale not available');
             return;
         }
         return this.cppClock.setTimeScale(clockHandle, scale);
@@ -178,7 +178,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.reset)
         {
-            console.error('ClockInterface: reset not available');
+            console.log('ClockInterface: reset not available');
             return;
         }
         return this.cppClock.reset(clockHandle);
@@ -193,7 +193,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.getTimeScale)
         {
-            console.error('ClockInterface: getTimeScale not available');
+            console.log('ClockInterface: getTimeScale not available');
             return 1.0;
         }
         return this.cppClock.getTimeScale(clockHandle);
@@ -208,7 +208,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.getDeltaSeconds)
         {
-            console.error('ClockInterface: getDeltaSeconds not available');
+            console.log('ClockInterface: getDeltaSeconds not available');
             return 0.0;
         }
         return this.cppClock.getDeltaSeconds(clockHandle);
@@ -223,7 +223,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.getTotalSeconds)
         {
-            console.error('ClockInterface: getTotalSeconds not available');
+            console.log('ClockInterface: getTotalSeconds not available');
             return 0.0;
         }
         return this.cppClock.getTotalSeconds(clockHandle);
@@ -238,7 +238,7 @@ export class ClockInterface
     {
         if (!this.cppClock || !this.cppClock.getFrameCount)
         {
-            console.error('ClockInterface: getFrameCount not available');
+            console.log('ClockInterface: getFrameCount not available');
             return 0;
         }
         return this.cppClock.getFrameCount(clockHandle);

@@ -145,7 +145,7 @@ export class JSEngine
     {
         if (!this.registeredSystems.has(id))
         {
-            console.warn(`JSEngine: System '${id}' not found`);
+            console.log(`JSEngine: System '${id}' not found`);
             return false;
         }
 
@@ -162,7 +162,7 @@ export class JSEngine
         const system = this.registeredSystems.get(id);
         if (!system)
         {
-            console.warn(`setSystemEnabled JSEngine: System '${id}' not found`);
+            console.log(`setSystemEnabled JSEngine: System '${id}' not found`);
             return false;
         }
 
@@ -419,7 +419,7 @@ export class JSEngine
         //     game.update(systemDeltaSeconds || 0.0);
         //     return true;
         // }
-        // console.warn('JSEngine: C++ game.update not available');
+        // console.log('JSEngine: C++ game.update not available');
         // return false;
     }
 
@@ -430,7 +430,7 @@ export class JSEngine
         //     game.render();
         //     return true;
         // }
-        // console.warn('JSEngine: C++ game.render not available');
+        // console.log('JSEngine: C++ game.render not available');
         // return false;
     }
 

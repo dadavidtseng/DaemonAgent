@@ -39,7 +39,7 @@ export class AudioInterface
 
         if (!this.cppAudio)
         {
-            console.warn('AudioInterface: C++ audio interface (globalThis.audio) not available');
+            console.log('AudioInterface: C++ audio interface (globalThis.audio) not available');
         }
         else
         {
@@ -57,7 +57,7 @@ export class AudioInterface
     {
         if (!this.cppAudio || !this.cppAudio.createOrGetSound)
         {
-            console.error('AudioInterface: createOrGetSound not available');
+            console.log('AudioInterface: createOrGetSound not available');
             return null;
         }
         return this.cppAudio.createOrGetSound(soundPath, dimension);
@@ -72,7 +72,7 @@ export class AudioInterface
     {
         if (!this.cppAudio || !this.cppAudio.startSound)
         {
-            console.error('AudioInterface: startSound not available');
+            console.log('AudioInterface: startSound not available');
             return null;
         }
         return this.cppAudio.startSound(soundID);
@@ -92,7 +92,7 @@ export class AudioInterface
     {
         if (!this.cppAudio || !this.cppAudio.startSoundAdvanced)
         {
-            console.error('AudioInterface: startSoundAdvanced not available');
+            console.log('AudioInterface: startSoundAdvanced not available');
             return null;
         }
         return this.cppAudio.startSoundAdvanced(soundID, isLooped, volume, balance, speed, isPaused);
@@ -106,7 +106,7 @@ export class AudioInterface
     {
         if (!this.cppAudio || !this.cppAudio.stopSound)
         {
-            console.error('AudioInterface: stopSound not available');
+            console.log('AudioInterface: stopSound not available');
             return;
         }
         this.cppAudio.stopSound(playbackID);
@@ -121,7 +121,7 @@ export class AudioInterface
     {
         if (!this.cppAudio || !this.cppAudio.setSoundVolume)
         {
-            console.error('AudioInterface: setSoundVolume not available');
+            console.log('AudioInterface: setSoundVolume not available');
             return;
         }
         this.cppAudio.setSoundVolume(playbackID, volume);

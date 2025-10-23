@@ -220,12 +220,12 @@ export class FlyingMovementComponent extends Component
         // Defensive: Ensure orientation never becomes NaN
         if (typeof this.gameObject.orientation.yaw !== 'number' || isNaN(this.gameObject.orientation.yaw))
         {
-            console.error('FlyingMovementComponent: yaw became NaN! Resetting to 0');
+            console.log('FlyingMovementComponent: yaw became NaN! Resetting to 0');
             this.gameObject.orientation.yaw = 0.0;
         }
         if (typeof this.gameObject.orientation.pitch !== 'number' || isNaN(this.gameObject.orientation.pitch))
         {
-            console.error('FlyingMovementComponent: pitch became NaN! Resetting to 0');
+            console.log('FlyingMovementComponent: pitch became NaN! Resetting to 0');
             this.gameObject.orientation.pitch = 0.0;
         }
 

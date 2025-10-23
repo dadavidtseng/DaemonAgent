@@ -59,7 +59,7 @@ export class CameraComponent extends Component
         // Ensure CameraAPI is available
         if (!this.cameraAPI.isAvailable())
         {
-            console.error('CameraComponent: CameraAPI not available!');
+            console.log('CameraComponent: CameraAPI not available!');
             return;
         }
 
@@ -84,7 +84,7 @@ export class CameraComponent extends Component
 
         this.cameraAPI.createCamera(position, orientation, 'world', (cameraId) => {
             if (cameraId === 0) {
-                console.error('CameraComponent: ERROR - Camera creation failed!');
+                console.log('CameraComponent: ERROR - Camera creation failed!');
                 return;
             }
 
@@ -95,7 +95,7 @@ export class CameraComponent extends Component
             console.log('CameraComponent: Setting camera as active...');
             this.cameraAPI.setActive(cameraId, (result) => {
                 if (result === 0) {
-                    console.error('CameraComponent: ERROR - Failed to set camera active!');
+                    console.log('CameraComponent: ERROR - Failed to set camera active!');
                     return;
                 }
 
@@ -200,7 +200,7 @@ export class CameraComponent extends Component
             // Phase 2b: Async destroy with callback
             this.cameraAPI.destroy(this.cameraId, (result) => {
                 if (result === 0) {
-                    console.error('CameraComponent: ERROR - Camera destruction failed!');
+                    console.log('CameraComponent: ERROR - Camera destruction failed!');
                 } else {
                     console.log('CameraComponent: Camera destroyed successfully');
                 }

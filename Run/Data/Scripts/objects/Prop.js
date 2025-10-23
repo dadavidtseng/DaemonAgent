@@ -87,7 +87,7 @@ export class Prop extends GameObject
                 return new StaticBehavior();
 
             default:
-                console.warn(`Prop: Unknown behavior type '${behaviorType}', using static behavior`);
+                console.log(`Prop: Unknown behavior type '${behaviorType}', using static behavior`);
                 return new StaticBehavior();
         }
     }

@@ -60,13 +60,13 @@ export class GameObject
     {
         if (!(component instanceof Component))
         {
-            console.error(`GameObject.addComponent: ${component} is not a Component instance`);
+            console.log(`GameObject.addComponent: ${component} is not a Component instance`);
             return null;
         }
 
         if (this.components.has(component.componentType))
         {
-            console.warn(`GameObject: ${this.name} already has component ${component.componentType}, replacing`);
+            console.log(`GameObject: ${this.name} already has component ${component.componentType}, replacing`);
         }
 
         this.components.set(component.componentType, component);

@@ -42,7 +42,7 @@ export class AudioSystem extends Subsystem {
      */
     subscribeToEvents() {
         if (typeof globalThis.eventBus === 'undefined') {
-            console.warn('AudioSystem: EventBus not available, skipping event subscription');
+            console.log('AudioSystem: EventBus not available, skipping event subscription');
             return;
         }
 
@@ -72,7 +72,7 @@ export class AudioSystem extends Subsystem {
                 this.startSound(clickSound);
                 console.log('AudioSystem: Click sound played successfully');
             } else {
-                console.warn('AudioSystem: Failed to play click sound (sound not loaded)');
+                console.log('AudioSystem: Failed to play click sound (sound not loaded)');
             }
         }
 
