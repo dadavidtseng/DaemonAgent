@@ -388,7 +388,60 @@ void App::Render() const
     g_game->RenderJS();
 
     // Phase 2: Render all entities from EntityStateBuffer
-    RenderEntities();
+    // Only render entities in GAME mode, not in ATTRACT mode
+    if (g_game && !g_game->IsAttractMode())
+    {
+        RenderEntities();
+    }
+
+    //========================================
+    // Debug Rendering (World + Screen)
+    //========================================
+    // Get world camera (active camera - typically the player camera)
+    Camera const* worldCamera = nullptr;
+    if (m_cameraStateBuffer)
+    {
+        EntityID activeCameraId = m_cameraStateBuffer->GetActiveCameraID();
+        if (activeCameraId != 0)
+        {
+            worldCamera = m_cameraStateBuffer->GetCameraById(activeCameraId);
+        }
+    }
+
+    // Render 3D debug visualization (world space)
+    // Only render world debug objects in GAME mode, not in ATTRACT mode
+    if (worldCamera && g_game && !g_game->IsAttractMode())
+    {
+        DebugRenderWorld(*worldCamera);
+    }
+
+    // Get screen camera (orthographic 2D camera for UI text)
+    // Note: Screen camera is created by JSGame.js but not set as active
+    // We need to find it by iterating through cameras or store its ID separately
+    Camera const* screenCamera = nullptr;
+    if (m_cameraStateBuffer)
+    {
+        // TEMPORARY: Find screen camera by checking all cameras for orthographic mode
+        // TODO: Store screen camera ID separately for direct lookup
+        CameraStateMap const* frontBuffer = m_cameraStateBuffer->GetFrontBuffer();
+        if (frontBuffer)
+        {
+            for (auto const& [cameraId, cameraState] : *frontBuffer)
+            {
+                if (cameraState.type == "screen")
+                {
+                    screenCamera = m_cameraStateBuffer->GetCameraById(cameraId);
+                    break;  // Found the screen camera
+                }
+            }
+        }
+    }
+
+    // Render 2D debug visualization (screen space text/UI)
+    if (screenCamera)
+    {
+        DebugRenderScreen(*screenCamera);
+    }
 
     AABB2 const box = AABB2(Vec2::ZERO, Vec2(1600.f, 30.f));
 
@@ -658,17 +711,39 @@ void App::ProcessRenderCommands()
                 }
                 else if (cameraData.type == "screen")
                 {
+                    // Get viewport dimensions for screen camera orthographic bounds
+                    // Use viewport dimensions (not client dimensions) to match actual rendering area
+                    Vec2 viewportDimensions = Vec2(1600.f, 800.f);  // Default fallback
+                    if (Window::s_mainWindow)
+                    {
+                        viewportDimensions = Window::s_mainWindow->GetViewportDimensions();
+                    }
+
                     state.mode = Camera::eMode_Orthographic;
                     state.orthoLeft = 0.0f;
                     state.orthoBottom = 0.0f;
-                    state.orthoRight = 1920.0f;
-                    state.orthoTop = 1080.0f;
+                    state.orthoRight = viewportDimensions.x;  // Match viewport width
+                    state.orthoTop = viewportDimensions.y;    // Match viewport height
                     state.orthoNear = 0.0f;
                     state.orthoFar = 1.0f;
+                    state.viewport = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
+
+                    // DIAGNOSTIC: Log screen camera orthographic bounds
+                    DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                               StringFormat("[DIAGNOSTIC] CREATE_CAMERA screen: ortho bounds = ({:.2f}, {:.2f}) to ({:.2f}, {:.2f}), viewport dims = ({:.2f}, {:.2f})",
+                                            state.orthoLeft, state.orthoBottom, state.orthoRight, state.orthoTop,
+                                            viewportDimensions.x, viewportDimensions.y));
                 }
 
                 auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
                 (*backBuffer)[cmd.entityId] = state;
+
+                // DIAGNOSTIC: Log camera creation
+                DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                           StringFormat("[DIAGNOSTIC] ProcessRenderCommands CREATE_CAMERA: cameraId={}, type={}, position=({:.2f}, {:.2f}, {:.2f}), orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}), backBuffer size after insert={}",
+                                        cmd.entityId, state.type, state.position.x, state.position.y, state.position.z,
+                                        state.orientation.m_yawDegrees, state.orientation.m_pitchDegrees, state.orientation.m_rollDegrees,
+                                        backBuffer->size()));
 
                 DebuggerPrintf("[TRACE] ProcessRenderCommands - Camera %llu added to back buffer\n", cmd.entityId);
                 break;
@@ -680,14 +755,34 @@ void App::ProcessRenderCommands()
                 auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
                 auto it = backBuffer->find(cmd.entityId);
 
+                // DIAGNOSTIC: Log UPDATE_CAMERA command processing
+                static int s_updateCameraCount = 0;
+                s_updateCameraCount++;
+                if (s_updateCameraCount % 60 == 0)
+                {
+                    DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                               StringFormat("[DIAGNOSTIC] ProcessRenderCommands UPDATE_CAMERA: cameraId={}, position=({:.2f}, {:.2f}, {:.2f}), orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}), found={}",
+                                            cmd.entityId, updateData.position.x, updateData.position.y, updateData.position.z,
+                                            updateData.orientation.m_yawDegrees, updateData.orientation.m_pitchDegrees, updateData.orientation.m_rollDegrees,
+                                            it != backBuffer->end() ? 1 : 0));
+                }
+
                 if (it != backBuffer->end())
                 {
-                    // Update camera position and orientation
-                    // UpdateCameraPosition and UpdateCameraOrientation send separate commands
-                    // so we update both fields from the command data
+                    // OPTION A FIX: Always apply both position and orientation
+                    // HighLevelEntityAPI now reads the current state and sends complete updates
+                    // So we can safely apply both fields without zeroing anything out
+
                     it->second.position = updateData.position;
                     it->second.orientation = updateData.orientation;
+
                     DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA: cameraId=%llu updated\n", cmd.entityId);
+                }
+                else
+                {
+                    // Camera not found in back buffer!
+                    DAEMON_LOG(LogScript, eLogVerbosity::Warning,
+                               StringFormat("[DIAGNOSTIC] ProcessRenderCommands UPDATE_CAMERA: Camera {} NOT FOUND in back buffer!", cmd.entityId));
                 }
                 break;
             }
@@ -720,13 +815,21 @@ void App::ProcessRenderCommands()
                     }
                     else if (typeData.type == "screen")
                     {
+                        // Get actual client dimensions for screen camera orthographic bounds
+                        Vec2 clientDimensions = Vec2(1600.f, 800.f);  // Default fallback
+                        if (Window::s_mainWindow)
+                        {
+                            clientDimensions = Window::s_mainWindow->GetClientDimensions();
+                        }
+
                         it->second.mode = Camera::eMode_Orthographic;
                         it->second.orthoLeft = 0.0f;
                         it->second.orthoBottom = 0.0f;
-                        it->second.orthoRight = 1920.0f;
-                        it->second.orthoTop = 1080.0f;
+                        it->second.orthoRight = clientDimensions.x;  // Match window width
+                        it->second.orthoTop = clientDimensions.y;    // Match window height
                         it->second.orthoNear = 0.0f;
                         it->second.orthoFar = 1.0f;
+                        it->second.viewport = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
                     }
                     DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA_TYPE: cameraId=%llu, type=%s\n",
                                    cmd.entityId, typeData.type.c_str());
@@ -808,9 +911,41 @@ void App::RenderEntities() const
         }
     }
 
+    // DIAGNOSTIC: Log camera position/orientation every 60 frames
+    if (s_frameCount % 60 == 0 && worldCamera)
+    {
+        Vec3 camPos = worldCamera->GetPosition();
+        EulerAngles camOrient = worldCamera->GetOrientation();
+        DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                   StringFormat("[DIAGNOSTIC] CAMERA: pos=({:.2f}, {:.2f}, {:.2f}) orient=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}) activeCameraId={}",
+                                camPos.x, camPos.y, camPos.z,
+                                camOrient.m_yawDegrees, camOrient.m_pitchDegrees, camOrient.m_rollDegrees,
+                                m_cameraStateBuffer ? m_cameraStateBuffer->GetActiveCameraID() : 0));
+    }
+
     g_renderer->BeginCamera(*worldCamera);
 
     int worldRenderedCount = 0;
+
+    // DIAGNOSTIC: Log all entities every 60 frames
+    if (s_frameCount % 60 == 0)
+    {
+        DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                   StringFormat("[DIAGNOSTIC] ===== ENTITY LIST (frame {}) =====", s_frameCount));
+        for (auto const& [entityId, state] : *frontBuffer)
+        {
+            if (state.cameraType == "world")
+            {
+                DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                           StringFormat("[DIAGNOSTIC] Entity {}: pos=({:.2f}, {:.2f}, {:.2f}) orient=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}) active={} vbHandle={}",
+                                        entityId, state.position.x, state.position.y, state.position.z,
+                                        state.orientation.m_yawDegrees, state.orientation.m_pitchDegrees, state.orientation.m_rollDegrees,
+                                        state.isActive, state.vertexBufferHandle));
+            }
+        }
+        DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                   StringFormat("[DIAGNOSTIC] ===== END ENTITY LIST ====="));
+    }
 
     // Render all entities with cameraType == "world" (3D entities)
     for (auto const& [entityId, state] : *frontBuffer)
@@ -833,10 +968,11 @@ void App::RenderEntities() const
 
         // Set model transformation matrix
         // Coordinate System: X-forward, Y-left, Z-up
-        Mat44 modelMatrix = Mat44::MakeTranslation3D(state.position);
-        modelMatrix.Append(Mat44::MakeZRotationDegrees(state.orientation.m_yawDegrees));
-        modelMatrix.Append(Mat44::MakeYRotationDegrees(state.orientation.m_pitchDegrees));
-        modelMatrix.Append(Mat44::MakeXRotationDegrees(state.orientation.m_rollDegrees));
+        // FIXED: Use same pattern as Entity::GetModelToWorldTransform()
+        // SetTranslation + Append(orientation matrix) instead of separate axis rotations
+        Mat44 modelMatrix;
+        modelMatrix.SetTranslation3D(state.position);
+        modelMatrix.Append(state.orientation.GetAsMatrix_IFwd_JLeft_KUp());
 
         g_renderer->SetModelConstants(modelMatrix, state.color);
         g_renderer->BindTexture(nullptr);  // Phase 2.5: Will be replaced with per-entity texture binding
@@ -925,8 +1061,24 @@ int App::CreateGeometryForMeshType(std::string const& meshType, float radius, Rg
     if (meshType == "cube")
     {
         // Create cube geometry
-        AABB3 cubeBox(Vec3(-radius, -radius, -radius), Vec3(radius, radius, radius));
-        AddVertsForAABB3D(verts, cubeBox, color);
+        // AABB3 cubeBox(Vec3(-radius, -radius, -radius), Vec3(radius, radius, radius));
+        // AddVertsForAABB3D(verts, cubeBox, color);
+
+        Vec3 const frontBottomLeft(0.5f, -0.5f, -0.5f);
+        Vec3 const frontBottomRight(0.5f, 0.5f, -0.5f);
+        Vec3 const frontTopLeft(0.5f, -0.5f, 0.5f);
+        Vec3 const frontTopRight(0.5f, 0.5f, 0.5f);
+        Vec3 const backBottomLeft(-0.5f, 0.5f, -0.5f);
+        Vec3 const backBottomRight(-0.5f, -0.5f, -0.5f);
+        Vec3 const backTopLeft(-0.5f, 0.5f, 0.5f);
+        Vec3 const backTopRight(-0.5f, -0.5f, 0.5f);
+
+        AddVertsForQuad3D(verts, frontBottomLeft, frontBottomRight, frontTopLeft, frontTopRight, Rgba8::RED);          // +X Red
+        AddVertsForQuad3D(verts, backBottomLeft, backBottomRight, backTopLeft, backTopRight, Rgba8::CYAN);             // -X -Red (Cyan)
+        AddVertsForQuad3D(verts, frontBottomRight, backBottomLeft, frontTopRight, backTopLeft, Rgba8::GREEN);          // -Y -Green (Magenta)
+        AddVertsForQuad3D(verts, backBottomRight, frontBottomLeft, backTopRight, frontTopLeft, Rgba8::MAGENTA);        // +Y Green
+        AddVertsForQuad3D(verts, frontTopLeft, frontTopRight, backTopRight, backTopLeft, Rgba8::BLUE);                 // +Z Blue
+        AddVertsForQuad3D(verts, backBottomRight, backBottomLeft, frontBottomLeft, frontBottomRight, Rgba8::YELLOW);   // -Z -Blue (Yellow)
     }
     else if (meshType == "sphere")
     {
@@ -935,17 +1087,45 @@ int App::CreateGeometryForMeshType(std::string const& meshType, float radius, Rg
     }
     else if (meshType == "grid")
     {
-        // Create grid geometry (horizontal floor in XZ plane)
-        // Grid lies flat on the ground, visible when camera looks down
-        float gridSize = radius * 2.0f;
+        // Create grid geometry with multiple colored lines
+        // Based on original Prop::InitializeLocalVertsForGrid() implementation
+        // Grid lies in XY plane (horizontal when looking down Z-axis)
+        float gridLineLength = 100.f;
 
-        // Create quad in XZ plane (horizontal floor), Y=0
-        Vec3 bottomLeft(-gridSize / 2.0f, 0.0f, -gridSize / 2.0f);  // Back-left corner
-        Vec3 bottomRight(gridSize / 2.0f, 0.0f, -gridSize / 2.0f);  // Back-right corner
-        Vec3 topLeft(-gridSize / 2.0f, 0.0f, gridSize / 2.0f);      // Front-left corner
-        Vec3 topRight(gridSize / 2.0f, 0.0f, gridSize / 2.0f);      // Front-right corner
+        for (int i = -(int)gridLineLength / 2; i < (int)gridLineLength / 2; i++)
+        {
+            float lineWidth = 0.05f;
+            if (i == 0)
+            {
+                lineWidth = 0.3f;  // Center lines are thicker
+            }
 
-        AddVertsForQuad3D(verts, bottomLeft, bottomRight, topLeft, topRight, color);
+            // Create line boxes in X direction (X-axis lines)
+            AABB3 boundsX(
+                Vec3(-gridLineLength / 2.f, -lineWidth / 2.f + (float)i, -lineWidth / 2.f),
+                Vec3(gridLineLength / 2.f, lineWidth / 2.f + (float)i, lineWidth / 2.f)
+            );
+
+            // Create line boxes in Y direction (Y-axis lines)
+            AABB3 boundsY(
+                Vec3(-lineWidth / 2.f + (float)i, -gridLineLength / 2.f, -lineWidth / 2.f),
+                Vec3(lineWidth / 2.f + (float)i, gridLineLength / 2.f, lineWidth / 2.f)
+            );
+
+            // Determine line colors
+            Rgba8 colorX = Rgba8::DARK_GREY;
+            Rgba8 colorY = Rgba8::DARK_GREY;
+
+            if (i % 5 == 0)  // Every 5th line is colored
+            {
+                colorX = Rgba8::RED;    // X-axis lines are red
+                colorY = Rgba8::GREEN;  // Y-axis lines are green
+            }
+
+            // Add geometry for both X and Y direction lines
+            AddVertsForAABB3D(verts, boundsX, colorX);
+            AddVertsForAABB3D(verts, boundsY, colorY);
+        }
     }
     else if (meshType == "plane")
     {
