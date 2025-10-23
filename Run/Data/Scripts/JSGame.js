@@ -25,6 +25,26 @@ export const GameState = Object.freeze({
     PAUSED: 'PAUSED'
 });
 
+// Vec2 constants (matching C++ Vec2 constants)
+const Vec2 = {
+    ZERO: {x: 0, y: 0},
+    ONE: {x: 1, y: 1}
+};
+
+// Vec3 basis constants (matching C++ Vec3 basis vectors)
+const Vec3 = {
+    X_BASIS: {x: 1, y: 0, z: 0},
+    Y_BASIS: {x: 0, y: 1, z: 0},
+    Z_BASIS: {x: 0, y: 0, z: 1}
+};
+
+// Rgba8 color constants (matching C++ Rgba8 colors)
+const Rgba8 = {
+    RED: {r: 255, g: 0, b: 0, a: 255},
+    GREEN: {r: 0, g: 255, b: 0, a: 255},
+    BLUE: {r: 0, g: 0, b: 255, a: 255}
+};
+
 /**
  * Create a 4x4 transformation matrix from I, J, K basis vectors and translation T
  * Matches C++ Mat44::SetIJKT3D(I, J, K, T)
@@ -90,9 +110,9 @@ export class JSGame
         // Register all component systems with JSEngine
         this.registerGameSystems();
 
-        // Phase 2 Validation: Start in GAME mode to render entities immediately
-        // (Grid entity won't render in ATTRACT mode due to rendering skip at line 501)
-        this.gameState = GameState.GAME;  // Changed from ATTRACT to GAME
+        // Default game state: Start in ATTRACT mode
+        // Press SPACE to transition to GAME mode
+        this.gameState = GameState.ATTRACT;
 
         // Create game clock (uses ClockInterface wrapper for C++ clock)
         // Matches C++ Game::Game() which creates: m_gameClock = new Clock(Clock::GetSystemClock())
@@ -291,25 +311,7 @@ export class JSGame
             this.debugRenderSystem.addWorldBasis(identityMatrix(), -1.0, "USE_DEPTH");
             console.log('JSGame: World basis added successfully');
 
-            // Vec3 basis constants (matching C++ Vec3 basis vectors)
-            const Vec3 = {
-                X_BASIS: {x: 1, y: 0, z: 0},
-                Y_BASIS: {x: 0, y: 1, z: 0},
-                Z_BASIS: {x: 0, y: 0, z: 1}
-            };
-
-            // Vec2 constants (matching C++ Vec2 constants)
-            const Vec2 = {
-                ZERO: {x: 0, y: 0},
-                ONE: {x: 1, y: 1}
-            };
-
-            // Rgba8 color constants (matching C++ Rgba8 colors)
-            const Rgba8 = {
-                RED: {r: 255, g: 0, b: 0, a: 255},
-                GREEN: {r: 0, g: 255, b: 0, a: 255},
-                BLUE: {r: 0, g: 0, b: 255, a: 255}
-            };
+            // Note: Vec2, Vec3, Rgba8 constants now defined at module level (top of file)
 
             // Add "X-Forward" label
             console.log('JSGame: Adding X-Forward label...');
@@ -373,17 +375,8 @@ export class JSGame
 
             // Add screen text
             console.log('JSGame: Adding screen text...');
-            this.debugRenderSystem.addScreenText(
-                "TEST",
-                0,              // x
-                100,            // y
-                20.0,           // size
-                Vec2.ZERO.x,    // alignX
-                Vec2.ZERO.y,    // alignY
-                10.0,           // duration
-                255, 255, 255, 255  // White color (default)
-            );
-            console.log('JSGame: Screen text added successfully');
+            // Removed static "TEST" text - will be added dynamically based on game mode in gameRender()
+            console.log('JSGame: Screen text setup complete (dynamic mode-based text)');
 
             console.log('JSGame: Debug visualization setup complete');
         } catch (error)
@@ -516,6 +509,40 @@ export class JSGame
             {
                 renderFrameCount++;
 
+                // Add game mode-specific screen text FIRST (before any early returns)
+                // This ensures text is rendered in both ATTRACT and GAME modes
+                if (this.gameState === GameState.ATTRACT)
+                {
+                    // ATTRACT mode: Show "Attract" text
+                    this.debugRenderSystem.addScreenText(
+                        "Attract",
+                        10,             // x (10 pixels from left)
+                        10,             // y (10 pixels from bottom)
+                        30.0,           // size (larger for attract mode)
+                        Vec2.ZERO.x,    // alignX
+                        Vec2.ZERO.y,    // alignY
+                        0,             // duration (-1 = infinite, persists until cleared)
+                        255, 255, 0, 255  // Yellow color
+                    );
+                }
+                else if (this.gameState === GameState.GAME)
+                {
+                    // GAME mode: Show "Game" text
+                    this.debugRenderSystem.addScreenText(
+                        "Game",
+                        10,             // x (10 pixels from left)
+                        10,             // y (10 pixels from bottom)
+                        30.0,           // size
+                        Vec2.ZERO.x,    // alignX
+                        Vec2.ZERO.y,    // alignY
+                        0,             // duration (-1 = infinite, persists until cleared)
+                        0, 255, 0, 255  // Green color
+                    );
+                }
+
+                // Render screen text using screen camera (works in both modes)
+                this.debugRenderSystem.renderScreen(this.screenCamera);
+
                 // Only render JavaScript entities when in GAME mode
                 // (CppBridgeSystem handles ATTRACT mode rendering)
                 if (this.gameState !== GameState.GAME)
@@ -553,7 +580,6 @@ export class JSGame
 
                 // Render debug visualization (use same camera as main rendering)
                 this.debugRenderSystem.renderWorld(camera);
-                this.debugRenderSystem.renderScreen(this.screenCamera);
 
                 // Phase 2: No need for begin/end camera calls - C++ handles rendering automatically
                 // renderer.beginCamera(camera);  // REMOVED - replaced by EntityAPI system
