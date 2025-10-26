@@ -26,22 +26,10 @@
     <ClCompile Include="Framework\App.cpp">
       <Filter>Framework</Filter>
     </ClCompile>
-    <ClCompile Include="Framework\CameraStateBuffer.cpp">
-      <Filter>Framework</Filter>
-    </ClCompile>
-    <ClCompile Include="Framework\EntityScriptInterface.cpp">
-      <Filter>Framework</Filter>
-    </ClCompile>
-    <ClCompile Include="Framework\EntityStateBuffer.cpp">
-      <Filter>Framework</Filter>
-    </ClCompile>
     <ClCompile Include="Framework\GameCommon.cpp">
       <Filter>Framework</Filter>
     </ClCompile>
     <ClCompile Include="Framework\GameScriptInterface.cpp">
-      <Filter>Framework</Filter>
-    </ClCompile>
-    <ClCompile Include="Framework\HighLevelEntityAPI.cpp">
       <Filter>Framework</Filter>
     </ClCompile>
     <ClCompile Include="Framework\JSGameLogicJob.cpp">
@@ -64,22 +52,10 @@
     <ClInclude Include="Framework\App.hpp">
       <Filter>Framework</Filter>
     </ClInclude>
-    <ClInclude Include="Framework\CameraStateBuffer.hpp">
-      <Filter>Framework</Filter>
-    </ClInclude>
-    <ClInclude Include="Framework\EntityScriptInterface.hpp">
-      <Filter>Framework</Filter>
-    </ClInclude>
-    <ClInclude Include="Framework\EntityStateBuffer.hpp">
-      <Filter>Framework</Filter>
-    </ClInclude>
     <ClInclude Include="Framework\GameCommon.hpp">
       <Filter>Framework</Filter>
     </ClInclude>
     <ClInclude Include="Framework\GameScriptInterface.hpp">
-      <Filter>Framework</Filter>
-    </ClInclude>
-    <ClInclude Include="Framework\HighLevelEntityAPI.hpp">
       <Filter>Framework</Filter>
     </ClInclude>
     <ClInclude Include="Framework\JSGameLogicJob.hpp">
