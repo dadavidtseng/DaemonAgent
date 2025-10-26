@@ -1,11 +1,11 @@
 //----------------------------------------------------------------------------------------------------
 // CameraAPI.js
-// Phase 2b: High-Level Camera API Wrapper for C++ camera interface (globalThis.entity)
+// M4-T8: High-Level Camera API Wrapper for C++ camera interface (globalThis.camera)
 // Part of the interface wrapper layer for C++/JavaScript bridge
 //----------------------------------------------------------------------------------------------------
 
 /**
- * CameraAPI - High-level abstraction over C++ camera system (Phase 2b)
+ * CameraAPI - High-level abstraction over C++ camera system (M4-T8)
  *
  * This wrapper provides a JavaScript-friendly interface to the C++ high-level camera API,
  * enabling easy camera creation and management with support for multiple cameras and overlays.
@@ -26,26 +26,27 @@
  * - 'world': 3D perspective camera for world rendering
  * - 'screen': 2D orthographic camera for UI/HUD overlay
  *
- * C++ Interface Methods (exposed via globalThis.entity):
+ * M4-T8 CHANGE: C++ Interface Methods (exposed via globalThis.camera - SPLIT FROM globalThis.entity):
  * Lifecycle (async with callback):
- * - createCamera(posX, posY, posZ, yaw, pitch, roll, type, callback): callbackId (FLATTENED API)
- * - setActiveCamera(cameraId, callback): callbackId
- * - updateCameraType(cameraId, type, callback): callbackId
- * - destroyCamera(cameraId, callback): callbackId
+ * - create(posX, posY, posZ, yaw, pitch, roll, type, callback): callbackId (FLATTENED API)
+ * - setActive(cameraId, callback): callbackId
+ * - updateType(cameraId, type, callback): callbackId
+ * - destroy(cameraId, callback): callbackId
  *
  * Updates (fire-and-forget, FLATTENED API):
- * - updateCamera(cameraId, posX, posY, posZ, yaw, pitch, roll): void [RECOMMENDED - atomic update]
- * - updateCameraPosition(cameraId, posX, posY, posZ): void [DEPRECATED - use updateCamera]
- * - updateCameraOrientation(cameraId, yaw, pitch, roll): void [DEPRECATED - use updateCamera]
- * - moveCameraBy(cameraId, dx, dy, dz): void
- * - lookAtCamera(cameraId, targetX, targetY, targetZ): void
+ * - update(cameraId, posX, posY, posZ, yaw, pitch, roll): void [RECOMMENDED - atomic update]
+ * - updatePosition(cameraId, posX, posY, posZ): void [DEPRECATED - use update]
+ * - updateOrientation(cameraId, yaw, pitch, roll): void [DEPRECATED - use update]
+ * - moveBy(cameraId, dx, dy, dz): void
+ * - lookAt(cameraId, targetX, targetY, targetZ): void
+ * - getHandle(cameraId): number (for debug rendering)
  *
  * Usage Example:
  * ```javascript
  * const cameraAPI = new CameraAPI();
  *
  * // Create a world camera (JavaScript wrapper uses array format for convenience)
- * // Internally converts to flattened C++ call: createCamera(0, -10, 5, 0, 0, 0, 'world', callback)
+ * // Internally converts to flattened C++ call: create(0, -10, 5, 0, 0, 0, 'world', callback)
  * cameraAPI.createCamera([0, -10, 5], [0, 0, 0], 'world', (cameraId) => {
  *     console.log('Camera created with ID:', cameraId);
  *
@@ -66,15 +67,15 @@ export class CameraAPI
 {
     constructor()
     {
-        this.cppEntity = globalThis.entity; // C++ entity interface (cameras are part of entity system)
+        this.cppCamera = globalThis.camera; // M4-T8: C++ camera interface (separated from entity system)
 
-        if (!this.cppEntity)
+        if (!this.cppCamera)
         {
-            console.log('CameraAPI: C++ entity interface (globalThis.entity) not available');
+            console.log('CameraAPI: C++ camera interface (globalThis.camera) not available');
         }
         else
         {
-            console.log('CameraAPI: Successfully connected to C++ high-level camera interface (Phase 2b)');
+            console.log('CameraAPI: Successfully connected to C++ high-level camera interface (M4-T8)');
         }
     }
 
@@ -92,9 +93,9 @@ export class CameraAPI
      */
     createCamera(position, orientation, type, callback)
     {
-        if (!this.cppEntity || !this.cppEntity.createCamera)
+        if (!this.cppCamera || !this.cppCamera.create)
         {
-            console.log('CameraAPI: ERROR - createCamera not available');
+            console.log('CameraAPI: ERROR - create not available');
             if (callback) callback(0); // 0 = creation failed
             return 0;
         }
@@ -123,15 +124,15 @@ export class CameraAPI
 
         // FLATTENED API: V8 binding cannot handle nested objects
         // Call C++ with individual primitive arguments instead
-        // Signature: createCamera(posX, posY, posZ, yaw, pitch, roll, type, callback)
+        // M4-T8: Signature changed to camera.create(posX, posY, posZ, yaw, pitch, roll, type, callback)
         try
         {
-            console.log('CameraAPI: Calling flattened createCamera API with 8 arguments');
+            console.log('CameraAPI: Calling flattened create API with 8 arguments (M4-T8)');
             console.log(`  position: [${position[0]}, ${position[1]}, ${position[2]}]`);
             console.log(`  orientation: [${orientation[0]}, ${orientation[1]}, ${orientation[2]}]`);
             console.log(`  type: ${type}`);
 
-            const result = this.cppEntity.createCamera(
+            const result = this.cppCamera.create(
                 position[0],        // arg 0: double (posX)
                 position[1],        // arg 1: double (posY)
                 position[2],        // arg 2: double (posZ)
@@ -142,12 +143,12 @@ export class CameraAPI
                 callback            // arg 7: function
             );
 
-            console.log(`CameraAPI: createCamera returned callbackId: ${result}`);
+            console.log(`CameraAPI: create returned callbackId: ${result}`);
             return result;
         }
         catch (error)
         {
-            console.log('CameraAPI: ERROR - createCamera exception:', error);
+            console.log('CameraAPI: ERROR - create exception:', error);
             if (callback) callback(0);
             return 0;
         }
@@ -161,20 +162,20 @@ export class CameraAPI
      */
     setActive(cameraId, callback)
     {
-        if (!this.cppEntity || !this.cppEntity.setActiveCamera)
+        if (!this.cppCamera || !this.cppCamera.setActive)
         {
-            console.log('CameraAPI: ERROR - setActiveCamera not available');
+            console.log('CameraAPI: ERROR - setActive not available');
             if (callback) callback(0);
             return 0;
         }
 
         try
         {
-            return this.cppEntity.setActiveCamera(cameraId, callback);
+            return this.cppCamera.setActive(cameraId, callback);
         }
         catch (error)
         {
-            console.log('CameraAPI: ERROR - setActiveCamera exception:', error);
+            console.log('CameraAPI: ERROR - setActive exception:', error);
             if (callback) callback(0);
             return 0;
         }
@@ -189,9 +190,9 @@ export class CameraAPI
      */
     updateType(cameraId, type, callback)
     {
-        if (!this.cppEntity || !this.cppEntity.updateCameraType)
+        if (!this.cppCamera || !this.cppCamera.updateType)
         {
-            console.log('CameraAPI: ERROR - updateCameraType not available');
+            console.log('CameraAPI: ERROR - updateType not available');
             if (callback) callback(0);
             return 0;
         }
@@ -205,11 +206,11 @@ export class CameraAPI
 
         try
         {
-            return this.cppEntity.updateCameraType(cameraId, type, callback);
+            return this.cppCamera.updateType(cameraId, type, callback);
         }
         catch (error)
         {
-            console.log('CameraAPI: ERROR - updateCameraType exception:', error);
+            console.log('CameraAPI: ERROR - updateType exception:', error);
             if (callback) callback(0);
             return 0;
         }
@@ -223,20 +224,20 @@ export class CameraAPI
      */
     destroy(cameraId, callback)
     {
-        if (!this.cppEntity || !this.cppEntity.destroyCamera)
+        if (!this.cppCamera || !this.cppCamera.destroy)
         {
-            console.log('CameraAPI: ERROR - destroyCamera not available');
+            console.log('CameraAPI: ERROR - destroy not available');
             if (callback) callback(0);
             return 0;
         }
 
         try
         {
-            return this.cppEntity.destroyCamera(cameraId, callback);
+            return this.cppCamera.destroy(cameraId, callback);
         }
         catch (error)
         {
-            console.log('CameraAPI: ERROR - destroyCamera exception:', error);
+            console.log('CameraAPI: ERROR - destroy exception:', error);
             if (callback) callback(0);
             return 0;
         }
@@ -258,9 +259,9 @@ export class CameraAPI
      */
     update(cameraId, posX, posY, posZ, yaw, pitch, roll)
     {
-        if (!this.cppEntity || !this.cppEntity.updateCamera)
+        if (!this.cppCamera || !this.cppCamera.update)
         {
-            console.log('CameraAPI: ERROR - updateCamera not available');
+            console.log('CameraAPI: ERROR - update not available');
             return;
         }
 
@@ -268,12 +269,12 @@ export class CameraAPI
         {
             // FLATTENED API: V8 binding cannot handle nested objects
             // Call C++ with individual primitive arguments
-            // Signature: updateCamera(cameraId, posX, posY, posZ, yaw, pitch, roll)
-            this.cppEntity.updateCamera(cameraId, posX, posY, posZ, yaw, pitch, roll);
+            // M4-T8: Signature changed to camera.update(cameraId, posX, posY, posZ, yaw, pitch, roll)
+            this.cppCamera.update(cameraId, posX, posY, posZ, yaw, pitch, roll);
         }
         catch (error)
         {
-            console.log('CameraAPI: ERROR - updateCamera exception:', error);
+            console.log('CameraAPI: ERROR - update exception:', error);
         }
     }
 
@@ -284,9 +285,9 @@ export class CameraAPI
      */
     updatePosition(cameraId, position)
     {
-        if (!this.cppEntity || !this.cppEntity.updateCameraPosition)
+        if (!this.cppCamera || !this.cppCamera.updatePosition)
         {
-            console.log('CameraAPI: ERROR - updateCameraPosition not available');
+            console.log('CameraAPI: ERROR - updatePosition not available');
             return;
         }
 
@@ -300,12 +301,12 @@ export class CameraAPI
         {
             // FLATTENED API: V8 binding cannot handle nested objects
             // Call C++ with individual primitive arguments instead
-            // Signature: updateCameraPosition(cameraId, posX, posY, posZ)
-            this.cppEntity.updateCameraPosition(cameraId, position[0], position[1], position[2]);
+            // M4-T8: Signature changed to camera.updatePosition(cameraId, posX, posY, posZ)
+            this.cppCamera.updatePosition(cameraId, position[0], position[1], position[2]);
         }
         catch (error)
         {
-            console.log('CameraAPI: ERROR - updateCameraPosition exception:', error);
+            console.log('CameraAPI: ERROR - updatePosition exception:', error);
         }
     }
 
@@ -316,9 +317,9 @@ export class CameraAPI
      */
     updateOrientation(cameraId, orientation)
     {
-        if (!this.cppEntity || !this.cppEntity.updateCameraOrientation)
+        if (!this.cppCamera || !this.cppCamera.updateOrientation)
         {
-            console.log('CameraAPI: ERROR - updateCameraOrientation not available');
+            console.log('CameraAPI: ERROR - updateOrientation not available');
             return;
         }
 
@@ -332,12 +333,12 @@ export class CameraAPI
         {
             // FLATTENED API: V8 binding cannot handle nested objects
             // Call C++ with individual primitive arguments instead
-            // Signature: updateCameraOrientation(cameraId, yaw, pitch, roll)
-            this.cppEntity.updateCameraOrientation(cameraId, orientation[0], orientation[1], orientation[2]);
+            // M4-T8: Signature changed to camera.updateOrientation(cameraId, yaw, pitch, roll)
+            this.cppCamera.updateOrientation(cameraId, orientation[0], orientation[1], orientation[2]);
         }
         catch (error)
         {
-            console.log('CameraAPI: ERROR - updateCameraOrientation exception:', error);
+            console.log('CameraAPI: ERROR - updateOrientation exception:', error);
         }
     }
 
@@ -348,9 +349,9 @@ export class CameraAPI
      */
     moveBy(cameraId, delta)
     {
-        if (!this.cppEntity || !this.cppEntity.moveCameraBy)
+        if (!this.cppCamera || !this.cppCamera.moveBy)
         {
-            console.log('CameraAPI: ERROR - moveCameraBy not available');
+            console.log('CameraAPI: ERROR - moveBy not available');
             return;
         }
 
@@ -364,12 +365,12 @@ export class CameraAPI
         {
             // FLATTENED API: V8 binding cannot handle nested objects
             // Call C++ with individual primitive arguments instead
-            // Signature: moveCameraBy(cameraId, dx, dy, dz)
-            this.cppEntity.moveCameraBy(cameraId, delta[0], delta[1], delta[2]);
+            // M4-T8: Signature changed to camera.moveBy(cameraId, dx, dy, dz)
+            this.cppCamera.moveBy(cameraId, delta[0], delta[1], delta[2]);
         }
         catch (error)
         {
-            console.log('CameraAPI: ERROR - moveCameraBy exception:', error);
+            console.log('CameraAPI: ERROR - moveBy exception:', error);
         }
     }
 
@@ -380,9 +381,9 @@ export class CameraAPI
      */
     lookAt(cameraId, target)
     {
-        if (!this.cppEntity || !this.cppEntity.lookAtCamera)
+        if (!this.cppCamera || !this.cppCamera.lookAt)
         {
-            console.log('CameraAPI: ERROR - lookAtCamera not available');
+            console.log('CameraAPI: ERROR - lookAt not available');
             return;
         }
 
@@ -396,12 +397,12 @@ export class CameraAPI
         {
             // FLATTENED API: V8 binding cannot handle nested objects
             // Call C++ with individual primitive arguments instead
-            // Signature: lookAtCamera(cameraId, targetX, targetY, targetZ)
-            this.cppEntity.lookAtCamera(cameraId, target[0], target[1], target[2]);
+            // M4-T8: Signature changed to camera.lookAt(cameraId, targetX, targetY, targetZ)
+            this.cppCamera.lookAt(cameraId, target[0], target[1], target[2]);
         }
         catch (error)
         {
-            console.log('CameraAPI: ERROR - lookAtCamera exception:', error);
+            console.log('CameraAPI: ERROR - lookAt exception:', error);
         }
     }
 
@@ -415,7 +416,7 @@ export class CameraAPI
      */
     isAvailable()
     {
-        return this.cppEntity !== undefined && this.cppEntity !== null;
+        return this.cppCamera !== undefined && this.cppCamera !== null;
     }
 
     /**
@@ -426,19 +427,20 @@ export class CameraAPI
     {
         return {
             available: this.isAvailable(),
-            cppInterfaceType: typeof this.cppEntity,
-            hasMethods: this.cppEntity ? {
-                // Lifecycle methods
-                createCamera: typeof this.cppEntity.createCamera === 'function',
-                setActiveCamera: typeof this.cppEntity.setActiveCamera === 'function',
-                updateCameraType: typeof this.cppEntity.updateCameraType === 'function',
-                destroyCamera: typeof this.cppEntity.destroyCamera === 'function',
-                // Update methods (RECOMMENDED: use updateCamera for atomic updates)
-                updateCamera: typeof this.cppEntity.updateCamera === 'function',
-                updateCameraPosition: typeof this.cppEntity.updateCameraPosition === 'function',
-                updateCameraOrientation: typeof this.cppEntity.updateCameraOrientation === 'function',
-                moveCameraBy: typeof this.cppEntity.moveCameraBy === 'function',
-                lookAtCamera: typeof this.cppEntity.lookAtCamera === 'function'
+            cppInterfaceType: typeof this.cppCamera,
+            hasMethods: this.cppCamera ? {
+                // Lifecycle methods (M4-T8: method names updated)
+                create: typeof this.cppCamera.create === 'function',
+                setActive: typeof this.cppCamera.setActive === 'function',
+                updateType: typeof this.cppCamera.updateType === 'function',
+                destroy: typeof this.cppCamera.destroy === 'function',
+                // Update methods (RECOMMENDED: use update for atomic updates)
+                update: typeof this.cppCamera.update === 'function',
+                updatePosition: typeof this.cppCamera.updatePosition === 'function',
+                updateOrientation: typeof this.cppCamera.updateOrientation === 'function',
+                moveBy: typeof this.cppCamera.moveBy === 'function',
+                lookAt: typeof this.cppCamera.lookAt === 'function',
+                getHandle: typeof this.cppCamera.getHandle === 'function'
             } : null
         };
     }
@@ -450,4 +452,4 @@ export default CameraAPI;
 // Export to globalThis for hot-reload detection
 globalThis.CameraAPI = CameraAPI;
 
-console.log('CameraAPI: High-level camera wrapper loaded (Phase 2b Interface Layer)');
+console.log('CameraAPI: High-level camera wrapper loaded (M4-T8 Interface Layer)');

@@ -134,15 +134,15 @@ export class DebugRenderSystem extends Subsystem
      */
     renderWorld(cameraId)
     {
-        // Look up camera handle from camera ID
-        // getCameraHandle is exposed through globalThis.entity (EntityScriptInterface)
-        if (!globalThis.entity || !globalThis.entity.getCameraHandle)
+        // M4-T8: Look up camera handle from camera ID
+        // getHandle is exposed through globalThis.camera (CameraScriptInterface)
+        if (!globalThis.camera || !globalThis.camera.getHandle)
         {
-            console.log('DebugRenderSystem.renderWorld: entity.getCameraHandle not available');
+            console.log('DebugRenderSystem.renderWorld: camera.getHandle not available');
             return;
         }
 
-        const cameraHandle = globalThis.entity.getCameraHandle(cameraId);
+        const cameraHandle = globalThis.camera.getHandle(cameraId);
         if (cameraHandle === 0)
         {
             console.log(`DebugRenderSystem.renderWorld: Camera ${cameraId} not found`);
@@ -158,15 +158,15 @@ export class DebugRenderSystem extends Subsystem
      */
     renderScreen(cameraId)
     {
-        // Look up camera handle from camera ID
-        // getCameraHandle is exposed through globalThis.entity (EntityScriptInterface)
-        if (!globalThis.entity || !globalThis.entity.getCameraHandle)
+        // M4-T8: Look up camera handle from camera ID
+        // getHandle is exposed through globalThis.camera (CameraScriptInterface)
+        if (!globalThis.camera || !globalThis.camera.getHandle)
         {
-            console.log('DebugRenderSystem.renderScreen: entity.getCameraHandle not available');
+            console.log('DebugRenderSystem.renderScreen: camera.getHandle not available');
             return;
         }
 
-        const cameraHandle = globalThis.entity.getCameraHandle(cameraId);
+        const cameraHandle = globalThis.camera.getHandle(cameraId);
         if (cameraHandle === 0)
         {
             console.log(`DebugRenderSystem.renderScreen: Camera ${cameraId} not found`);
