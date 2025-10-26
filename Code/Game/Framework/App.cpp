@@ -45,13 +45,18 @@
 
 // Phase 1: Async Architecture Includes
 #include "Engine/Renderer/RenderCommandQueue.hpp"
-#include "Game/Framework/EntityStateBuffer.hpp"
-#include "Game/Framework/CameraStateBuffer.hpp"
+#include "Engine/Entity/EntityStateBuffer.hpp"
+#include "Engine/Renderer/CameraStateBuffer.hpp"
 #include "Game/Framework/JSGameLogicJob.hpp"
 
 // Phase 2: High-Level Entity API Includes
-#include "Game/Framework/HighLevelEntityAPI.hpp"
-#include "Game/Framework/EntityScriptInterface.hpp"
+// M4-T8: Direct API Usage (removed HighLevelEntityAPI facade)
+#include "Engine/Entity/EntityAPI.hpp"
+#include "Engine/Renderer/CameraAPI.hpp"
+#include "Engine/Entity/EntityScriptInterface.hpp"
+
+// M4-T8: Camera API Script Interface
+#include "Engine/Renderer/CameraScriptInterface.hpp"
 
 // Phase 2: Geometry Creation Utilities
 #include "Engine/Renderer/VertexUtils.hpp"
@@ -83,7 +88,8 @@ App::App()
     , m_cameraStateBuffer(nullptr)
     , m_jsGameLogicJob(nullptr)
     , m_mainCamera(nullptr)
-    , m_highLevelEntityAPI(nullptr)
+    , m_entityAPI(nullptr)
+    , m_cameraAPI(nullptr)
 {
     GEngine::Get().Construct();
 }
@@ -108,9 +114,10 @@ void App::Startup()
     m_entityStateBuffer  = new EntityStateBuffer();
     m_cameraStateBuffer  = new CameraStateBuffer();
 
-    // Phase 2: Initialize high-level entity API (requires RenderCommandQueue)
-    m_highLevelEntityAPI = new HighLevelEntityAPI(m_renderCommandQueue, g_scriptSubsystem, g_renderer, m_cameraStateBuffer);
-    DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - HighLevelEntityAPI initialized (Phase 2)");
+    // M4-T8: Initialize EntityAPI and CameraAPI directly (removed HighLevelEntityAPI facade)
+    m_entityAPI = new EntityAPI(m_renderCommandQueue, g_scriptSubsystem);
+    m_cameraAPI = new CameraAPI(m_renderCommandQueue, g_scriptSubsystem, m_cameraStateBuffer);
+    DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - EntityAPI and CameraAPI initialized (M4-T8)");
 
     // Phase 3: Initialize main camera for rendering entities
     m_mainCamera = new Camera();
@@ -218,12 +225,19 @@ void App::Shutdown()
 
     GAME_SAFE_RELEASE(g_game);
 
-    // Phase 2: Cleanup high-level entity API BEFORE async infrastructure
-    if (m_highLevelEntityAPI)
+    // M4-T8: Cleanup EntityAPI and CameraAPI BEFORE async infrastructure
+    if (m_entityAPI)
     {
-        delete m_highLevelEntityAPI;
-        m_highLevelEntityAPI = nullptr;
-        DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - HighLevelEntityAPI destroyed (Phase 2)");
+        delete m_entityAPI;
+        m_entityAPI = nullptr;
+        DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - EntityAPI destroyed (M4-T8)");
+    }
+    
+    if (m_cameraAPI)
+    {
+        delete m_cameraAPI;
+        m_cameraAPI = nullptr;
+        DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - CameraAPI destroyed (M4-T8)");
     }
 
     // Phase 1: Cleanup async infrastructure AFTER game destruction
@@ -364,12 +378,16 @@ void App::Update()
     // NOTE: This runs synchronously on main thread but accesses V8 via ScriptSubsystem's thread-safe interface
     g_game->UpdateJS();
 
-    // Phase 2: Execute pending JavaScript callbacks AFTER JavaScript frame completes
+    // M4-T8: Execute pending JavaScript callbacks AFTER JavaScript frame completes
     // CRITICAL: Must be called AFTER UpdateJS() so V8 context exists from the JavaScript execution
     // The callbacks will execute using the V8 isolate that was just active during UpdateJS()
-    if (m_highLevelEntityAPI)
+    if (m_entityAPI)
     {
-        m_highLevelEntityAPI->ExecutePendingCallbacks();
+        m_entityAPI->ExecutePendingCallbacks();
+    }
+    if (m_cameraAPI)
+    {
+        m_cameraAPI->ExecutePendingCallbacks();
     }
 }
 
@@ -577,12 +595,18 @@ void App::SetupScriptingBindings()
     m_clockScriptInterface = std::make_shared<ClockScriptInterface>();
     g_scriptSubsystem->RegisterScriptableObject("clock", m_clockScriptInterface);
 
-    // Phase 2: Register high-level entity API for JavaScript
-    if (m_highLevelEntityAPI)
+    // M4-T8: Register entity and camera script interfaces (API splitting)
+    if (m_entityAPI && m_cameraAPI)
     {
-        m_entityScriptInterface = std::make_shared<EntityScriptInterface>(m_highLevelEntityAPI);
+        // M4-T8: Register EntityScriptInterface as "entity" global (direct API usage)
+        m_entityScriptInterface = std::make_shared<EntityScriptInterface>(m_entityAPI);
         g_scriptSubsystem->RegisterScriptableObject("entity", m_entityScriptInterface);
-        DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings) Entity script interface registered (Phase 2)"));
+
+        // M4-T8: Register CameraScriptInterface as "camera" global (direct API usage)
+        m_cameraScriptInterface = std::make_shared<CameraScriptInterface>(m_cameraAPI);
+        g_scriptSubsystem->RegisterScriptableObject("camera", m_cameraScriptInterface);
+
+        DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings) Entity and Camera script interfaces registered (M4-T8)"));
     }
 
     // Register KADI broker integration for distributed agent communication
@@ -618,7 +642,7 @@ void App::SetupScriptingBindings()
 //----------------------------------------------------------------------------------------------------
 void App::ProcessRenderCommands()
 {
-    if (!m_renderCommandQueue || !m_entityStateBuffer || !m_cameraStateBuffer || !m_highLevelEntityAPI)
+    if (!m_renderCommandQueue || !m_entityStateBuffer || !m_cameraStateBuffer || !m_entityAPI || !m_cameraAPI)
     {
         return;
     }

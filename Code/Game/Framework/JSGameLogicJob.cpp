@@ -5,7 +5,7 @@
 
 #include "Game/Framework/JSGameLogicJob.hpp"
 
-#include "Game/Gameplay/Game.hpp"
+#include "Engine/Script/IJSGameLogicContext.hpp"
 #include "Engine/Core/ErrorWarningAssert.hpp"
 #include "Engine/Core/LogSubsystem.hpp"
 #include "Engine/Core/EngineCommon.hpp"
@@ -27,8 +27,8 @@
 //
 // Initializes synchronization primitives and dependencies.
 //----------------------------------------------------------------------------------------------------
-JSGameLogicJob::JSGameLogicJob(Game* game, RenderCommandQueue* commandQueue, EntityStateBuffer* entityBuffer)
-    : m_game(game)
+JSGameLogicJob::JSGameLogicJob(IJSGameLogicContext* context, RenderCommandQueue* commandQueue, EntityStateBuffer* entityBuffer)
+    : m_context(context)
     , m_commandQueue(commandQueue)
     , m_entityBuffer(entityBuffer)
     , m_mutex()
@@ -42,9 +42,9 @@ JSGameLogicJob::JSGameLogicJob(Game* game, RenderCommandQueue* commandQueue, Ent
     , m_isolate(nullptr)
 {
 	// Validate dependencies
-	if (!m_game)
+	if (!m_context)
 	{
-		ERROR_AND_DIE("JSGameLogicJob: Game pointer cannot be null");
+		ERROR_AND_DIE("JSGameLogicJob: IJSGameLogicContext pointer cannot be null");
 	}
 	if (!m_commandQueue)
 	{
@@ -258,14 +258,15 @@ void JSGameLogicJob::ExecuteJavaScriptFrame()
 	//   - Timeout detection (main thread monitors IsFrameComplete())
 
 	// Execute JavaScript update logic
-	// This calls into JSEngine.update() through ScriptSubsystem
-	if (m_game)
+	// This calls into JSEngine.update() through IJSGameLogicContext interface
+	if (m_context)
 	{
-		// TODO Phase 1: Call m_game->UpdateJS() with worker thread context
+		// TODO Phase 1: Call m_context->UpdateJSWorkerThread() with worker thread context
 		// For now, placeholder implementation (Phase 1 builds infrastructure only)
 
 		// Example Phase 2 implementation:
-		// m_game->UpdateJSWorkerThread(deltaTime, m_entityBuffer->GetBackBuffer(), m_commandQueue);
+		// float deltaTime = 0.0166f; // 60 FPS
+		// m_context->UpdateJSWorkerThread(deltaTime, m_entityBuffer, m_commandQueue);
 
 		// Placeholder: Log frame execution
 		static uint64_t frameCount = 0;

@@ -9,30 +9,31 @@
 #include <any>
 
 #include "Engine/Core/EventSystem.hpp"
+#include "Engine/Entity/EntityStateBuffer.hpp"
 
 //-Forward-Declaration--------------------------------------------------------------------------------
 class AudioScriptInterface;
-// Phase 2b: CameraScriptInterface removed - replaced by CameraStateBuffer
-// class CameraScriptInterface;
 class Camera;
 class ClockScriptInterface;
 class DebugRenderSystemScriptInterface;
 class GameScriptInterface;
 class InputScriptInterface;
-// Phase 2: RendererScriptInterface removed - replaced by EntityScriptInterface
-// class RendererScriptInterface;
 class KADIScriptInterface;
 struct Rgba8;
 
 // Phase 1: Async Architecture Forward Declarations
 class RenderCommandQueue;
-class EntityStateBuffer;
+// EntityStateBuffer forward declared in Engine/Script/IJSGameLogicContext.hpp
 class CameraStateBuffer;
 class JSGameLogicJob;
 
-// Phase 2: High-Level Entity API Forward Declarations
-class HighLevelEntityAPI;
+// M4-T8: API Splitting - Forward Declarations for EntityAPI and CameraAPI
+class EntityAPI;
+class CameraAPI;
+
+// M4-T8: Script Interface Forward Declarations (moved to Engine/Script/)
 class EntityScriptInterface;
+class CameraScriptInterface;
 
 //----------------------------------------------------------------------------------------------------
 class App
@@ -91,7 +92,9 @@ private:
     JSGameLogicJob*     m_jsGameLogicJob;        // Worker thread job for JavaScript
     Camera*             m_mainCamera;            // Main perspective camera for rendering entities
 
-    // Phase 2: High-Level Entity API
-    HighLevelEntityAPI*                    m_highLevelEntityAPI;       // High-level entity/camera management API
-    std::shared_ptr<EntityScriptInterface> m_entityScriptInterface;    // JavaScript interface for entity API
+    // M4-T8: Direct API Usage (removed HighLevelEntityAPI facade)
+    EntityAPI*                             m_entityAPI;              // Direct entity management API
+    CameraAPI*                             m_cameraAPI;              // Direct camera management API
+    std::shared_ptr<EntityScriptInterface> m_entityScriptInterface;  // JavaScript interface for entity API
+    std::shared_ptr<CameraScriptInterface> m_cameraScriptInterface;  // JavaScript interface for camera API
 };

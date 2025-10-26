@@ -36,7 +36,7 @@
 
 //----------------------------------------------------------------------------------------------------
 #include "Engine/Core/JobSystem.hpp"
-#include "Game/Framework/EntityStateBuffer.hpp"
+#include "Engine/Entity/EntityStateBuffer.hpp"
 #include "Engine/Renderer/RenderCommandQueue.hpp"
 
 #include <atomic>
@@ -46,7 +46,7 @@
 //----------------------------------------------------------------------------------------------------
 // Forward Declarations
 //----------------------------------------------------------------------------------------------------
-class Game;  // Provides access to JavaScript execution context
+class IJSGameLogicContext;  // Abstract interface for JavaScript execution context
 namespace v8 { class Isolate; }
 
 //----------------------------------------------------------------------------------------------------
@@ -68,7 +68,7 @@ namespace v8 { class Isolate; }
 // Usage Pattern:
 //
 // Initialization (Main Thread):
-//   JSGameLogicJob* job = new JSGameLogicJob(game, commandQueue, entityBuffer);
+//   JSGameLogicJob* job = new JSGameLogicJob(gameContext, commandQueue, entityBuffer);
 //   g_jobSystem->QueueJob(job);  // Submit to worker thread
 //
 // Frame Execution (Main Thread):
@@ -99,12 +99,12 @@ public:
 
 	// Constructor
 	// Parameters:
-	//   - game: Pointer to Game instance (provides JavaScript execution context)
+	//   - context: Interface to game-specific JavaScript execution context
 	//   - commandQueue: Render command queue for JavaScript → C++ communication
 	//   - entityBuffer: Double-buffered entity state for rendering isolation
 	//
 	// Thread Safety: Call from main thread only
-	JSGameLogicJob(Game* game, RenderCommandQueue* commandQueue, EntityStateBuffer* entityBuffer);
+	JSGameLogicJob(IJSGameLogicContext* context, RenderCommandQueue* commandQueue, EntityStateBuffer* entityBuffer);
 
 	// Destructor
 	// Ensures clean shutdown if not already performed
@@ -187,7 +187,7 @@ private:
 	//------------------------------------------------------------------------------------------------
 	// Dependencies (Injected via Constructor)
 	//------------------------------------------------------------------------------------------------
-	Game*                m_game;            // Game instance for JavaScript context
+	IJSGameLogicContext* m_context;         // Interface to JavaScript execution context
 	RenderCommandQueue*  m_commandQueue;    // Render command output queue
 	EntityStateBuffer*   m_entityBuffer;    // Entity state output buffer
 

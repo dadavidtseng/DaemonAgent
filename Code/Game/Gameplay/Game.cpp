@@ -224,3 +224,94 @@ void Game::InitializeJavaScriptFramework()
         DAEMON_LOG(LogGame, eLogVerbosity::Error, "Game::InitializeJavaScriptFramework() exception occurred");
     }
 }
+
+//----------------------------------------------------------------------------------------------------
+// IJSGameLogicContext Interface Implementation (Worker Thread)
+//----------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------------------------
+// UpdateJSWorkerThread (Worker Thread)
+//
+// Execute JavaScript update logic on worker thread.
+// Called by JSGameLogicJob from worker thread context.
+//
+// Thread Safety:
+//   - Called from worker thread
+//   - Must acquire v8::Locker before V8 API calls
+//   - entityBuffer: Write to back buffer only (safe)
+//   - commandQueue: Lock-free SPSC queue (safe)
+//----------------------------------------------------------------------------------------------------
+void Game::UpdateJSWorkerThread(float deltaTime, EntityStateBuffer* entityBuffer, RenderCommandQueue* commandQueue)
+{
+    // TODO Phase 2: Implement JavaScript update logic execution
+    // This will call into JSEngine.update() through ScriptSubsystem
+    // and update entity state buffer based on JavaScript logic
+
+    UNUSED(deltaTime);
+    UNUSED(entityBuffer);
+    UNUSED(commandQueue);
+
+    // Phase 2 implementation will:
+    // 1. Acquire v8::Locker
+    // 2. Call ScriptSubsystem::ExecuteUpdateSystemJS()
+    // 3. JavaScript updates entities via EntityScriptInterface
+    // 4. EntityScriptInterface writes to entityBuffer back buffer
+    // 5. RenderCommands submitted to commandQueue
+}
+
+//----------------------------------------------------------------------------------------------------
+// RenderJSWorkerThread (Worker Thread)
+//
+// Execute JavaScript render logic on worker thread.
+// Called by JSGameLogicJob from worker thread context.
+//
+// Thread Safety:
+//   - Called from worker thread
+//   - Must acquire v8::Locker before V8 API calls
+//   - cameraBuffer: Write to back buffer only (safe)
+//   - commandQueue: Lock-free SPSC queue (safe)
+//----------------------------------------------------------------------------------------------------
+void Game::RenderJSWorkerThread(float deltaTime, CameraStateBuffer* cameraBuffer, RenderCommandQueue* commandQueue)
+{
+    // TODO Phase 2: Implement JavaScript render logic execution
+    // This will call into JSEngine.render() through ScriptSubsystem
+    // and update camera state buffer based on JavaScript logic
+
+    UNUSED(deltaTime);
+    UNUSED(cameraBuffer);
+    UNUSED(commandQueue);
+
+    // Phase 2 implementation will:
+    // 1. Acquire v8::Locker
+    // 2. Call ScriptSubsystem::ExecuteRenderSystemJS()
+    // 3. JavaScript updates cameras via CameraScriptInterface (M5)
+    // 4. CameraScriptInterface writes to cameraBuffer back buffer
+    // 5. RenderCommands submitted to commandQueue
+}
+
+//----------------------------------------------------------------------------------------------------
+// HandleJSException (Worker Thread)
+//
+// Handle JavaScript exception from worker thread.
+// Called by JSGameLogicJob when JavaScript errors occur.
+//
+// Thread Safety:
+//   - Called from worker thread
+//   - Should log error, signal recovery
+//   - Should NOT crash worker thread
+//----------------------------------------------------------------------------------------------------
+void Game::HandleJSException(char const* errorMessage, char const* stackTrace)
+{
+    // TODO Phase 3: Implement JavaScript error recovery
+    // This will log the error and attempt hot-reload recovery
+
+    DAEMON_LOG(LogGame, eLogVerbosity::Error,
+               StringFormat("JavaScript Exception (Worker Thread):\n{}\n{}",
+                            errorMessage, stackTrace));
+
+    // Phase 3 implementation will:
+    // 1. Log error to console with stack trace
+    // 2. Attempt hot-reload recovery (reload last known good script)
+    // 3. Signal main thread of error state (visual indicator)
+    // 4. Continue worker thread execution with last known good state
+}
