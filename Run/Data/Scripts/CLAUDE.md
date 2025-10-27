@@ -31,10 +31,23 @@ jsGameInstance.registerGameSystems();
 // JSEngine methods for C++ communication
 engine.updateCppEngine(gameDeltaSeconds, systemDeltaSeconds);
 engine.renderCppEngine(gameDeltaSeconds, systemDeltaSeconds);
-engine.createCube(x, y, z);
-engine.moveProp(index, x, y, z);
+
+// Entity operations (through EntityScriptInterface)
+engine.createEntity(entityData);
+engine.updateEntity(entityId, updateData);
+engine.destroyEntity(entityId);
+
+// Camera operations (through CameraScriptInterface)
 engine.moveCamera(x, y, z);
+engine.setCameraPosition(x, y, z);
+engine.setCameraRotation(pitch, yaw, roll);
 ```
+
+### Unified Camera API (New)
+- **`interfaces/CameraAPI.js`** - Unified camera interface wrapping CameraScriptInterface
+  - Provides high-level camera control methods
+  - Abstracts C++ CameraAPI and CameraScriptInterface
+  - Clean JavaScript API for camera operations
 
 ### System Registration API
 ```javascript
@@ -61,7 +74,9 @@ engine.setSystemEnabled(id, enabled);
 ### Runtime Dependencies
 - **Google V8 JavaScript Engine** - JavaScript execution environment
 - **Chrome DevTools Protocol** - Debugging and development tools
-- **C++ GameScriptInterface** - Bidirectional communication bridge
+- **C++ EntityScriptInterface** - Entity management bridge (Engine/Entity/)
+- **C++ CameraScriptInterface** - Camera control bridge (Engine/Renderer/)
+- **C++ GameScriptInterface** - Game-specific operations bridge
 
 ### Hot-Reload System
 ```javascript
@@ -120,6 +135,23 @@ class InputSystem {
 }
 ```
 
+## Architecture Changes (M4-T8 Refactoring)
+
+### Removed JavaScript Files
+- **`components/CameraSystem.js`** - Deprecated camera component system
+- **`components/RendererSystem.js`** - Deprecated renderer component system
+- **`interfaces/CameraInterface.js`** - Old camera interface (superseded by CameraAPI.js)
+- **`interfaces/RendererInterface.js`** - Old renderer interface
+
+### New JavaScript Interfaces
+- **`interfaces/CameraAPI.js`** - Unified camera API wrapping Engine's CameraScriptInterface
+
+### Migration Notes
+- Camera operations now use `CameraAPI.js` instead of old component-based systems
+- CameraAPI.js provides a clean, high-level JavaScript interface
+- Underlying implementation uses Engine's CameraScriptInterface
+- All camera-related functionality consolidated into single interface
+
 ## Testing and Quality
 
 ### Interactive Testing Features
@@ -175,12 +207,33 @@ jsGameInstance.registerSystem('mySystem', {
 4. propMover (30) - Object manipulation
 5. cameraShaker (40) - Effects systems
 
+### Q: What happened to CameraSystem.js and RendererSystem.js?
+**A**: These component-based systems were deprecated in the M4-T8 refactoring. Camera functionality is now provided through `interfaces/CameraAPI.js`, which wraps the Engine's CameraScriptInterface for a cleaner, more maintainable architecture.
+
+### Q: How do I control the camera now?
+**A**: Use the `CameraAPI.js` interface:
+```javascript
+import { CameraAPI } from './interfaces/CameraAPI.js';
+
+// Set camera position
+CameraAPI.setPosition(x, y, z);
+
+// Set camera rotation
+CameraAPI.setRotation(pitch, yaw, roll);
+
+// Move camera
+CameraAPI.move(deltaX, deltaY, deltaZ);
+```
+
 ## Related File List
 
 ### Core Framework Files
 - **`JSEngine.js`** - System registration framework and C++ bridge
 - **`JSGame.js`** - Game logic coordinator and system manager
 - **`InputSystem.js`** - Input handling system (AI Agent separation)
+
+### Interfaces (Updated)
+- **`interfaces/CameraAPI.js`** - Unified camera interface (NEW - replaces old component systems)
 
 ### Development and Testing
 - **`test_scripts.js`** - Development testing and verification scripts
@@ -198,12 +251,20 @@ jsGameInstance.registerSystem('mySystem', {
 2. **Input System Extension** - Modify InputSystem.js for new input handling
 3. **Game Logic Addition** - Create new systems with update/render methods
 4. **Runtime Configuration** - Use enable/disable system controls
+5. **Camera Operations** - Use CameraAPI.js for camera control
 
 ### Safe Modification Guidelines
 - Always use try/catch blocks in system methods
 - Respect priority ordering for system dependencies
 - Use hot-reload compatible patterns (avoid global state corruption)
 - Test changes through Chrome DevTools before finalizing
+- Use CameraAPI.js instead of directly calling C++ methods
 
 ## Changelog
+- **2025-10-27**: M4-T8 async architecture refactoring completed
+  - Removed deprecated component systems (CameraSystem.js, RendererSystem.js)
+  - Removed old interfaces (CameraInterface.js, RendererInterface.js)
+  - Updated CameraAPI.js to use Engine's CameraScriptInterface
+  - Consolidated camera operations into unified CameraAPI.js interface
+  - Improved architecture clarity and maintainability
 - **2025-09-20**: Initial module documentation created with comprehensive JavaScript architecture analysis

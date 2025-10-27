@@ -1,6 +1,14 @@
 # ProtogameJS3D - Dual-Language Game Engine
 
 ## Changelog
+- **2025-10-27**: M4-T8 async architecture refactoring completed
+  - Moved EntityAPI, EntityScriptInterface, EntityStateBuffer to Engine/Entity/
+  - Moved CameraAPI, CameraScriptInterface, CameraStateBuffer to Engine/Renderer/
+  - Moved StateBuffer template to Engine/Core/
+  - Removed HighLevelEntityAPI facade (SOLID: Dependency Inversion Principle)
+  - App now directly uses EntityAPI and CameraAPI
+  - Removed deprecated JavaScript files (CameraSystem.js, RendererSystem.js, old interfaces)
+  - Improved code reusability across projects
 - **2025-09-20**: Initial AI context documentation created with adaptive scanning strategy
 
 ## Project Vision
@@ -14,6 +22,7 @@ ProtogameJS3D (originally FirstV8) is a cutting-edge research project demonstrat
 Windows Application Entry
 ├── C++ Engine Foundation (DaemonEngine)
 │   ├── Core Subsystems (Performance Critical)
+│   ├── Entity System (Engine/Entity/)
 │   ├── DirectX Rendering Pipeline
 │   ├── FMOD Audio System
 │   └── Resource Management
@@ -22,7 +31,7 @@ Windows Application Entry
 │   ├── Hot-Reload System
 │   └── Chrome DevTools Integration
 └── Bidirectional Script Interface
-    ├── C++ → JavaScript Bindings
+    ├── C++ → JavaScript Bindings (EntityScriptInterface, CameraScriptInterface)
     └── JavaScript → C++ Callbacks
 ```
 
@@ -31,7 +40,10 @@ Windows Application Entry
 C++ Main Loop (App.cpp):
 ├── BeginFrame()
 ├── Update() ──→ V8::Execute(JSEngine.update()) ──→ JSGame Systems
+│   ├── EntityAPI.update() (Engine-level entity management)
+│   └── CameraAPI.update() (Engine-level camera control)
 ├── Render() ──→ V8::Execute(JSEngine.render()) ──→ JSGame Rendering
+│   └── CameraAPI.render() (Engine-level camera rendering)
 └── EndFrame()
 ```
 
@@ -60,10 +72,10 @@ graph TD
 
 | Module | Path | Type | Description |
 |--------|------|------|-------------|
-| **Game Application** | `Code/Game` | C++ Application | Main executable with dual-language architecture, entity systems, and V8 integration |
+| **Game Application** | `Code/Game` | C++ Application | Main executable with dual-language architecture and V8 integration |
 | **JavaScript Logic** | `Run/Data/Scripts` | JavaScript Module | Game logic, system registration framework, input handling, and hot-reload support |
 | **Game Assets** | `Run/Data` | Assets Module | 3D models, HLSL shaders, textures, audio files, and configuration |
-| **Engine Foundation** | `../Engine` | C++ Library (External) | DaemonEngine core systems, V8Subsystem, rendering, and platform abstraction |
+| **Engine Foundation** | `../Engine` | C++ Library (External) | DaemonEngine core systems including Entity, Camera, V8Subsystem, rendering, and platform abstraction |
 | **Documentation** | `Docs` | Documentation | Project documentation and research papers |
 
 ## Key Technologies
@@ -79,8 +91,22 @@ graph TD
 - **Hot-Reload System** - JavaScript changes without C++ recompilation
 - **Chrome DevTools Integration** - Full debugging support for JavaScript
 - **Dual-Language Debugging** - Visual Studio for C++, Chrome DevTools for JavaScript
-- **Entity-Component System** - Flexible game object architecture
+- **Entity System** - Engine-level entity management with async state buffers
+- **Camera System** - Engine-level camera control with script interfaces
 - **Professional Build Pipeline** - MSBuild with automated V8 deployment
+
+## Architecture Principles
+
+### SOLID Principles Applied
+- **Dependency Inversion**: App depends on EntityAPI/CameraAPI abstractions (Engine), not concrete implementations
+- **Single Responsibility**: Entity and Camera logic separated into dedicated Engine modules
+- **Interface Segregation**: Clean script interfaces (EntityScriptInterface, CameraScriptInterface)
+- **Open/Closed**: Systems extensible through JavaScript without modifying C++ core
+
+### Cross-Repository Design
+- **Engine Repository**: Reusable systems (Entity, Camera, Core utilities)
+- **Game Repository**: Game-specific application logic and assets
+- **Clear Boundaries**: Script interfaces provide clean separation between layers
 
 ## Running and Development
 
@@ -93,7 +119,7 @@ graph TD
 1. **Open Solution**: `ProtogameJS3D.sln` in Visual Studio 2022
 2. **Build Configuration**: Select `Debug|x64` or `Release|x64`
 3. **Build Solution**: Build → Build Solution (Ctrl+Shift+B)
-4. **Run Application**: 
+4. **Run Application**:
    ```bash
    cd Run
    ProtogameJS3D_Debug_x64.exe  # or ProtogameJS3D_Release_x64.exe
@@ -101,6 +127,8 @@ graph TD
 
 ### Development Workflow
 1. **C++ Engine Development**: Modify files in `Code/Game/` and reference `Engine/`
+   - Entity system in Engine repository: `Engine/Entity/`
+   - Camera system in Engine repository: `Engine/Renderer/`
 2. **JavaScript Game Logic**: Edit files in `Run/Data/Scripts/` (hot-reload enabled)
 3. **Asset Management**: Add resources to `Run/Data/` subdirectories
 4. **Configuration**: Modify `Run/Data/GameConfig.xml` for runtime settings
@@ -147,17 +175,22 @@ graph TD
 - **Input System Separation** - Isolated file for input handling logic
 - **Asset Pipeline Configuration** - Dynamic asset loading and management
 - **Chrome DevTools Integration** - Professional debugging environment
+- **Entity Management** - Use EntityAPI through script interface
+- **Camera Control** - Use CameraAPI through script interface
 
 ### Recommended AI Modifications
 - Extend JavaScript systems in `Run/Data/Scripts/`
 - Add new subsystems through system registration API
 - Modify input handling in `InputSystem.js`
 - Create new game logic without touching C++ engine code
+- Use CameraAPI.js for camera operations (new unified interface)
 
 ## Related Documentation
 - [Game Module Details](./Code/Game/CLAUDE.md) - C++ application architecture
 - [JavaScript Logic Details](./Run/Data/Scripts/CLAUDE.md) - JavaScript framework and systems
 - [Assets and Configuration](./Run/Data/CLAUDE.md) - Game assets and runtime configuration
+- [Engine Documentation](../Engine/CLAUDE.md) - Engine foundation and systems
+- [Engine Entity Module](../Engine/Code/Engine/Entity/CLAUDE.md) - Entity system architecture
 - [Project README](./Docs/README.md) - Complete project documentation
 
 ---
