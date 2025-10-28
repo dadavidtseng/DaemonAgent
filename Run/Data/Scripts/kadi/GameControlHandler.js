@@ -274,6 +274,24 @@ export class GameControlHandler
             this.jsGame.propGameObjects.splice(index, 1);
         }
 
+        // Properly destroy GameObject and its components (especially MeshComponent → C++ entity)
+        console.log(`GameControlHandler: [DEBUG] Cube details for ${args.entityId}:`);
+        console.log(`GameControlHandler: [DEBUG]   - type: ${typeof cube}`);
+        console.log(`GameControlHandler: [DEBUG]   - constructor: ${cube.constructor.name}`);
+        console.log(`GameControlHandler: [DEBUG]   - hasDestroy: ${!!cube.destroy}`);
+        console.log(`GameControlHandler: [DEBUG]   - destroyType: ${typeof cube.destroy}`);
+
+        // Call destroy() to trigger MeshComponent.destroy() → entityAPI.destroyEntity()
+        try {
+            console.log(`GameControlHandler: [DEBUG] Calling cube.destroy() for ${args.entityId}...`);
+            cube.destroy();
+            console.log(`GameControlHandler: [DEBUG] cube.destroy() completed for ${args.entityId}`);
+        } catch (error) {
+            console.log(`GameControlHandler: [ERROR] cube.destroy() failed for ${args.entityId}:`, error);
+            console.log(`GameControlHandler: [ERROR] Error message: ${error.message}`);
+            console.log(`GameControlHandler: [ERROR] Error stack: ${error.stack}`);
+        }
+
         // Remove from tracking map
         this.spawnedCubes.delete(args.entityId);
 

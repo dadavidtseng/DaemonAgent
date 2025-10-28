@@ -16,8 +16,12 @@
  * - create_script: Create new .js file via C++ bridge
  * - read_script: Read existing .js file via C++ bridge
  * - delete_script: Delete .js file via C++ bridge
- * - press_keycode: Inject key press event via C++ bridge
- * - hold_keycode: Inject key hold event via C++ bridge
+ * - press_keycode: Inject single key press event via C++ bridge
+ * - hold_keycode: Inject multi-key sequence events with precise timing via C++ bridge
+ * - get_keyhold_status: Query status of active key hold jobs
+ * - cancel_keyhold: Cancel active key hold jobs
+ * - list_active_keyholds: List all active key hold jobs
+ * - modify_script: Fine-grained script modifications (add/remove lines, functions, replace text)
  */
 export class DevelopmentToolHandler
 {
@@ -78,6 +82,18 @@ export class DevelopmentToolHandler
 
                 case 'hold_keycode':
                     this.handleHoldKeycode(requestId, parsedArgs);
+                    break;
+
+                case 'get_keyhold_status':
+                    this.handleGetKeyHoldStatus(requestId, parsedArgs);
+                    break;
+
+                case 'cancel_keyhold':
+                    this.handleCancelKeyHold(requestId, parsedArgs);
+                    break;
+
+                case 'list_active_keyholds':
+                    this.handleListActiveKeyHolds(requestId, parsedArgs);
                     break;
 
                 case 'modify_script':
@@ -287,41 +303,74 @@ export class DevelopmentToolHandler
     /**
      * Tool: hold_keycode
      * Inject a key hold event with duration and optional repeat
+     * Enhanced to support multi-key sequences with precise timing control
      */
     handleHoldKeycode(requestId, args)
     {
         console.log(`DevelopmentToolHandler: handleHoldKeycode - args:`, args);
 
-        // Validate required parameters
-        if (typeof args.keyCode !== 'number' || args.keyCode < 0 || args.keyCode > 255)
+        // Validate required keySequence parameter
+        if (!args.keySequence || !Array.isArray(args.keySequence))
         {
-            this.sendError(requestId, 'Invalid keyCode: must be number 0-255');
+            this.sendError(requestId, 'Invalid keySequence: must be array of key objects');
             return;
         }
 
-        if (typeof args.durationMs !== 'number' || args.durationMs < 0)
+        if (args.keySequence.length === 0)
         {
-            this.sendError(requestId, 'Invalid durationMs: must be number >= 0');
+            this.sendError(requestId, 'Invalid keySequence: cannot be empty');
             return;
         }
 
-        // Default repeat to false if not specified
-        const repeat = args.repeat !== undefined ? args.repeat : false;
+        // Validate each key in the sequence
+        for (let i = 0; i < args.keySequence.length; i++)
+        {
+            const key = args.keySequence[i];
+
+            // Validate keyCode
+            if (typeof key.keyCode !== 'number' || key.keyCode < 0 || key.keyCode > 255)
+            {
+                this.sendError(requestId, `Invalid keyCode in keySequence[${i}]: must be number 0-255`);
+                return;
+            }
+
+            // Validate delayMs (default to 0 if not provided)
+            if (key.delayMs !== undefined)
+            {
+                if (typeof key.delayMs !== 'number' || key.delayMs < 0)
+                {
+                    this.sendError(requestId, `Invalid delayMs in keySequence[${i}]: must be number >= 0`);
+                    return;
+                }
+            }
+
+            // Validate durationMs (required)
+            if (typeof key.durationMs !== 'number' || key.durationMs < 0)
+            {
+                this.sendError(requestId, `Invalid durationMs in keySequence[${i}]: must be number >= 0`);
+                return;
+            }
+        }
 
         try
         {
-            // Call C++ bridge method (returns JavaScript object, not JSON string)
-            // Note: V8 bridge automatically parses JSON strings starting with { or [
-            const resultObj = this.game.injectKeyHold(args.keyCode, args.durationMs, repeat);
+            // Call C++ bridge method with JSON string
+            // The V8 bridge can only pass primitive types (string, number, bool)
+            // So we serialize the args object to JSON string
+            const resultObj = this.game.injectKeyHold(JSON.stringify(args));
 
             if (resultObj.success)
             {
-                console.log(`DevelopmentToolHandler: Key hold injected - keyCode=${args.keyCode}, duration=${args.durationMs}ms, repeat=${repeat}`);
+                console.log(`DevelopmentToolHandler: Key sequence injected - ${args.keySequence.length} keys, primaryJobId=${resultObj.primaryJobId}`);
                 kadi.sendToolResult(requestId, JSON.stringify({
                     success: true,
-                    keyCode: resultObj.keyCode,
-                    durationMs: resultObj.durationMs,
-                    repeat: resultObj.repeat
+                    primaryJobId: resultObj.primaryJobId,
+                    keyCount: resultObj.keyCount,
+                    keySequence: args.keySequence.map(key => ({
+                        keyCode: key.keyCode,
+                        delayMs: key.delayMs || 0,
+                        durationMs: key.durationMs
+                    }))
                 }));
             }
             else
@@ -332,6 +381,107 @@ export class DevelopmentToolHandler
         catch (error)
         {
             console.log(`DevelopmentToolHandler: ERROR - hold_keycode failed:`, error);
+            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Tool: get_keyhold_status
+     * Get status of a key hold job by ID
+     */
+    handleGetKeyHoldStatus(requestId, args)
+    {
+        console.log(`DevelopmentToolHandler: handleGetKeyHoldStatus - args:`, args);
+
+        // Validate required parameters
+        if (typeof args.jobId !== 'number' || args.jobId < 1)
+        {
+            this.sendError(requestId, 'Invalid jobId: must be number >= 1');
+            return;
+        }
+
+        try
+        {
+            const resultObj = this.game.getKeyHoldStatus(args.jobId);
+
+            if (resultObj.success)
+            {
+                console.log(`DevelopmentToolHandler: Got key hold status - jobId=${args.jobId}, status=${resultObj.status}`);
+                kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+            }
+            else
+            {
+                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
+            }
+        }
+        catch (error)
+        {
+            console.log(`DevelopmentToolHandler: ERROR - get_keyhold_status failed:`, error);
+            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Tool: cancel_keyhold
+     * Cancel an active key hold job by ID
+     */
+    handleCancelKeyHold(requestId, args)
+    {
+        console.log(`DevelopmentToolHandler: handleCancelKeyHold - args:`, args);
+
+        // Validate required parameters
+        if (typeof args.jobId !== 'number' || args.jobId < 1)
+        {
+            this.sendError(requestId, 'Invalid jobId: must be number >= 1');
+            return;
+        }
+
+        try
+        {
+            const resultObj = this.game.cancelKeyHold(args.jobId);
+
+            if (resultObj.success)
+            {
+                console.log(`DevelopmentToolHandler: Cancelled key hold - jobId=${args.jobId}, cancelled=${resultObj.cancelled}`);
+                kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+            }
+            else
+            {
+                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
+            }
+        }
+        catch (error)
+        {
+            console.log(`DevelopmentToolHandler: ERROR - cancel_keyhold failed:`, error);
+            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Tool: list_active_keyholds
+     * List all active key hold jobs
+     */
+    handleListActiveKeyHolds(requestId, args)
+    {
+        console.log(`DevelopmentToolHandler: handleListActiveKeyHolds - args:`, args);
+
+        try
+        {
+            const resultObj = this.game.listActiveKeyHolds();
+
+            if (resultObj.success)
+            {
+                console.log(`DevelopmentToolHandler: Listed active key holds - count=${resultObj.count}`);
+                kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+            }
+            else
+            {
+                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
+            }
+        }
+        catch (error)
+        {
+            console.log(`DevelopmentToolHandler: ERROR - list_active_keyholds failed:`, error);
             this.sendError(requestId, `C++ bridge error: ${error.message}`);
         }
     }

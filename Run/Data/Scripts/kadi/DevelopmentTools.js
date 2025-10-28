@@ -5,8 +5,13 @@
 
 /**
  * Tool schema array for KADI registration
- * Phase 6a: File I/O and Input Injection tools
+ * Phase 6a: File I/O and Enhanced Input Injection tools
  * Follows JSON-RPC tool specification format
+ *
+ * Enhanced Features:
+ * - Multi-key sequence support with precise timing control
+ * - Job tracking and management for key hold operations
+ * - Fine-grained script modification capabilities
  */
 export const DevelopmentTools = [
     {
@@ -64,7 +69,7 @@ export const DevelopmentTools = [
         }
     },
     {
-        name: "press_keycode",
+        name: "input_press_keycode",
         description: "Inject a key press event with specified duration",
         inputSchema: {
             type: "object",
@@ -87,30 +92,83 @@ export const DevelopmentTools = [
         }
     },
     {
-        name: "hold_keycode",
-        description: "Inject a key hold event with duration and optional repeat behavior",
+        name: "input_hold_keycode",
+        description: "Inject multi-key sequence events with precise timing control for advanced input scenarios",
         inputSchema: {
             type: "object",
             properties: {
-                keyCode: {
-                    type: "integer",
-                    minimum: 0,
-                    maximum: 255,
-                    description: "Windows virtual key code (0-255)"
-                },
-                durationMs: {
-                    type: "integer",
-                    minimum: 0,
-                    maximum: 10000,
-                    description: "Total key hold duration in milliseconds"
-                },
-                repeat: {
-                    type: "boolean",
-                    default: false,
-                    description: "Whether to simulate keyboard auto-repeat behavior (default: false)"
+                keySequence: {
+                    type: "array",
+                    description: "Array of key objects with individual timing control",
+                    items: {
+                        type: "object",
+                        properties: {
+                            keyCode: {
+                                type: "integer",
+                                minimum: 0,
+                                maximum: 255,
+                                description: "Windows virtual key code (0-255, e.g., 87 for 'W', 65 for 'A')"
+                            },
+                            delayMs: {
+                                type: "integer",
+                                minimum: 0,
+                                maximum: 10000,
+                                default: 0,
+                                description: "Delay before pressing this key (relative to sequence start, in milliseconds)"
+                            },
+                            durationMs: {
+                                type: "integer",
+                                minimum: 0,
+                                maximum: 10000,
+                                description: "Duration to hold this key (in milliseconds)"
+                            }
+                        },
+                        required: ["keyCode", "durationMs"]
+                    },
+                    minItems: 1,
+                    maxItems: 10
                 }
             },
-            required: ["keyCode", "durationMs"]
+            required: ["keySequence"]
+        }
+    },
+    {
+        name: "get_keyhold_status",
+        description: "Get the status of a key hold job by its job ID",
+        inputSchema: {
+            type: "object",
+            properties: {
+                jobId: {
+                    type: "integer",
+                    minimum: 1,
+                    description: "Job ID returned from hold_keycode tool"
+                }
+            },
+            required: ["jobId"]
+        }
+    },
+    {
+        name: "cancel_keyhold",
+        description: "Cancel an active key hold job by its job ID",
+        inputSchema: {
+            type: "object",
+            properties: {
+                jobId: {
+                    type: "integer",
+                    minimum: 1,
+                    description: "Job ID of the key hold to cancel"
+                }
+            },
+            required: ["jobId"]
+        }
+    },
+    {
+        name: "list_active_keyholds",
+        description: "List all currently active key hold jobs with their status",
+        inputSchema: {
+            type: "object",
+            properties: {},
+            required: []
         }
     },
     {
@@ -201,4 +259,4 @@ export const DevelopmentTools = [
 // Export for hot-reload
 globalThis.DevelopmentTools = DevelopmentTools;
 
-console.log('DevelopmentTools: Module loaded (6 tools defined)');
+console.log('DevelopmentTools: Module loaded (9 tools defined)');
