@@ -22,8 +22,8 @@ export const DevelopmentTools = [
             properties: {
                 filePath: {
                     type: "string",
-                    pattern: "^[^.][^/\\\\]*\\.js$",
-                    description: "Relative file path within Scripts directory (must end with .js, no directory traversal)"
+                    pattern: "^[^.].*\\.js$",
+                    description: "Relative file path within Scripts directory (must end with .js, subdirectories allowed, no directory traversal)"
                 },
                 content: {
                     type: "string",
@@ -46,8 +46,8 @@ export const DevelopmentTools = [
             properties: {
                 filePath: {
                     type: "string",
-                    pattern: "^[^.][^/\\\\]*\\.js$",
-                    description: "Relative file path within Scripts directory (must end with .js)"
+                    pattern: "^[^.].*\\.js$",
+                    description: "Relative file path within Scripts directory (must end with .js, subdirectories allowed)"
                 }
             },
             required: ["filePath"]
@@ -61,8 +61,8 @@ export const DevelopmentTools = [
             properties: {
                 filePath: {
                     type: "string",
-                    pattern: "^[^.][^/\\\\]*\\.js$",
-                    description: "Relative file path within Scripts directory (must end with .js)"
+                    pattern: "^[^.].*\\.js$",
+                    description: "Relative file path within Scripts directory (must end with .js, subdirectories allowed)"
                 }
             },
             required: ["filePath"]
@@ -179,8 +179,8 @@ export const DevelopmentTools = [
             properties: {
                 filePath: {
                     type: "string",
-                    pattern: "^[^.][^/\\\\]*\\.js$",
-                    description: "Relative file path within Scripts directory (must end with .js)"
+                    pattern: "^[^.].*\\.js$",
+                    description: "Relative file path within Scripts directory (must end with .js, subdirectories allowed)"
                 },
                 operation: {
                     type: "string",
