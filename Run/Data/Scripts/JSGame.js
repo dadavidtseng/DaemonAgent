@@ -11,6 +11,7 @@ import {AudioSystem} from './components/AudioSystem.js';
 // import {RendererSystem} from './components/RendererSystem.js';
 import {DebugRenderSystem} from './components/DebugRenderSystem.js';
 import {KADIGameControl} from './kadi/KADIGameControl.js';
+import {PhysicsSystem} from './components/PhysicsSystem.js';  // Physics simulation system
 import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon";
 import {Player} from './objects/Player.js';
 import {Prop} from './objects/Prop.js';
@@ -169,6 +170,11 @@ export class JSGame
 
         console.log('JSGame: KADIGameControl subsystem created successfully');
 
+        // === Physics System (priority: 25) - physics simulation ===
+        this.physicsSystem = new PhysicsSystem();
+
+        console.log('JSGame: PhysicsSystem created successfully');
+
         // Phase 2b: Create screen-space camera for UI/debug rendering using CameraAPI
         this.screenCamera = null;  // Will be set in async callback
         this.cameraAPI = new CameraAPI();
@@ -228,6 +234,9 @@ export class JSGame
             console.log('JSGame: Creating Prop GameObjects (Phase 6)...');
             this.createPropGameObjects();
             console.log('JSGame: Prop GameObjects created successfully');
+
+            // Create test physics props
+            this.createPhysicsTestProps();
         } catch (error)
         {
             console.log('JSGame: ERROR creating Prop GameObjects:', error);
@@ -286,6 +295,83 @@ export class JSGame
         }
 
         console.log(`JSGame: Created ${this.propGameObjects.length} Prop GameObjects (Phase 2)`);
+    }
+
+    /**
+     * Create test props with bounce physics enabled
+     * Experimental feature for testing physics system
+     * Spawns 100 cubes/spheres in a grid pattern with random heights
+     */
+    createPhysicsTestProps()
+    {
+        console.log('JSGame: Creating 100 physics test props...');
+
+        const numObjects = 100;
+        const gridSize = 10;  // 10x10 grid
+        const spacing = 3.0;   // 3 units between objects
+        const startX = -15.0;  // Start offset to center the grid
+        const startY = -15.0;
+
+        let createdCount = 0;
+
+        for (let i = 0; i < numObjects; i++)
+        {
+            try {
+                // Calculate grid position
+                const gridX = i % gridSize;
+                const gridY = Math.floor(i / gridSize);
+
+                // World position
+                const posX = startX + (gridX * spacing);
+                const posY = startY + (gridY * spacing);
+                const posZ = 5 + Math.random() * 10;  // Random height between 5 and 15
+
+                // Alternate between cube and sphere
+                const meshType = (i % 2 === 0) ? 'cube' : 'sphere';
+
+                // Random color
+                const color = {
+                    r: Math.floor(Math.random() * 256),
+                    g: Math.floor(Math.random() * 256),
+                    b: Math.floor(Math.random() * 256),
+                    a: 255
+                };
+
+                // Random physics parameters
+                const bounciness = 0.5 + Math.random() * 0.4;  // 0.5 to 0.9
+                const scale = 0.5 + Math.random() * 0.5;       // 0.5 to 1.0
+
+                // Random initial velocity to ensure collisions
+                const velocityX = (Math.random() - 0.5) * 4.0;  // -2 to +2 m/s
+                const velocityY = (Math.random() - 0.5) * 4.0;  // -2 to +2 m/s
+                const velocityZ = (Math.random() - 0.5) * 2.0;  // -1 to +1 m/s
+
+                const physicsObject = new Prop(
+                    meshType,
+                    {x: posX, y: posY, z: posZ},
+                    'static',
+                    color,
+                    scale,
+                    {
+                        enablePhysics: true,
+                        physicsConfig: {
+                            gravity: -9.8,
+                            bounciness: bounciness,
+                            mass: 1.0,
+                            initialVelocity: [velocityX, velocityY, velocityZ]
+                        }
+                    }
+                );
+
+                this.propGameObjects.push(physicsObject);
+                createdCount++;
+
+            } catch (error) {
+                console.log(`JSGame: ERROR creating physics test object ${i}:`, error);
+            }
+        }
+
+        console.log(`JSGame: Created ${createdCount} physics test props (10x10 grid pattern)`);
     }
 
     /**
@@ -410,6 +496,23 @@ export class JSGame
         this.engine.registerSystem(null, this.inputSystem);     // Priority: 10
         this.engine.registerSystem(null, this.kadiGameControl);  // Priority: 11
         // this.engine.registerSystem(null, this.newFeature);     // Priority: 10
+
+        // === Physics System (priority: 25) - Updates entity positions ===
+        this.engine.registerSystem('physicsSystem', {
+            update: (gameDelta, systemDelta) =>
+            {
+                // Convert systemDelta from seconds to milliseconds
+                const deltaTimeMs = systemDelta * 1000.0;
+                this.physicsSystem.update(deltaTimeMs);
+            },
+            render: () =>
+            {
+            },
+            priority: 25,
+            enabled: true,
+            data: {}
+        });
+
         // === Phase 4: Entity update/render systems ===
         // Game update system (priority: 12) - Updates PlayerEntity and PropEntities
         this.engine.registerSystem('gameUpdate', {
@@ -725,6 +828,44 @@ export class JSGame
     unregisterSystem(id)
     {
         return this.engine.unregisterSystem(id);
+    }
+
+    /**
+     * Add entity to physics system
+     * @param {number} entityId - Entity ID from EntityAPI
+     * @param {Object} config - Physics configuration
+     */
+    addPhysics(entityId, config = {})
+    {
+        if (!this.physicsSystem)
+        {
+            console.log('JSGame: ERROR - PhysicsSystem not initialized');
+            return;
+        }
+
+        this.physicsSystem.addEntity(entityId, config);
+    }
+
+    /**
+     * Remove entity from physics system
+     * @param {number} entityId - Entity ID to remove
+     */
+    removePhysics(entityId)
+    {
+        if (!this.physicsSystem)
+        {
+            return;
+        }
+
+        this.physicsSystem.removeEntity(entityId);
+    }
+
+    /**
+     * Get physics system instance (for direct access)
+     */
+    getPhysicsSystem()
+    {
+        return this.physicsSystem;
     }
 }
 

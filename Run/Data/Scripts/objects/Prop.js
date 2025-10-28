@@ -39,11 +39,14 @@ export class Prop extends GameObject
     /**
      * @param {string} meshType - Geometry type ('cube', 'sphere', 'grid', 'plane')
      * @param {Object} position - Initial position {x, y, z}
-     * @param {string} behaviorType - Behavior type ('rotate-pitch-roll', 'pulse-color', 'rotate-yaw', 'static')
+     * @param {string} behaviorType - Behavior type ('rotate-pitch-roll', 'pulse-color', 'rotate-yaw', 'static', 'bounce')
      * @param {Object} color - Initial color {r, g, b, a} (default: white)
      * @param {number} scale - Uniform scale factor (default: 1.0)
+     * @param {Object} options - Additional options
+     * @param {boolean} options.enablePhysics - Enable bounce physics (default: false)
+     * @param {Object} options.physicsConfig - Physics configuration (gravity, bounciness, mass)
      */
-    constructor(meshType, position, behaviorType, color = {r: 255, g: 255, b: 255, a: 255}, scale = 1.0)
+    constructor(meshType, position, behaviorType, color = {r: 255, g: 255, b: 255, a: 255}, scale = 1.0, options = {})
     {
         super(`Prop_${meshType}_${behaviorType}`);
 
@@ -52,6 +55,10 @@ export class Prop extends GameObject
         // Set initial position and orientation
         this.position = position;
         this.orientation = {yaw: 0, pitch: 0, roll: 0};
+
+        // Store physics options for later (after entity creation)
+        this.enablePhysics = options.enablePhysics || false;
+        this.physicsConfig = options.physicsConfig || {};
 
         // Component composition: MeshComponent (Phase 2 - no rendererSystem needed)
         this.mesh = new MeshComponent(meshType, color, scale);
@@ -63,6 +70,7 @@ export class Prop extends GameObject
 
         console.log('Prop: Prop GameObject created successfully');
         console.log('Prop: Components attached:', Array.from(this.components.keys()));
+        console.log(`Prop: Physics enabled: ${this.enablePhysics}`);
     }
 
     /**
@@ -89,6 +97,46 @@ export class Prop extends GameObject
             default:
                 console.log(`Prop: Unknown behavior type '${behaviorType}', using static behavior`);
                 return new StaticBehavior();
+        }
+    }
+
+    /**
+     * Update prop (called by game update system)
+     * @param {number} deltaTime - Time since last update in milliseconds
+     */
+    update(deltaTime)
+    {
+        // Call parent update (updates all components)
+        super.update(deltaTime);
+
+        // Check if we need to enable physics (only once after entity is created)
+        if (this.enablePhysics && !this.physicsEnabled && this.mesh && this.mesh.entityId)
+        {
+            console.log(`Prop: Entity created with ID ${this.mesh.entityId}, enabling physics...`);
+
+            // Get JSGame instance to add bounce physics
+            const jsGameInstance = globalThis.jsGameInstance;
+            if (jsGameInstance)
+            {
+                // Prepare physics config with initial position and gameObject reference
+                const physicsConfig = {
+                    ...this.physicsConfig,
+                    initialPosition: [
+                        this.position.x,
+                        this.position.y,
+                        this.position.z
+                    ],
+                    gameObject: this  // Pass reference for position sync
+                };
+
+                jsGameInstance.addPhysics(this.mesh.entityId, physicsConfig);
+                this.physicsEnabled = true;
+                console.log(`Prop: Physics enabled for entity ${this.mesh.entityId}`);
+            }
+            else
+            {
+                console.log('Prop: ERROR - globalThis.jsGameInstance not available for physics setup');
+            }
         }
     }
 
