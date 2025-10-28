@@ -295,15 +295,15 @@ export class EntityAPI
      */
     destroyEntity(entityId)
     {
-        if (!this.cppEntity || !this.cppEntity.destroyEntity)
+        if (!this.cppEntity || !this.cppEntity.destroy)
         {
-            console.log('EntityAPI: ERROR - destroyEntity not available');
+            console.log('EntityAPI: ERROR - destroy method not available (C++ method is named destroy not destroyEntity)');
             return;
         }
 
         try
         {
-            this.cppEntity.destroyEntity(entityId);
+            this.cppEntity.destroy(entityId);
         }
         catch (error)
         {
@@ -339,7 +339,7 @@ export class EntityAPI
                 moveBy: typeof this.cppEntity.moveBy === 'function',
                 updateOrientation: typeof this.cppEntity.updateOrientation === 'function',
                 updateColor: typeof this.cppEntity.updateColor === 'function',
-                destroyEntity: typeof this.cppEntity.destroyEntity === 'function'
+                destroyEntity: typeof this.cppEntity.destroy === 'function'
             } : null
         };
     }
