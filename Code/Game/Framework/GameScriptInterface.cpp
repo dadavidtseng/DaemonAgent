@@ -333,13 +333,31 @@ ScriptMethodResult GameScriptInterface::ExecuteCreateScriptFile(ScriptArgs const
             return ScriptMethodResult::Success(errorJson.str());
         }
 
-        // Security: Extension validation (only .js files)
-        if (filePath.find(".js") == std::string::npos)
+        // Security: Extension and filename validation
+        // Must match pattern: ^[^.].*\.js$ (no hidden files, must end with .js)
+
+        // Check 1: Must end with ".js" (not just contain it)
+        if (filePath.length() < 3 || filePath.substr(filePath.length() - 3) != ".js")
         {
             std::ostringstream errorJson;
             errorJson << "{";
             errorJson << "\"success\":false,";
-            errorJson << "\"error\":\"Invalid file extension: only .js files allowed\"";
+            errorJson << "\"error\":\"Invalid file extension: must end with .js\"";
+            errorJson << "}";
+            return ScriptMethodResult::Success(errorJson.str());
+        }
+
+        // Check 2: Cannot start with a dot (hidden files not allowed)
+        // Extract just the filename from the path to check
+        size_t lastSlash = filePath.find_last_of("/\\");
+        String filename = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
+
+        if (!filename.empty() && filename[0] == '.')
+        {
+            std::ostringstream errorJson;
+            errorJson << "{";
+            errorJson << "\"success\":false,";
+            errorJson << "\"error\":\"Invalid filename: cannot start with dot (hidden files not allowed)\"";
             errorJson << "}";
             return ScriptMethodResult::Success(errorJson.str());
         }
@@ -426,6 +444,34 @@ ScriptMethodResult GameScriptInterface::ExecuteReadScriptFile(ScriptArgs const& 
             return ScriptMethodResult::Success(errorJson.str());
         }
 
+        // Security: Extension and filename validation
+        // Must match pattern: ^[^.].*\.js$ (no hidden files, must end with .js)
+
+        // Check 1: Must end with ".js" (not just contain it)
+        if (filePath.length() < 3 || filePath.substr(filePath.length() - 3) != ".js")
+        {
+            std::ostringstream errorJson;
+            errorJson << "{";
+            errorJson << "\"success\":false,";
+            errorJson << "\"error\":\"Invalid file extension: must end with .js\"";
+            errorJson << "}";
+            return ScriptMethodResult::Success(errorJson.str());
+        }
+
+        // Check 2: Cannot start with a dot (hidden files not allowed)
+        size_t lastSlash = filePath.find_last_of("/\\");
+        String filename = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
+
+        if (!filename.empty() && filename[0] == '.')
+        {
+            std::ostringstream errorJson;
+            errorJson << "{";
+            errorJson << "\"success\":false,";
+            errorJson << "\"error\":\"Invalid filename: cannot start with dot (hidden files not allowed)\"";
+            errorJson << "}";
+            return ScriptMethodResult::Success(errorJson.str());
+        }
+
         // Build full path (Run/Data/Scripts/)
         fs::path scriptsDir = fs::current_path() / "Data" / "Scripts";
         fs::path fullPath = scriptsDir / filePath;
@@ -505,6 +551,34 @@ ScriptMethodResult GameScriptInterface::ExecuteDeleteScriptFile(ScriptArgs const
             errorJson << "{";
             errorJson << "\"success\":false,";
             errorJson << "\"error\":\"Invalid file path: directory traversal not allowed\"";
+            errorJson << "}";
+            return ScriptMethodResult::Success(errorJson.str());
+        }
+
+        // Security: Extension and filename validation
+        // Must match pattern: ^[^.].*\.js$ (no hidden files, must end with .js)
+
+        // Check 1: Must end with ".js" (not just contain it)
+        if (filePath.length() < 3 || filePath.substr(filePath.length() - 3) != ".js")
+        {
+            std::ostringstream errorJson;
+            errorJson << "{";
+            errorJson << "\"success\":false,";
+            errorJson << "\"error\":\"Invalid file extension: must end with .js\"";
+            errorJson << "}";
+            return ScriptMethodResult::Success(errorJson.str());
+        }
+
+        // Check 2: Cannot start with a dot (hidden files not allowed)
+        size_t lastSlash = filePath.find_last_of("/\\");
+        String filename = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
+
+        if (!filename.empty() && filename[0] == '.')
+        {
+            std::ostringstream errorJson;
+            errorJson << "{";
+            errorJson << "\"success\":false,";
+            errorJson << "\"error\":\"Invalid filename: cannot start with dot (hidden files not allowed)\"";
             errorJson << "}";
             return ScriptMethodResult::Success(errorJson.str());
         }
@@ -1043,13 +1117,31 @@ ScriptMethodResult GameScriptInterface::ExecuteAddWatchedFile(ScriptArgs const& 
             return ScriptMethodResult::Success(errorJson.str());
         }
 
-        // Security: Extension validation (only .js files)
-        if (filePath.find(".js") == std::string::npos)
+        // Security: Extension and filename validation
+        // Must match pattern: ^[^.].*\.js$ (no hidden files, must end with .js)
+
+        // Check 1: Must end with ".js" (not just contain it)
+        if (filePath.length() < 3 || filePath.substr(filePath.length() - 3) != ".js")
         {
             std::ostringstream errorJson;
             errorJson << "{";
             errorJson << "\"success\":false,";
-            errorJson << "\"error\":\"Invalid file extension: only .js files allowed\"";
+            errorJson << "\"error\":\"Invalid file extension: must end with .js\"";
+            errorJson << "}";
+            return ScriptMethodResult::Success(errorJson.str());
+        }
+
+        // Check 2: Cannot start with a dot (hidden files not allowed)
+        // Extract just the filename from the path to check
+        size_t lastSlash = filePath.find_last_of("/\\");
+        String filename = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
+
+        if (!filename.empty() && filename[0] == '.')
+        {
+            std::ostringstream errorJson;
+            errorJson << "{";
+            errorJson << "\"success\":false,";
+            errorJson << "\"error\":\"Invalid filename: cannot start with dot (hidden files not allowed)\"";
             errorJson << "}";
             return ScriptMethodResult::Success(errorJson.str());
         }
