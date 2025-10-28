@@ -40,6 +40,10 @@ private:
     // Phase 6a: KADI Development Tools - Input Injection
     ScriptMethodResult ExecuteInjectKeyPress(ScriptArgs const& args);
     ScriptMethodResult ExecuteInjectKeyHold(ScriptArgs const& args);
+    ScriptMethodResult ExecuteKeyHoldSequence(const std::string& keySequenceJson);
+    ScriptMethodResult ExecuteGetKeyHoldStatus(ScriptArgs const& args);
+    ScriptMethodResult ExecuteCancelKeyHold(ScriptArgs const& args);
+    ScriptMethodResult ExecuteListActiveKeyHolds(ScriptArgs const& args);
 
     // Phase 6b: KADI Development Tools - FileWatcher Management
     ScriptMethodResult ExecuteAddWatchedFile(ScriptArgs const& args);
