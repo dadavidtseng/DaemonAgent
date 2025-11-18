@@ -76,11 +76,11 @@ export class DevelopmentToolHandler
                     this.handleDeleteScript(requestId, parsedArgs);
                     break;
 
-                case 'press_keycode':
+                case 'input_press_keycode':
                     this.handlePressKeycode(requestId, parsedArgs);
                     break;
 
-                case 'hold_keycode':
+                case 'input_hold_keycode':
                     this.handleHoldKeycode(requestId, parsedArgs);
                     break;
 
