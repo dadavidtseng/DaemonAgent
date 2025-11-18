@@ -101,6 +101,7 @@
             "JobSystem": "Thread count auto-calculated: (CPU_cores - 2) generic threads + 1 I/O thread (Engine.cpp lines 191-200)",
             "Window": "FULLY CONFIGURABLE via subsystems.platform.config (windowType, aspectRatio, windowTitle)",
             "Renderer": "Hardcoded: Uses Window reference",
+          "ImGuiSubsystem": "Hardcoded: Uses Renderer and Window references - DevConsole-aware input capture",
             "DevConsole": "Hardcoded: Uses 'DaemonFont' font",
             "ResourceSubsystem": "Hardcoded: 4 worker threads"
         },
@@ -108,8 +109,9 @@
             "LogSubsystem": "None - Can be safely disabled",
             "EventSystem": "Required by most game systems",
             "JobSystem": "Required by ResourceSubsystem",
-            "Window": "Required by Renderer, InputSystem",
-            "Renderer": "Required by DevConsole, ResourceSubsystem, DebugRenderSystem",
+          "Window": "Required by Renderer, InputSystem, ImGuiSubsystem",
+          "Renderer": "Required by DevConsole, ResourceSubsystem, DebugRenderSystem, ImGuiSubsystem",
+          "ImGuiSubsystem": "Requires Renderer, Window - Provides debug UI with DevConsole integration",
             "DevConsole": "Requires Renderer - Can be safely disabled",
             "ResourceSubsystem": "Requires Renderer, JobSystem"
         },
@@ -119,6 +121,7 @@
             "JobSystem",
             "Window",
             "Renderer",
+          "ImGuiSubsystem",
             "DevConsole",
             "ResourceSubsystem"
         ]
@@ -133,6 +136,7 @@
         "disable_audio": "Set subsystems.audio.enabled to false",
         "disable_logging": "Remove 'LogSubsystem' from core.subsystems array",
         "disable_dev_console": "Remove 'DevConsole' from core.subsystems array",
+      "disable_imgui": "Remove 'ImGuiSubsystem' from core.subsystems array (disables debug UI)",
         "headless_mode": "Remove 'Window' and 'Renderer' from core.subsystems array (experimental)",
         "custom_rng_seed": "Set subsystems.math.config.defaultSeed to a number (e.g., 12345) for deterministic randomness",
         "disable_debugger": "Set subsystems.script.config.enableInspector to false",

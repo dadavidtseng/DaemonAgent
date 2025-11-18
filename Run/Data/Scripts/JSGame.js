@@ -236,7 +236,7 @@ export class JSGame
             console.log('JSGame: Prop GameObjects created successfully');
 
             // Create test physics props
-            this.createPhysicsTestProps();
+            // this.createPhysicsTestProps();
         } catch (error)
         {
             console.log('JSGame: ERROR creating Prop GameObjects:', error);
