@@ -1,6 +1,30 @@
+<!-- OPENSPEC:START -->
+# OpenSpec Instructions
+
+These instructions are for AI assistants working in this project.
+
+Always open `@/openspec/AGENTS.md` when the request:
+- Mentions planning or proposals (words like proposal, spec, change, plan)
+- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
+- Sounds ambiguous and you need the authoritative spec before coding
+
+Use `@/openspec/AGENTS.md` to learn:
+- How to create and apply change proposals
+- Spec format and conventions
+- Project structure and guidelines
+
+Keep this managed block so 'openspec update' can refresh the instructions.
+
+<!-- OPENSPEC:END -->
+
 # ProtogameJS3D - Dual-Language Game Engine
 
 ## Changelog
+- **2025-10-30**: Multi-language agent architecture implementation
+  - Created KĀDI protocol agent system for Python and TypeScript
+  - Implemented calculator agents demonstrating cross-language communication
+  - Established agent registry and comprehensive documentation
+  - Integrated with multi-agents-collaboration workflow (M5-T2)
 - **2025-10-27**: M4-T8 async architecture refactoring completed
   - Moved EntityAPI, EntityScriptInterface, EntityStateBuffer to Engine/Entity/
   - Moved CameraAPI, CameraScriptInterface, CameraStateBuffer to Engine/Renderer/
@@ -177,6 +201,93 @@ graph TD
 - **Chrome DevTools Integration** - Professional debugging environment
 - **Entity Management** - Use EntityAPI through script interface
 - **Camera Control** - Use CameraAPI through script interface
+- **Multi-Agent Collaboration** - KĀDI protocol for cross-language agent communication
+
+## Multi-Language Agent Architecture
+
+### Overview
+
+ProtogameJS3D supports a comprehensive multi-language agent system using the **KĀDI protocol**, enabling seamless communication between agents written in different programming languages (Python, TypeScript, and future languages).
+
+### Agent Ecosystem
+
+```
+┌──────────────────────────────────────────────────────┐
+│          ProtogameJS3D Game Engine                    │
+│       (JavaScript via V8 Runtime)                     │
+└───────────────────┬──────────────────────────────────┘
+                    │ KĀDI Protocol (WebSocket)
+                    ▼
+┌──────────────────────────────────────────────────────┐
+│                KĀDI Broker                            │
+│  • Agent-to-agent routing                            │
+│  • Message threading                                  │
+│  • Event pub/sub system                              │
+└─┬─────────────┬─────────────┬────────────────────────┘
+  │             │             │
+  ▼             ▼             ▼
+┌────────┐  ┌───────────┐  ┌───────────┐
+│Python  │  │TypeScript │  │Future     │
+│Agents  │  │Agents     │  │Agents     │
+│        │  │           │  │(Go/Rust)  │
+└────────┘  └───────────┘  └───────────┘
+```
+
+### Available Agents
+
+| Agent | Language | Status | Purpose |
+|-------|----------|--------|---------|
+| **Calculator** | Python | ✅ Active | Mathematical operations |
+| **Calculator** | TypeScript | ✅ Active | Mathematical operations |
+| **Planner** | Python | 🚧 Planned | Workflow orchestration |
+| **UI-UX-Designer** | TypeScript | 🚧 Planned | Design generation |
+
+### Cross-Language Communication
+
+Agents communicate regardless of implementation language:
+
+```python
+# Python → TypeScript
+calculator = await client.load('calculator', 'broker')
+result = await calculator.add({'a': 5, 'b': 3})  # Calls TS agent
+```
+
+```typescript
+// TypeScript → Python
+const calculator = await client.load('calculator', 'broker');
+const result = await calculator.multiply({ a: 6, b: 7 }); // Calls Python agent
+```
+
+### Integration with Workflow
+
+Based on `.claude/multi-agents-collaboration.md`:
+
+1. **Requirement Planning** → Planner Agent (Python)
+2. **Frontend Tasks** → UI-UX-Designer Agent (TypeScript)
+3. **Code Generation** → Code Generator Agent
+4. **Testing** → Test Generator Agent
+
+All agents coordinate via event-driven architecture with pattern-based pub/sub.
+
+### Quick Start
+
+```bash
+# Start KĀDI broker
+cd kadi-broker && npm run dev
+
+# Start Python agent
+cd agents/python/calculator-agent && python agent.py
+
+# Start TypeScript agent
+cd agents/typescript/calculator-agent && npm start
+```
+
+### Documentation
+
+- [Multi-Language Agents Guide](agents/README.md)
+- [Agent Implementation Planning](.claude/plan/multi-language-agents.md)
+- [Agent Registry](agents/registry.json)
+- [M5-T2: Agent Communication Protocol](.claude/plan/M5/development.md#m5-t2-agent-to-agent-communication-protocol)
 
 ### Recommended AI Modifications
 - Extend JavaScript systems in `Run/Data/Scripts/`
