@@ -12,22 +12,21 @@
 #include "Engine/Core/Clock.hpp"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Core/ErrorWarningAssert.hpp"
-#include "Engine/Script/ScriptTypeExtractor.hpp"
+#include "Engine/Core/LogSubsystem.hpp"
 #include "Engine/Input/InputSystem.hpp"
+#include "Engine/Script/ScriptTypeExtractor.hpp"
 //----------------------------------------------------------------------------------------------------
-// Phase 6a: File I/O includes
+#include "ThirdParty/json/json.hpp"
+//----------------------------------------------------------------------------------------------------
+#include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <filesystem>
 
-#include "Engine/Core/LogSubsystem.hpp"
-#include <ThirdParty/json/json.hpp>
-namespace fs = std::filesystem;
 
 //----------------------------------------------------------------------------------------------------
 // Helper function: Escape special characters in JSON strings
 //----------------------------------------------------------------------------------------------------
-static std::string EscapeJsonString(const std::string& input)
+static std::string EscapeJsonString(String const& input)
 {
     std::string escaped;
     escaped.reserve(static_cast<size_t>(input.length() * 1.2)); // Reserve extra space for escape characters
@@ -36,14 +35,22 @@ static std::string EscapeJsonString(const std::string& input)
     {
         switch (c)
         {
-            case '\\': escaped += "\\\\"; break; // Backslash
-            case '\"': escaped += "\\\""; break; // Quote
-            case '\n': escaped += "\\n"; break;  // Newline
-            case '\r': escaped += "\\r"; break;  // Carriage return
-            case '\t': escaped += "\\t"; break;  // Tab
-            case '\b': escaped += "\\b"; break;  // Backspace
-            case '\f': escaped += "\\f"; break;  // Form feed
-            default: escaped += c; break;
+        case '\\': escaped += "\\\\";
+            break; // Backslash
+        case '\"': escaped += "\\\"";
+            break; // Quote
+        case '\n': escaped += "\\n";
+            break;  // Newline
+        case '\r': escaped += "\\r";
+            break;  // Carriage return
+        case '\t': escaped += "\\t";
+            break;  // Tab
+        case '\b': escaped += "\\b";
+            break;  // Backspace
+        case '\f': escaped += "\\f";
+            break;  // Form feed
+        default: escaped += c;
+            break;
         }
     }
 
@@ -293,6 +300,7 @@ ScriptMethodResult GameScriptInterface::ExecuteJavaScriptFile(const ScriptArgs& 
         return ScriptMethodResult::Error("執行 JavaScript 檔案失敗: " + String(e.what()));
     }
 }
+
 //----------------------------------------------------------------------------------------------------
 // Phase 6a: KADI Development Tools - File Operations Implementation
 // Append these implementations to GameScriptInterface.cpp
@@ -307,9 +315,9 @@ ScriptMethodResult GameScriptInterface::ExecuteCreateScriptFile(ScriptArgs const
     try
     {
         // Extract parameters
-        String filePath = ScriptTypeExtractor::ExtractString(args[0]);
-        String content = ScriptTypeExtractor::ExtractString(args[1]);
-        bool overwrite = ScriptTypeExtractor::ExtractBool(args[2]);
+        String filePath  = ScriptTypeExtractor::ExtractString(args[0]);
+        String content   = ScriptTypeExtractor::ExtractString(args[1]);
+        bool   overwrite = ScriptTypeExtractor::ExtractBool(args[2]);
 
         // Validation: Empty file path
         if (filePath.empty())
@@ -350,7 +358,7 @@ ScriptMethodResult GameScriptInterface::ExecuteCreateScriptFile(ScriptArgs const
         // Check 2: Cannot start with a dot (hidden files not allowed)
         // Extract just the filename from the path to check
         size_t lastSlash = filePath.find_last_of("/\\");
-        String filename = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
+        String filename  = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
 
         if (!filename.empty() && filename[0] == '.')
         {
@@ -363,11 +371,11 @@ ScriptMethodResult GameScriptInterface::ExecuteCreateScriptFile(ScriptArgs const
         }
 
         // Build full path (Run/Data/Scripts/)
-        fs::path scriptsDir = fs::current_path() / "Data" / "Scripts";
-        fs::path fullPath = scriptsDir / filePath;
+        std::filesystem::path scriptsDir = std::filesystem::current_path() / "Data" / "Scripts";
+        std::filesystem::path fullPath   = scriptsDir / filePath;
 
         // Check if file exists
-        if (fs::exists(fullPath) && !overwrite)
+        if (std::filesystem::exists(fullPath) && !overwrite)
         {
             std::ostringstream errorJson;
             errorJson << "{";
@@ -378,10 +386,10 @@ ScriptMethodResult GameScriptInterface::ExecuteCreateScriptFile(ScriptArgs const
         }
 
         // Create parent directories if needed
-        fs::path parentDir = fullPath.parent_path();
-        if (!fs::exists(parentDir))
+        std::filesystem::path parentDir = fullPath.parent_path();
+        if (!std::filesystem::exists(parentDir))
         {
-            fs::create_directories(parentDir);
+            std::filesystem::create_directories(parentDir);
         }
 
         // Write file
@@ -460,7 +468,7 @@ ScriptMethodResult GameScriptInterface::ExecuteReadScriptFile(ScriptArgs const& 
 
         // Check 2: Cannot start with a dot (hidden files not allowed)
         size_t lastSlash = filePath.find_last_of("/\\");
-        String filename = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
+        String filename  = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
 
         if (!filename.empty() && filename[0] == '.')
         {
@@ -473,11 +481,11 @@ ScriptMethodResult GameScriptInterface::ExecuteReadScriptFile(ScriptArgs const& 
         }
 
         // Build full path (Run/Data/Scripts/)
-        fs::path scriptsDir = fs::current_path() / "Data" / "Scripts";
-        fs::path fullPath = scriptsDir / filePath;
+        std::filesystem::path scriptsDir = std::filesystem::current_path() / "Data" / "Scripts";
+        std::filesystem::path fullPath   = scriptsDir / filePath;
 
         // Check if file exists
-        if (!fs::exists(fullPath))
+        if (!std::filesystem::exists(fullPath))
         {
             std::ostringstream errorJson;
             errorJson << "{";
@@ -503,9 +511,9 @@ ScriptMethodResult GameScriptInterface::ExecuteReadScriptFile(ScriptArgs const& 
         buffer << inFile.rdbuf();
         inFile.close();
 
-        std::string content = buffer.str();
-        size_t lineCount = std::count(content.begin(), content.end(), '\n') + 1;
-        size_t byteSize = content.length();
+        std::string content   = buffer.str();
+        size_t      lineCount = std::count(content.begin(), content.end(), '\n') + 1;
+        size_t      byteSize  = content.length();
 
         // Escape content using helper function
         std::string escapedContent = EscapeJsonString(content);
@@ -571,7 +579,7 @@ ScriptMethodResult GameScriptInterface::ExecuteDeleteScriptFile(ScriptArgs const
 
         // Check 2: Cannot start with a dot (hidden files not allowed)
         size_t lastSlash = filePath.find_last_of("/\\");
-        String filename = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
+        String filename  = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
 
         if (!filename.empty() && filename[0] == '.')
         {
@@ -618,16 +626,16 @@ ScriptMethodResult GameScriptInterface::ExecuteDeleteScriptFile(ScriptArgs const
         }
 
         // Build full path (Run/Data/Scripts/)
-        fs::path scriptsDir = fs::current_path() / "Data" / "Scripts";
-        fs::path fullPath = scriptsDir / filePath;
+        std::filesystem::path scriptsDir = std::filesystem::current_path() / "Data" / "Scripts";
+        std::filesystem::path fullPath   = scriptsDir / filePath;
 
         // Check if file exists
-        bool existed = fs::exists(fullPath);
+        bool existed = std::filesystem::exists(fullPath);
 
         // Delete file if it exists
         if (existed)
         {
-            fs::remove(fullPath);
+            std::filesystem::remove(fullPath);
         }
 
         // Return success with deletion info (escape path for JSON)
@@ -664,7 +672,7 @@ ScriptMethodResult GameScriptInterface::ExecuteInjectKeyPress(ScriptArgs const& 
     try
     {
         // Extract parameters
-        int keyCode = ScriptTypeExtractor::ExtractInt(args[0]);
+        int keyCode    = ScriptTypeExtractor::ExtractInt(args[0]);
         int durationMs = ScriptTypeExtractor::ExtractInt(args[1]);
 
         // Validate parameters
@@ -731,7 +739,7 @@ ScriptMethodResult GameScriptInterface::ExecuteInjectKeyHold(ScriptArgs const& a
     try
     {
         DAEMON_LOG(LogScript, eLogVerbosity::Log,
-            StringFormat("ExecuteInjectKeyHold: Received {} arguments", args.size()));
+                   StringFormat("ExecuteInjectKeyHold: Received {} arguments", args.size()));
 
         // Only support the enhanced keySequence format
         if (args.size() == 1)
@@ -747,10 +755,10 @@ ScriptMethodResult GameScriptInterface::ExecuteInjectKeyHold(ScriptArgs const& a
 
                 // Check if it contains keySequence (enhanced) or keyCode (legacy)
                 bool hasKeySequence = paramJson.contains("keySequence");
-                bool hasKeyCode = paramJson.contains("keyCode");
+                bool hasKeyCode     = paramJson.contains("keyCode");
 
                 DAEMON_LOG(LogScript, eLogVerbosity::Log,
-                    StringFormat("ExecuteInjectKeyHold: Object hasKeySequence={}, hasKeyCode={}", hasKeySequence, hasKeyCode));
+                           StringFormat("ExecuteInjectKeyHold: Object hasKeySequence={}, hasKeyCode={}", hasKeySequence, hasKeyCode));
 
                 if (hasKeySequence && !hasKeyCode)
                 {
@@ -973,7 +981,7 @@ ScriptMethodResult GameScriptInterface::ExecuteListActiveKeyHolds(ScriptArgs con
 ScriptMethodResult GameScriptInterface::ExecuteKeyHoldSequence(const std::string& keySequenceJson)
 {
     DAEMON_LOG(LogScript, eLogVerbosity::Log,
-        StringFormat("ExecuteKeyHoldSequence: Processing enhanced keySequence format"));
+               StringFormat("ExecuteKeyHoldSequence: Processing enhanced keySequence format"));
 
     try
     {
@@ -994,8 +1002,8 @@ ScriptMethodResult GameScriptInterface::ExecuteKeyHoldSequence(const std::string
         for (const auto& keyItem : sequenceDoc)
         {
             sKeySequenceItem item;
-            item.keyCode = static_cast<unsigned char>(keyItem.value("keyCode", 0));
-            item.delayMs = keyItem.value("delayMs", 0);
+            item.keyCode    = static_cast<unsigned char>(keyItem.value("keyCode", 0));
+            item.delayMs    = keyItem.value("delayMs", 0);
             item.durationMs = keyItem.value("durationMs", 0);
 
             keySequence.push_back(item);
@@ -1045,7 +1053,7 @@ ScriptMethodResult GameScriptInterface::ExecuteKeyHoldSequence(const std::string
         }
 
         DAEMON_LOG(LogScript, eLogVerbosity::Log,
-            StringFormat("ExecuteKeyHoldSequence: Calling InputSystem::InjectKeySequence with %zu keys", keySequence.size()));
+                   StringFormat("ExecuteKeyHoldSequence: Calling InputSystem::InjectKeySequence with %zu keys", keySequence.size()));
 
         // Call InputSystem to inject key sequence
         uint32_t primaryJobId = g_input->InjectKeySequence(keySequence);
@@ -1067,8 +1075,8 @@ ScriptMethodResult GameScriptInterface::ExecuteKeyHoldSequence(const std::string
         resultJson << "}";
 
         DAEMON_LOG(LogScript, eLogVerbosity::Log,
-            StringFormat("ExecuteKeyHoldSequence: Key sequence injected successfully, primaryJobId=%d, keyCount=%zu",
-                primaryJobId, keySequence.size()));
+                   StringFormat("ExecuteKeyHoldSequence: Key sequence injected successfully, primaryJobId=%d, keyCount=%zu",
+                       primaryJobId, keySequence.size()));
 
         return ScriptMethodResult::Success(resultJson.str());
     }
@@ -1134,7 +1142,7 @@ ScriptMethodResult GameScriptInterface::ExecuteAddWatchedFile(ScriptArgs const& 
         // Check 2: Cannot start with a dot (hidden files not allowed)
         // Extract just the filename from the path to check
         size_t lastSlash = filePath.find_last_of("/\\");
-        String filename = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
+        String filename  = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
 
         if (!filename.empty() && filename[0] == '.')
         {

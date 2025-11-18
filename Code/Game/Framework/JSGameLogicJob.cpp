@@ -27,35 +27,34 @@
 //
 // Initializes synchronization primitives and dependencies.
 //----------------------------------------------------------------------------------------------------
-JSGameLogicJob::JSGameLogicJob(IJSGameLogicContext* context, RenderCommandQueue* commandQueue, EntityStateBuffer* entityBuffer)
-    : m_context(context)
-    , m_commandQueue(commandQueue)
-    , m_entityBuffer(entityBuffer)
-    , m_mutex()
-    , m_frameStartCV()
-    , m_frameCompleteCV()
-    , m_frameRequested(false)
-    , m_frameComplete(true)   // Initially complete (ready for first frame)
-    , m_shutdownRequested(false)
-    , m_shutdownComplete(false)
-    , m_totalFrames(0)
-    , m_isolate(nullptr)
+JSGameLogicJob::JSGameLogicJob(IJSGameLogicContext* context,
+                               RenderCommandQueue*  commandQueue,
+                               EntityStateBuffer*   entityBuffer)
+    : m_context(context),
+      m_commandQueue(commandQueue),
+      m_entityBuffer(entityBuffer),
+      m_frameRequested(false),
+      m_frameComplete(true),   // Initially complete (ready for first frame)
+      m_shutdownRequested(false),
+      m_shutdownComplete(false),
+      m_totalFrames(0),
+      m_isolate(nullptr)
 {
-	// Validate dependencies
-	if (!m_context)
-	{
-		ERROR_AND_DIE("JSGameLogicJob: IJSGameLogicContext pointer cannot be null");
-	}
-	if (!m_commandQueue)
-	{
-		ERROR_AND_DIE("JSGameLogicJob: RenderCommandQueue pointer cannot be null");
-	}
-	if (!m_entityBuffer)
-	{
-		ERROR_AND_DIE("JSGameLogicJob: EntityStateBuffer pointer cannot be null");
-	}
+    // Validate dependencies
+    if (!m_context)
+    {
+        ERROR_AND_DIE("JSGameLogicJob: IJSGameLogicContext pointer cannot be null");
+    }
+    if (!m_commandQueue)
+    {
+        ERROR_AND_DIE("JSGameLogicJob: RenderCommandQueue pointer cannot be null");
+    }
+    if (!m_entityBuffer)
+    {
+        ERROR_AND_DIE("JSGameLogicJob: EntityStateBuffer pointer cannot be null");
+    }
 
-	DAEMON_LOG(LogScript, eLogVerbosity::Log, "JSGameLogicJob: Initialized (ready for worker thread execution)");
+    DAEMON_LOG(LogScript, eLogVerbosity::Log, "JSGameLogicJob: Initialized (ready for worker thread execution)");
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -65,16 +64,16 @@ JSGameLogicJob::JSGameLogicJob(IJSGameLogicContext* context, RenderCommandQueue*
 //----------------------------------------------------------------------------------------------------
 JSGameLogicJob::~JSGameLogicJob()
 {
-	// Warn if shutdown was not requested
-	if (!m_shutdownComplete.load(std::memory_order_relaxed))
-	{
-		DAEMON_LOG(LogScript, eLogVerbosity::Warning,
-		           "JSGameLogicJob: Destroyed without proper shutdown (call RequestShutdown() and wait for completion)");
-	}
+    // Warn if shutdown was not requested
+    if (!m_shutdownComplete.load(std::memory_order_relaxed))
+    {
+        DAEMON_LOG(LogScript, eLogVerbosity::Warning,
+                   "JSGameLogicJob: Destroyed without proper shutdown (call RequestShutdown() and wait for completion)");
+    }
 
-	DAEMON_LOG(LogScript, eLogVerbosity::Log,
-	           Stringf("JSGameLogicJob: Destroyed - Total frames executed: %llu",
-	                   m_totalFrames.load(std::memory_order_relaxed)));
+    DAEMON_LOG(LogScript, eLogVerbosity::Log,
+               Stringf("JSGameLogicJob: Destroyed - Total frames executed: %llu",
+                   m_totalFrames.load(std::memory_order_relaxed)));
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -99,53 +98,54 @@ JSGameLogicJob::~JSGameLogicJob()
 //----------------------------------------------------------------------------------------------------
 void JSGameLogicJob::Execute()
 {
-	DAEMON_LOG(LogScript, eLogVerbosity::Display, "JSGameLogicJob: Worker thread started");
+    DAEMON_LOG(LogScript, eLogVerbosity::Display, "JSGameLogicJob: Worker thread started");
 
-	// Initialize V8 thread-local state
-	InitializeWorkerThreadV8();
+    // Initialize V8 thread-local state
+    InitializeWorkerThreadV8();
 
-	// Main worker loop
-	while (!m_shutdownRequested.load(std::memory_order_relaxed))
-	{
-		// Wait for frame trigger from main thread
-		{
-			std::unique_lock<std::mutex> lock(m_mutex);
-			m_frameStartCV.wait(lock, [this]() {
-				return m_frameRequested.load(std::memory_order_relaxed) ||
-				       m_shutdownRequested.load(std::memory_order_relaxed);
-			});
+    // Main worker loop
+    while (!m_shutdownRequested.load(std::memory_order_relaxed))
+    {
+        // Wait for frame trigger from main thread
+        {
+            std::unique_lock lock(m_mutex);
+            m_frameStartCV.wait(lock, [this]()
+            {
+                return m_frameRequested.load(std::memory_order_relaxed) ||
+                    m_shutdownRequested.load(std::memory_order_relaxed);
+            });
 
-			// Exit if shutdown requested
-			if (m_shutdownRequested.load(std::memory_order_relaxed))
-			{
-				break;
-			}
+            // Exit if shutdown requested
+            if (m_shutdownRequested.load(std::memory_order_relaxed))
+            {
+                break;
+            }
 
-			// Clear frame request flag
-			m_frameRequested.store(false, std::memory_order_relaxed);
-			m_frameComplete.store(false, std::memory_order_relaxed);
-		}
+            // Clear frame request flag
+            m_frameRequested.store(false, std::memory_order_relaxed);
+            m_frameComplete.store(false, std::memory_order_relaxed);
+        }
 
-		// Execute JavaScript frame (outside lock to avoid blocking main thread)
-		ExecuteJavaScriptFrame();
+        // Execute JavaScript frame (outside lock to avoid blocking main thread)
+        ExecuteJavaScriptFrame();
 
-		// Signal frame completion
-		{
-			std::lock_guard<std::mutex> lock(m_mutex);
-			m_frameComplete.store(true, std::memory_order_release);
-			m_frameCompleteCV.notify_one();
-		}
+        // Signal frame completion
+        {
+            std::lock_guard lock(m_mutex);
+            m_frameComplete.store(true, std::memory_order_release);
+            m_frameCompleteCV.notify_one();
+        }
 
-		// Increment frame counter
-		m_totalFrames.fetch_add(1, std::memory_order_relaxed);
-	}
+        // Increment frame counter
+        m_totalFrames.fetch_add(1, std::memory_order_relaxed);
+    }
 
-	// Signal shutdown complete
-	m_shutdownComplete.store(true, std::memory_order_release);
+    // Signal shutdown complete
+    m_shutdownComplete.store(true, std::memory_order_release);
 
-	DAEMON_LOG(LogScript, eLogVerbosity::Display,
-	           Stringf("JSGameLogicJob: Worker thread exited - Total frames: %llu",
-	                   m_totalFrames.load(std::memory_order_relaxed)));
+    DAEMON_LOG(LogScript, eLogVerbosity::Display,
+               Stringf("JSGameLogicJob: Worker thread exited - Total frames: %llu",
+                   m_totalFrames.load(std::memory_order_relaxed)));
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -158,18 +158,18 @@ void JSGameLogicJob::Execute()
 //----------------------------------------------------------------------------------------------------
 void JSGameLogicJob::TriggerNextFrame()
 {
-	std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard lock(m_mutex);
 
-	// Warn if triggering before previous frame complete (indicates timing issue)
-	if (!m_frameComplete.load(std::memory_order_relaxed))
-	{
-		DAEMON_LOG(LogScript, eLogVerbosity::Warning,
-		           "JSGameLogicJob: TriggerNextFrame() called before previous frame complete (frame skip)");
-	}
+    // Warn if triggering before previous frame complete (indicates timing issue)
+    if (!m_frameComplete.load(std::memory_order_relaxed))
+    {
+        DAEMON_LOG(LogScript, eLogVerbosity::Warning,
+                   "JSGameLogicJob: TriggerNextFrame() called before previous frame complete (frame skip)");
+    }
 
-	// Set frame request flag and wake worker thread
-	m_frameRequested.store(true, std::memory_order_relaxed);
-	m_frameStartCV.notify_one();
+    // Set frame request flag and wake worker thread
+    m_frameRequested.store(true, std::memory_order_relaxed);
+    m_frameStartCV.notify_one();
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -185,7 +185,7 @@ void JSGameLogicJob::TriggerNextFrame()
 //----------------------------------------------------------------------------------------------------
 bool JSGameLogicJob::IsFrameComplete() const
 {
-	return m_frameComplete.load(std::memory_order_acquire);
+    return m_frameComplete.load(std::memory_order_acquire);
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -197,13 +197,13 @@ bool JSGameLogicJob::IsFrameComplete() const
 //----------------------------------------------------------------------------------------------------
 void JSGameLogicJob::RequestShutdown()
 {
-	DAEMON_LOG(LogScript, eLogVerbosity::Log, "JSGameLogicJob: Shutdown requested");
+    DAEMON_LOG(LogScript, eLogVerbosity::Log, "JSGameLogicJob: Shutdown requested");
 
-	{
-		std::lock_guard<std::mutex> lock(m_mutex);
-		m_shutdownRequested.store(true, std::memory_order_relaxed);
-		m_frameStartCV.notify_one();  // Wake worker if waiting
-	}
+    {
+        std::lock_guard lock(m_mutex);
+        m_shutdownRequested.store(true, std::memory_order_relaxed);
+        m_frameStartCV.notify_one();  // Wake worker if waiting
+    }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -219,7 +219,7 @@ void JSGameLogicJob::RequestShutdown()
 //----------------------------------------------------------------------------------------------------
 bool JSGameLogicJob::IsShutdownComplete() const
 {
-	return m_shutdownComplete.load(std::memory_order_acquire);
+    return m_shutdownComplete.load(std::memory_order_acquire);
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -239,45 +239,45 @@ bool JSGameLogicJob::IsShutdownComplete() const
 //----------------------------------------------------------------------------------------------------
 void JSGameLogicJob::ExecuteJavaScriptFrame()
 {
-	// CRITICAL: Acquire V8 lock before ANY V8 API calls
-	// Without this lock, multi-threaded V8 access will crash
-	v8::Locker locker(m_isolate);
-	v8::Isolate::Scope isolateScope(m_isolate);
+    // CRITICAL: Acquire V8 lock before ANY V8 API calls
+    // Without this lock, multi-threaded V8 access will crash
+    v8::Locker         locker(m_isolate);
+    v8::Isolate::Scope isolateScope(m_isolate);
 
-	// Phase 1: Simple delegation to Game::UpdateJS()
-	// Game class handles JavaScript execution through ScriptSubsystem
-	//
-	// Future (Phase 2):
-	//   - Direct JavaScript function calls for update/render
-	//   - Entity state buffer updates
-	//   - Render command submissions
-	//
-	// Future (Phase 3):
-	//   - Try-catch for JavaScript exception handling
-	//   - Error isolation (log error, signal frame complete, continue)
-	//   - Timeout detection (main thread monitors IsFrameComplete())
+    // Phase 1: Simple delegation to Game::UpdateJS()
+    // Game class handles JavaScript execution through ScriptSubsystem
+    //
+    // Future (Phase 2):
+    //   - Direct JavaScript function calls for update/render
+    //   - Entity state buffer updates
+    //   - Render command submissions
+    //
+    // Future (Phase 3):
+    //   - Try-catch for JavaScript exception handling
+    //   - Error isolation (log error, signal frame complete, continue)
+    //   - Timeout detection (main thread monitors IsFrameComplete())
 
-	// Execute JavaScript update logic
-	// This calls into JSEngine.update() through IJSGameLogicContext interface
-	if (m_context)
-	{
-		// TODO Phase 1: Call m_context->UpdateJSWorkerThread() with worker thread context
-		// For now, placeholder implementation (Phase 1 builds infrastructure only)
+    // Execute JavaScript update logic
+    // This calls into JSEngine.update() through IJSGameLogicContext interface
+    if (m_context)
+    {
+        // TODO Phase 1: Call m_context->UpdateJSWorkerThread() with worker thread context
+        // For now, placeholder implementation (Phase 1 builds infrastructure only)
 
-		// Example Phase 2 implementation:
-		// float deltaTime = 0.0166f; // 60 FPS
-		// m_context->UpdateJSWorkerThread(deltaTime, m_entityBuffer, m_commandQueue);
+        // Example Phase 2 implementation:
+        // float deltaTime = 0.0166f; // 60 FPS
+        // m_context->UpdateJSWorkerThread(deltaTime, m_entityBuffer, m_commandQueue);
 
-		// Placeholder: Log frame execution
-		static uint64_t frameCount = 0;
-		if (frameCount % 60 == 0)  // Log every 60 frames (≈1 second at 60 FPS)
-		{
-			DAEMON_LOG(LogScript, eLogVerbosity::Display,
-			           Stringf("JSGameLogicJob: Executed frame #%llu on worker thread",
-			                   frameCount));
-		}
-		frameCount++;
-	}
+        // Placeholder: Log frame execution
+        static uint64_t frameCount = 0;
+        if (frameCount % 60 == 0)  // Log every 60 frames (≈1 second at 60 FPS)
+        {
+            DAEMON_LOG(LogScript, eLogVerbosity::Display,
+                       Stringf("JSGameLogicJob: Executed frame #%llu on worker thread",
+                           frameCount));
+        }
+        frameCount++;
+    }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -290,18 +290,18 @@ void JSGameLogicJob::ExecuteJavaScriptFrame()
 //----------------------------------------------------------------------------------------------------
 void JSGameLogicJob::InitializeWorkerThreadV8()
 {
-	// Get V8 isolate from ScriptSubsystem (created on main thread)
-	// In multi-threaded V8, the same isolate can be accessed from multiple threads
-	// with proper v8::Locker protection
-	m_isolate = g_scriptSubsystem->GetIsolate();
+    // Get V8 isolate from ScriptSubsystem (created on main thread)
+    // In multi-threaded V8, the same isolate can be accessed from multiple threads
+    // with proper v8::Locker protection
+    m_isolate = g_scriptSubsystem->GetIsolate();
 
-	if (!m_isolate)
-	{
-		ERROR_AND_DIE("JSGameLogicJob: Failed to get V8 isolate from ScriptSubsystem");
-	}
+    if (!m_isolate)
+    {
+        ERROR_AND_DIE("JSGameLogicJob: Failed to get V8 isolate from ScriptSubsystem");
+    }
 
-	DAEMON_LOG(LogScript, eLogVerbosity::Log,
-	           "JSGameLogicJob: V8 isolate initialized for worker thread");
+    DAEMON_LOG(LogScript, eLogVerbosity::Log,
+               "JSGameLogicJob: V8 isolate initialized for worker thread");
 }
 
 //----------------------------------------------------------------------------------------------------

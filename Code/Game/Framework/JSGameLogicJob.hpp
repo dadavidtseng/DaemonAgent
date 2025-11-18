@@ -37,7 +37,6 @@
 //----------------------------------------------------------------------------------------------------
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/Entity/EntityStateBuffer.hpp"
-#include "Engine/Renderer/RenderCommandQueue.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -47,6 +46,8 @@
 // Forward Declarations
 //----------------------------------------------------------------------------------------------------
 class IJSGameLogicContext;  // Abstract interface for JavaScript execution context
+class RenderCommandQueue;
+
 namespace v8 { class Isolate; }
 
 //----------------------------------------------------------------------------------------------------

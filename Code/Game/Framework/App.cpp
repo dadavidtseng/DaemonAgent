@@ -8,8 +8,6 @@
 #define NOMINMAX
 #endif
 
-
-
 #include "Game/Framework/App.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Game/Framework/GameCommon.hpp"
@@ -28,8 +26,6 @@
 #include "Engine/Input/InputSystem.hpp"
 #include "Engine/Platform/Window.hpp"
 #include "Engine/Renderer/Camera.hpp"
-// Phase 2b: CameraScriptInterface removed - replaced by CameraStateBuffer
-// #include "Engine/Renderer/CameraScriptInterface.hpp"
 #include "Engine/Renderer/DebugRenderSystem.hpp"
 #include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Resource/ResourceSubsystem.hpp"
@@ -39,33 +35,26 @@
 #include "Engine/Input/InputScriptInterface.hpp"
 #include "Engine/Network/KADIScriptInterface.hpp"
 #include "Engine/Renderer/DebugRenderSystemScriptInterface.hpp"
-// Phase 2: RendererScriptInterface removed - replaced by EntityScriptInterface
-// #include "Engine/Renderer/RendererScriptInterface.hpp"
-#include "ThirdParty/json/json.hpp"
-
 // Phase 1: Async Architecture Includes
-#include "Engine/Renderer/RenderCommandQueue.hpp"
 #include "Engine/Entity/EntityStateBuffer.hpp"
 #include "Engine/Renderer/CameraStateBuffer.hpp"
+#include "Engine/Renderer/RenderCommandQueue.hpp"
 #include "Game/Framework/JSGameLogicJob.hpp"
 
 // Phase 2: High-Level Entity API Includes
 // M4-T8: Direct API Usage (removed HighLevelEntityAPI facade)
 #include "Engine/Entity/EntityAPI.hpp"
-#include "Engine/Renderer/CameraAPI.hpp"
 #include "Engine/Entity/EntityScriptInterface.hpp"
+#include "Engine/Renderer/CameraAPI.hpp"
 
 // M4-T8: Camera API Script Interface
 #include "Engine/Renderer/CameraScriptInterface.hpp"
 
 // Phase 2: Geometry Creation Utilities
-#include "Engine/Renderer/VertexUtils.hpp"
 #include "Engine/Math/AABB3.hpp"
-
-// Standard library for threading
-#include <chrono>
-#include <thread>
-
+#include "Engine/Renderer/VertexUtils.hpp"
+#include "Engine/UI/ImGuiSubsystem.hpp"
+#include "ThirdParty/json/json.hpp"
 
 
 //----------------------------------------------------------------------------------------------------
@@ -76,20 +65,10 @@ Game* g_game = nullptr;       // Created and owned by the App
 // Phase 2: Static Vertex Buffer Storage
 // Shared between CreateGeometryForMeshType() and RenderEntities()
 static std::unordered_map<int, VertexList_PCU> g_vertexBuffers;
-static int g_nextVertexBufferHandle = 1;
-
-//----------------------------------------------------------------------------------------------------
-STATIC bool App::m_isQuitting = false;
+static int                                     g_nextVertexBufferHandle = 1;
 
 //----------------------------------------------------------------------------------------------------
 App::App()
-    : m_renderCommandQueue(nullptr)
-    , m_entityStateBuffer(nullptr)
-    , m_cameraStateBuffer(nullptr)
-    , m_jsGameLogicJob(nullptr)
-    , m_mainCamera(nullptr)
-    , m_entityAPI(nullptr)
-    , m_cameraAPI(nullptr)
 {
     GEngine::Get().Construct();
 }
@@ -97,7 +76,6 @@ App::App()
 //----------------------------------------------------------------------------------------------------
 App::~App()
 {
-
     GEngine::Get().Destruct();
 }
 
@@ -119,38 +97,31 @@ void App::Startup()
     m_cameraAPI = new CameraAPI(m_renderCommandQueue, g_scriptSubsystem, m_cameraStateBuffer);
     DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - EntityAPI and CameraAPI initialized (M4-T8)");
 
-    // Phase 3: Initialize main camera for rendering entities
-    m_mainCamera = new Camera();
-    m_mainCamera->m_mode = Camera::eMode_Perspective;
-    m_mainCamera->SetPerspectiveGraphicView(16.0f / 9.0f, 60.0f, 0.1f, 100.0f);  // aspect, fov, near, far
-    m_mainCamera->SetNormalizedViewport(AABB2(Vec2::ZERO, Vec2::ONE));  // Full screen viewport (0,0) to (1,1)
-
     // Phase 3 FIX: Set camera-to-render transform to correct coordinate system rotation
     // The engine uses I-Forward/J-Left/K-Up (X-Forward/Y-Left/Z-Up)
     // But rendering expects a 90° CCW rotation around Z-axis to match screen orientation
     // This 90° CCW rotation swaps: X→Y, Y→-X (keeps Z unchanged)
     Mat44 cameraToRender;
-    cameraToRender.m_values[Mat44::Ix] =  0.0f;  // New I-basis X component (was pointing X, now points Y)
-    cameraToRender.m_values[Mat44::Iy] =  1.0f;  // New I-basis Y component
-    cameraToRender.m_values[Mat44::Iz] =  0.0f;  // New I-basis Z component
-    cameraToRender.m_values[Mat44::Iw] =  0.0f;
+    cameraToRender.m_values[Mat44::Ix] = 0.0f;  // New I-basis X component (was pointing X, now points Y)
+    cameraToRender.m_values[Mat44::Iy] = 1.0f;  // New I-basis Y component
+    cameraToRender.m_values[Mat44::Iz] = 0.0f;  // New I-basis Z component
+    cameraToRender.m_values[Mat44::Iw] = 0.0f;
 
     cameraToRender.m_values[Mat44::Jx] = -1.0f;  // New J-basis X component (was pointing Y, now points -X)
-    cameraToRender.m_values[Mat44::Jy] =  0.0f;  // New J-basis Y component
-    cameraToRender.m_values[Mat44::Jz] =  0.0f;  // New J-basis Z component
-    cameraToRender.m_values[Mat44::Jw] =  0.0f;
+    cameraToRender.m_values[Mat44::Jy] = 0.0f;  // New J-basis Y component
+    cameraToRender.m_values[Mat44::Jz] = 0.0f;  // New J-basis Z component
+    cameraToRender.m_values[Mat44::Jw] = 0.0f;
 
-    cameraToRender.m_values[Mat44::Kx] =  0.0f;  // New K-basis X component (Z stays Z)
-    cameraToRender.m_values[Mat44::Ky] =  0.0f;  // New K-basis Y component
-    cameraToRender.m_values[Mat44::Kz] =  1.0f;  // New K-basis Z component
-    cameraToRender.m_values[Mat44::Kw] =  0.0f;
+    cameraToRender.m_values[Mat44::Kx] = 0.0f;  // New K-basis X component (Z stays Z)
+    cameraToRender.m_values[Mat44::Ky] = 0.0f;  // New K-basis Y component
+    cameraToRender.m_values[Mat44::Kz] = 1.0f;  // New K-basis Z component
+    cameraToRender.m_values[Mat44::Kw] = 0.0f;
 
-    cameraToRender.m_values[Mat44::Tx] =  0.0f;  // No translation
-    cameraToRender.m_values[Mat44::Ty] =  0.0f;
-    cameraToRender.m_values[Mat44::Tz] =  0.0f;
-    cameraToRender.m_values[Mat44::Tw] =  1.0f;
+    cameraToRender.m_values[Mat44::Tx] = 0.0f;  // No translation
+    cameraToRender.m_values[Mat44::Ty] = 0.0f;
+    cameraToRender.m_values[Mat44::Tz] = 0.0f;
+    cameraToRender.m_values[Mat44::Tw] = 1.0f;
 
-    m_mainCamera->SetCameraToRenderTransform(cameraToRender);
     DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - Main camera initialized with 90° CCW Z-rotation camera-to-render transform");
 
     g_game = new Game();
@@ -215,14 +186,6 @@ void App::Shutdown()
         m_kadiScriptInterface->ClearCallbacks();
     }
 
-    // m_gameScriptInterface.reset();
-    // m_inputScriptInterface.reset();
-    // m_audioScriptInterface.reset();
-    // m_cameraScriptInterface.reset();
-    // Phase 2: RendererScriptInterface removed
-    // m_rendererScriptInterface.reset();  // ← Clear vertex arrays before g_renderer destructs
-    // m_clockScriptInterface.reset();
-
     GAME_SAFE_RELEASE(g_game);
 
     // M4-T8: Cleanup EntityAPI and CameraAPI BEFORE async infrastructure
@@ -232,19 +195,12 @@ void App::Shutdown()
         m_entityAPI = nullptr;
         DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - EntityAPI destroyed (M4-T8)");
     }
-    
+
     if (m_cameraAPI)
     {
         delete m_cameraAPI;
         m_cameraAPI = nullptr;
         DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - CameraAPI destroyed (M4-T8)");
-    }
-
-    // Phase 1: Cleanup async infrastructure AFTER game destruction
-    if (m_mainCamera)
-    {
-        delete m_mainCamera;
-        m_mainCamera = nullptr;
     }
 
     if (m_entityStateBuffer)
@@ -290,6 +246,8 @@ void App::RunMainLoop()
     }
 }
 
+STATIC bool App::m_isQuitting = false;
+
 //----------------------------------------------------------------------------------------------------
 STATIC bool App::OnCloseButtonClicked(EventArgs& args)
 {
@@ -316,12 +274,7 @@ void App::BeginFrame() const
     g_devConsole->BeginFrame();
     g_input->BeginFrame();
     g_audio->BeginFrame();
-
-    // KADI broker integration frame updates
-    if (g_kadiSubsystem)
-    {
-        g_kadiSubsystem->BeginFrame();
-    }
+    g_kadiSubsystem->BeginFrame();
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -330,27 +283,20 @@ void App::Update()
     Clock::TickSystemClock();
     UpdateCursorMode();
 
+    g_imgui->Update();
+
     // Process pending hot-reload events on main thread (V8-safe)
-    if (g_scriptSubsystem)
-    {
-        g_scriptSubsystem->Update();
-    }
+    g_scriptSubsystem->Update();
 
     // Phase 1: Async Frame Synchronization
     // Check if worker thread completed previous JavaScript frame
     if (m_jsGameLogicJob && m_jsGameLogicJob->IsFrameComplete())
     {
         // Swap entity state buffers (copy back buffer → front buffer)
-        if (m_entityStateBuffer)
-        {
-            m_entityStateBuffer->SwapBuffers();
-        }
+        if (m_entityStateBuffer != nullptr) m_entityStateBuffer->SwapBuffers();
 
         // Swap camera state buffers (copy back buffer → front buffer)
-        if (m_cameraStateBuffer)
-        {
-            m_cameraStateBuffer->SwapBuffers();
-        }
+        if (m_cameraStateBuffer != nullptr) m_cameraStateBuffer->SwapBuffers();
 
         // Trigger next JavaScript frame on worker thread
         m_jsGameLogicJob->TriggerNextFrame();
@@ -364,7 +310,7 @@ void App::Update()
         {
             DAEMON_LOG(LogScript, eLogVerbosity::Warning,
                        Stringf("App::Update - JavaScript frame skip (worker still executing) - Total skips: %llu",
-                               frameSkipCount));
+                           frameSkipCount));
         }
         ++frameSkipCount;
     }
@@ -372,6 +318,7 @@ void App::Update()
     // Phase 1: Process render commands from queue (placeholder implementation)
     // Phase 2 will implement actual command processing
     ProcessRenderCommands();
+    
 
     // Legacy synchronous JavaScript update (TODO: Remove after Phase 1 validation)
     // Kept temporarily to avoid breaking existing JavaScript functionality
@@ -464,6 +411,7 @@ void App::Render() const
     AABB2 const box = AABB2(Vec2::ZERO, Vec2(1600.f, 30.f));
 
     g_devConsole->Render(box);
+    g_imgui->Render();
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -476,12 +424,7 @@ void App::EndFrame() const
     g_devConsole->EndFrame();
     g_input->EndFrame();
     g_audio->EndFrame();
-
-    // KADI broker integration frame updates
-    if (g_kadiSubsystem)
-    {
-        g_kadiSubsystem->EndFrame();
-    }
+    g_kadiSubsystem->EndFrame();
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -538,7 +481,7 @@ std::any App::OnGarbageCollection(std::vector<std::any> const& args)
 //----------------------------------------------------------------------------------------------------
 void App::UpdateCursorMode()
 {
-    bool const doesWindowHasFocus   = GetActiveWindow() == g_window->GetWindowHandle();
+    bool const doesWindowHasFocus = GetActiveWindow() == g_window->GetWindowHandle();
     // bool const shouldUsePointerMode = !doesWindowHasFocus || g_devConsole->IsOpen() || g_game->IsAttractMode();
     bool const shouldUsePointerMode = !doesWindowHasFocus || g_devConsole->IsOpen();
 
@@ -580,14 +523,6 @@ void App::SetupScriptingBindings()
 
     m_audioScriptInterface = std::make_shared<AudioScriptInterface>(g_audio);
     g_scriptSubsystem->RegisterScriptableObject("audio", m_audioScriptInterface);
-
-    // Phase 2b: CameraScriptInterface removed - replaced by CameraStateBuffer
-    // m_cameraScriptInterface = std::make_shared<CameraScriptInterface>();
-    // g_scriptSubsystem->RegisterScriptableObject("cameraInterface", m_cameraScriptInterface);
-
-    // Phase 2: RendererScriptInterface removed - replaced by EntityScriptInterface
-    // m_rendererScriptInterface = std::make_shared<RendererScriptInterface>(g_renderer);
-    // g_scriptSubsystem->RegisterScriptableObject("renderer", m_rendererScriptInterface);
 
     m_debugRenderSystemScriptInterface = std::make_shared<DebugRenderSystemScriptInterface>();
     g_scriptSubsystem->RegisterScriptableObject("debugRenderInterface", m_debugRenderSystemScriptInterface);
@@ -650,16 +585,17 @@ void App::ProcessRenderCommands()
     static int s_commandCount = 0;
 
     // Process all commands from queue
-    m_renderCommandQueue->ConsumeAll([this](RenderCommand const& cmd) {
+    m_renderCommandQueue->ConsumeAll([this](RenderCommand const& cmd)
+    {
         s_commandCount++;
         // DebuggerPrintf("[TRACE] ProcessRenderCommands - Processing command #%d, type=%d, entityId=%llu\n",
         //                s_commandCount, static_cast<int>(cmd.type), cmd.entityId);
 
         switch (cmd.type)
         {
-            case RenderCommandType::CREATE_MESH:
+        case RenderCommandType::CREATE_MESH:
             {
-                auto const& meshData = std::get<MeshCreationData>(cmd.data);
+                MeshCreationData const& meshData = std::get<MeshCreationData>(cmd.data);
                 // DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_MESH: meshType=%s, pos=(%.1f,%.1f,%.1f), radius=%.1f\n",
                 //                meshData.meshType.c_str(), meshData.position.x, meshData.position.y, meshData.position.z, meshData.radius);
                 int vbHandle = CreateGeometryForMeshType(meshData.meshType, meshData.radius, meshData.color);
@@ -667,16 +603,16 @@ void App::ProcessRenderCommands()
                 if (vbHandle != 0)
                 {
                     EntityState state;
-                    state.position = meshData.position;
-                    state.orientation = EulerAngles::ZERO;
-                    state.color = meshData.color;
-                    state.radius = meshData.radius;
-                    state.meshType = meshData.meshType;
-                    state.isActive = true;
+                    state.position           = meshData.position;
+                    state.orientation        = EulerAngles::ZERO;
+                    state.color              = meshData.color;
+                    state.radius             = meshData.radius;
+                    state.meshType           = meshData.meshType;
+                    state.isActive           = true;
                     state.vertexBufferHandle = vbHandle;
-                    state.cameraType = "world";  // Phase 2: All mesh entities use world camera by default
+                    state.cameraType         = "world";  // Phase 2: All mesh entities use world camera by default
 
-                    auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+                    auto* backBuffer            = m_entityStateBuffer->GetBackBuffer();
                     (*backBuffer)[cmd.entityId] = state;
 
                     // DebuggerPrintf("[TRACE] ProcessRenderCommands - Entity %llu added to back buffer (vbHandle=%d, vertCount=%zu)\n",
@@ -689,11 +625,11 @@ void App::ProcessRenderCommands()
                 break;
             }
 
-            case RenderCommandType::UPDATE_ENTITY:
+        case RenderCommandType::UPDATE_ENTITY:
             {
-                auto const& updateData = std::get<EntityUpdateData>(cmd.data);
-                auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
-                auto it = backBuffer->find(cmd.entityId);
+                EntityUpdateData const& updateData = std::get<EntityUpdateData>(cmd.data);
+                auto*                   backBuffer = m_entityStateBuffer->GetBackBuffer();
+                auto                    it         = backBuffer->find(cmd.entityId);
 
                 if (it != backBuffer->end())
                 {
@@ -704,34 +640,34 @@ void App::ProcessRenderCommands()
                 break;
             }
 
-            case RenderCommandType::DESTROY_ENTITY:
+        case RenderCommandType::DESTROY_ENTITY:
             {
-                auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
-                auto it = backBuffer->find(cmd.entityId);
+                std::unordered_map<unsigned long long, EntityState>* backBuffer = m_entityStateBuffer->GetBackBuffer();
+                auto                                                 it         = backBuffer->find(cmd.entityId);
                 if (it != backBuffer->end()) it->second.isActive = false;
                 break;
             }
 
-            case RenderCommandType::CREATE_CAMERA:
+        case RenderCommandType::CREATE_CAMERA:
             {
                 auto const& cameraData = std::get<CameraCreationData>(cmd.data);
                 // DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_CAMERA: cameraId=%llu, pos=(%.1f,%.1f,%.1f), type=%s\n",
                 //                cmd.entityId, cameraData.position.x, cameraData.position.y, cameraData.position.z, cameraData.type.c_str());
 
                 CameraState state;
-                state.position = cameraData.position;
+                state.position    = cameraData.position;
                 state.orientation = cameraData.orientation;
-                state.type = cameraData.type;
-                state.isActive = true;
+                state.type        = cameraData.type;
+                state.isActive    = true;
 
                 // Auto-configure camera mode based on type
                 if (cameraData.type == "world")
                 {
-                    state.mode = Camera::eMode_Perspective;
-                    state.perspectiveFOV = 60.0f;
+                    state.mode              = Camera::eMode_Perspective;
+                    state.perspectiveFOV    = 60.0f;
                     state.perspectiveAspect = 16.0f / 9.0f;
-                    state.perspectiveNear = 0.1f;
-                    state.perspectiveFar = 100.0f;
+                    state.perspectiveNear   = 0.1f;
+                    state.perspectiveFar    = 100.0f;
                 }
                 else if (cameraData.type == "screen")
                 {
@@ -743,41 +679,41 @@ void App::ProcessRenderCommands()
                         viewportDimensions = Window::s_mainWindow->GetViewportDimensions();
                     }
 
-                    state.mode = Camera::eMode_Orthographic;
-                    state.orthoLeft = 0.0f;
+                    state.mode        = Camera::eMode_Orthographic;
+                    state.orthoLeft   = 0.0f;
                     state.orthoBottom = 0.0f;
-                    state.orthoRight = viewportDimensions.x;  // Match viewport width
-                    state.orthoTop = viewportDimensions.y;    // Match viewport height
-                    state.orthoNear = 0.0f;
-                    state.orthoFar = 1.0f;
-                    state.viewport = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
+                    state.orthoRight  = viewportDimensions.x;  // Match viewport width
+                    state.orthoTop    = viewportDimensions.y;    // Match viewport height
+                    state.orthoNear   = 0.0f;
+                    state.orthoFar    = 1.0f;
+                    state.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
 
                     // DIAGNOSTIC: Log screen camera orthographic bounds
                     DAEMON_LOG(LogScript, eLogVerbosity::Display,
                                StringFormat("[DIAGNOSTIC] CREATE_CAMERA screen: ortho bounds = ({:.2f}, {:.2f}) to ({:.2f}, {:.2f}), viewport dims = ({:.2f}, {:.2f})",
-                                            state.orthoLeft, state.orthoBottom, state.orthoRight, state.orthoTop,
-                                            viewportDimensions.x, viewportDimensions.y));
+                                   state.orthoLeft, state.orthoBottom, state.orthoRight, state.orthoTop,
+                                   viewportDimensions.x, viewportDimensions.y));
                 }
 
-                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto* backBuffer            = m_cameraStateBuffer->GetBackBuffer();
                 (*backBuffer)[cmd.entityId] = state;
 
                 // DIAGNOSTIC: Log camera creation
                 DAEMON_LOG(LogScript, eLogVerbosity::Display,
                            StringFormat("[DIAGNOSTIC] ProcessRenderCommands CREATE_CAMERA: cameraId={}, type={}, position=({:.2f}, {:.2f}, {:.2f}), orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}), backBuffer size after insert={}",
-                                        cmd.entityId, state.type, state.position.x, state.position.y, state.position.z,
-                                        state.orientation.m_yawDegrees, state.orientation.m_pitchDegrees, state.orientation.m_rollDegrees,
-                                        backBuffer->size()));
+                               cmd.entityId, state.type, state.position.x, state.position.y, state.position.z,
+                               state.orientation.m_yawDegrees, state.orientation.m_pitchDegrees, state.orientation.m_rollDegrees,
+                               backBuffer->size()));
 
                 // DebuggerPrintf("[TRACE] ProcessRenderCommands - Camera %llu added to back buffer\n", cmd.entityId);
                 break;
             }
 
-            case RenderCommandType::UPDATE_CAMERA:
+        case RenderCommandType::UPDATE_CAMERA:
             {
                 auto const& updateData = std::get<CameraUpdateData>(cmd.data);
-                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
-                auto it = backBuffer->find(cmd.entityId);
+                auto*       backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto        it         = backBuffer->find(cmd.entityId);
 
                 // DIAGNOSTIC: Log UPDATE_CAMERA command processing
                 static int s_updateCameraCount = 0;
@@ -786,9 +722,9 @@ void App::ProcessRenderCommands()
                 {
                     DAEMON_LOG(LogScript, eLogVerbosity::Display,
                                StringFormat("[DIAGNOSTIC] ProcessRenderCommands UPDATE_CAMERA: cameraId={}, position=({:.2f}, {:.2f}, {:.2f}), orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}), found={}",
-                                            cmd.entityId, updateData.position.x, updateData.position.y, updateData.position.z,
-                                            updateData.orientation.m_yawDegrees, updateData.orientation.m_pitchDegrees, updateData.orientation.m_rollDegrees,
-                                            it != backBuffer->end() ? 1 : 0));
+                                   cmd.entityId, updateData.position.x, updateData.position.y, updateData.position.z,
+                                   updateData.orientation.m_yawDegrees, updateData.orientation.m_pitchDegrees, updateData.orientation.m_rollDegrees,
+                                   it != backBuffer->end() ? 1 : 0));
                 }
 
                 if (it != backBuffer->end())
@@ -797,7 +733,7 @@ void App::ProcessRenderCommands()
                     // HighLevelEntityAPI now reads the current state and sends complete updates
                     // So we can safely apply both fields without zeroing anything out
 
-                    it->second.position = updateData.position;
+                    it->second.position    = updateData.position;
                     it->second.orientation = updateData.orientation;
 
                     // DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA: cameraId=%llu updated\n", cmd.entityId);
@@ -811,18 +747,18 @@ void App::ProcessRenderCommands()
                 break;
             }
 
-            case RenderCommandType::SET_ACTIVE_CAMERA:
+        case RenderCommandType::SET_ACTIVE_CAMERA:
             {
                 m_cameraStateBuffer->SetActiveCameraID(cmd.entityId);
                 // DebuggerPrintf("[TRACE] ProcessRenderCommands - SET_ACTIVE_CAMERA: cameraId=%llu\n", cmd.entityId);
                 break;
             }
 
-            case RenderCommandType::UPDATE_CAMERA_TYPE:
+        case RenderCommandType::UPDATE_CAMERA_TYPE:
             {
-                auto const& typeData = std::get<CameraTypeUpdateData>(cmd.data);
-                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
-                auto it = backBuffer->find(cmd.entityId);
+                auto const& typeData   = std::get<CameraTypeUpdateData>(cmd.data);
+                auto*       backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto        it         = backBuffer->find(cmd.entityId);
 
                 if (it != backBuffer->end())
                 {
@@ -831,11 +767,11 @@ void App::ProcessRenderCommands()
                     // Reconfigure camera based on new type
                     if (typeData.type == "world")
                     {
-                        it->second.mode = Camera::eMode_Perspective;
-                        it->second.perspectiveFOV = 60.0f;
+                        it->second.mode              = Camera::eMode_Perspective;
+                        it->second.perspectiveFOV    = 60.0f;
                         it->second.perspectiveAspect = 16.0f / 9.0f;
-                        it->second.perspectiveNear = 0.1f;
-                        it->second.perspectiveFar = 100.0f;
+                        it->second.perspectiveNear   = 0.1f;
+                        it->second.perspectiveFar    = 100.0f;
                     }
                     else if (typeData.type == "screen")
                     {
@@ -846,14 +782,14 @@ void App::ProcessRenderCommands()
                             clientDimensions = Window::s_mainWindow->GetClientDimensions();
                         }
 
-                        it->second.mode = Camera::eMode_Orthographic;
-                        it->second.orthoLeft = 0.0f;
+                        it->second.mode        = Camera::eMode_Orthographic;
+                        it->second.orthoLeft   = 0.0f;
                         it->second.orthoBottom = 0.0f;
-                        it->second.orthoRight = clientDimensions.x;  // Match window width
-                        it->second.orthoTop = clientDimensions.y;    // Match window height
-                        it->second.orthoNear = 0.0f;
-                        it->second.orthoFar = 1.0f;
-                        it->second.viewport = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
+                        it->second.orthoRight  = clientDimensions.x;  // Match window width
+                        it->second.orthoTop    = clientDimensions.y;    // Match window height
+                        it->second.orthoNear   = 0.0f;
+                        it->second.orthoFar    = 1.0f;
+                        it->second.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
                     }
                     // DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA_TYPE: cameraId=%llu, type=%s\n",
                     //                cmd.entityId, typeData.type.c_str());
@@ -861,10 +797,10 @@ void App::ProcessRenderCommands()
                 break;
             }
 
-            case RenderCommandType::DESTROY_CAMERA:
+        case RenderCommandType::DESTROY_CAMERA:
             {
                 auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
-                auto it = backBuffer->find(cmd.entityId);
+                auto  it         = backBuffer->find(cmd.entityId);
                 if (it != backBuffer->end())
                 {
                     it->second.isActive = false;
@@ -873,8 +809,12 @@ void App::ProcessRenderCommands()
                 break;
             }
 
-            default:
-                break;
+        case RenderCommandType::CREATE_LIGHT:
+            break;
+        case RenderCommandType::UPDATE_LIGHT:
+            break;
+        default:
+            break;
         }
     });
 }
@@ -887,10 +827,10 @@ void App::ProcessRenderCommands()
 //----------------------------------------------------------------------------------------------------
 void App::RenderEntities() const
 {
-    if (!m_entityStateBuffer || !m_mainCamera)
-    {
-        return;
-    }
+    // if (!m_entityStateBuffer || !m_mainCamera)
+    // {
+    //     return;
+    // }
 
     // Get front buffer for reading (thread-safe, no locking)
     EntityStateMap const* frontBuffer = m_entityStateBuffer->GetFrontBuffer();
@@ -902,12 +842,6 @@ void App::RenderEntities() const
     static int s_frameCount = 0;
     s_frameCount++;
 
-    // Log entity count periodically (every 60 frames = ~1 second)
-    if (s_frameCount % 60 == 0)
-    {
-        // DebuggerPrintf("[TRACE] RenderEntities - Frame %d: Front buffer has %zu entities\n",
-        //                s_frameCount, frontBuffer->size());
-    }
 
     //========================================
     // BLOCK 1: World Camera (3D Entities)
@@ -925,51 +859,10 @@ void App::RenderEntities() const
         }
     }
 
-    if (!worldCamera)
-    {
-        // Fallback to m_mainCamera if no active camera set
-        worldCamera = m_mainCamera;
-        if (s_frameCount % 300 == 0) // Log warning every 5 seconds
-        {
-            DebuggerPrintf("[WARNING] RenderEntities - No active camera set in CameraStateBuffer, using fallback m_mainCamera\n");
-        }
-    }
-
-    // DIAGNOSTIC: Log camera position/orientation every 60 frames
-    if (s_frameCount % 60 == 0 && worldCamera)
-    {
-        Vec3 camPos = worldCamera->GetPosition();
-        EulerAngles camOrient = worldCamera->GetOrientation();
-        DAEMON_LOG(LogScript, eLogVerbosity::Display,
-                   StringFormat("[DIAGNOSTIC] CAMERA: pos=({:.2f}, {:.2f}, {:.2f}) orient=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}) activeCameraId={}",
-                                camPos.x, camPos.y, camPos.z,
-                                camOrient.m_yawDegrees, camOrient.m_pitchDegrees, camOrient.m_rollDegrees,
-                                m_cameraStateBuffer ? m_cameraStateBuffer->GetActiveCameraID() : 0));
-    }
 
     g_renderer->BeginCamera(*worldCamera);
 
     int worldRenderedCount = 0;
-
-    // DIAGNOSTIC: Log all entities every 60 frames
-    if (s_frameCount % 60 == 0)
-    {
-        DAEMON_LOG(LogScript, eLogVerbosity::Display,
-                   StringFormat("[DIAGNOSTIC] ===== ENTITY LIST (frame {}) =====", s_frameCount));
-        for (auto const& [entityId, state] : *frontBuffer)
-        {
-            if (state.cameraType == "world")
-            {
-                DAEMON_LOG(LogScript, eLogVerbosity::Display,
-                           StringFormat("[DIAGNOSTIC] Entity {}: pos=({:.2f}, {:.2f}, {:.2f}) orient=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}) active={} vbHandle={}",
-                                        entityId, state.position.x, state.position.y, state.position.z,
-                                        state.orientation.m_yawDegrees, state.orientation.m_pitchDegrees, state.orientation.m_rollDegrees,
-                                        state.isActive, state.vertexBufferHandle));
-            }
-        }
-        DAEMON_LOG(LogScript, eLogVerbosity::Display,
-                   StringFormat("[DIAGNOSTIC] ===== END ENTITY LIST ====="));
-    }
 
     // Render all entities with cameraType == "world" (3D entities)
     for (auto const& [entityId, state] : *frontBuffer)
@@ -1063,12 +956,6 @@ void App::RenderEntities() const
         }
     }
     */
-
-    // Log world render count periodically
-    if (s_frameCount % 60 == 0 && worldRenderedCount > 0)
-    {
-        // DebuggerPrintf("[TRACE] RenderEntities - Rendered %d world entities this frame\n", worldRenderedCount);
-    }
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -1097,12 +984,12 @@ int App::CreateGeometryForMeshType(std::string const& meshType, float radius, Rg
         Vec3 const backTopLeft(-0.5f, 0.5f, 0.5f);
         Vec3 const backTopRight(-0.5f, -0.5f, 0.5f);
 
-        AddVertsForQuad3D(verts, frontBottomLeft, frontBottomRight, frontTopLeft, frontTopRight, Rgba8::RED);          // +X Red
-        AddVertsForQuad3D(verts, backBottomLeft, backBottomRight, backTopLeft, backTopRight, Rgba8::CYAN);             // -X -Red (Cyan)
-        AddVertsForQuad3D(verts, frontBottomRight, backBottomLeft, frontTopRight, backTopLeft, Rgba8::GREEN);          // -Y -Green (Magenta)
-        AddVertsForQuad3D(verts, backBottomRight, frontBottomLeft, backTopRight, frontTopLeft, Rgba8::MAGENTA);        // +Y Green
-        AddVertsForQuad3D(verts, frontTopLeft, frontTopRight, backTopRight, backTopLeft, Rgba8::BLUE);                 // +Z Blue
-        AddVertsForQuad3D(verts, backBottomRight, backBottomLeft, frontBottomLeft, frontBottomRight, Rgba8::YELLOW);   // -Z -Blue (Yellow)
+        AddVertsForQuad3D(verts, frontBottomLeft, frontBottomRight, frontTopLeft, frontTopRight, color);          // +X Red
+        AddVertsForQuad3D(verts, backBottomLeft, backBottomRight, backTopLeft, backTopRight, color);             // -X -Red (Cyan)
+        AddVertsForQuad3D(verts, frontBottomRight, backBottomLeft, frontTopRight, backTopLeft, color);          // -Y -Green (Magenta)
+        AddVertsForQuad3D(verts, backBottomRight, frontBottomLeft, backTopRight, frontTopLeft, color);        // +Y Green
+        AddVertsForQuad3D(verts, frontTopLeft, frontTopRight, backTopRight, backTopLeft, color);                 // +Z Blue
+        AddVertsForQuad3D(verts, backBottomRight, backBottomLeft, frontBottomLeft, frontBottomRight, color);   // -Z -Blue (Yellow)
     }
     else if (meshType == "sphere")
     {
@@ -1155,10 +1042,10 @@ int App::CreateGeometryForMeshType(std::string const& meshType, float radius, Rg
     {
         // Create plane geometry (simple quad)
         float halfSize = radius;
-        Vec3 bottomLeft(-halfSize, -halfSize, 0.0f);
-        Vec3 bottomRight(halfSize, -halfSize, 0.0f);
-        Vec3 topLeft(-halfSize, halfSize, 0.0f);
-        Vec3 topRight(halfSize, halfSize, 0.0f);
+        Vec3  bottomLeft(-halfSize, -halfSize, 0.0f);
+        Vec3  bottomRight(halfSize, -halfSize, 0.0f);
+        Vec3  topLeft(-halfSize, halfSize, 0.0f);
+        Vec3  topRight(halfSize, halfSize, 0.0f);
         AddVertsForQuad3D(verts, bottomLeft, bottomRight, topLeft, topRight, color);
     }
     else
@@ -1173,7 +1060,7 @@ int App::CreateGeometryForMeshType(std::string const& meshType, float radius, Rg
     }
 
     // Allocate handle and store vertex data in global storage
-    int handle = g_nextVertexBufferHandle++;
+    int handle              = g_nextVertexBufferHandle++;
     g_vertexBuffers[handle] = verts;
 
     return handle;

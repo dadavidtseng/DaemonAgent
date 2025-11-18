@@ -19,7 +19,7 @@ public:
     void PostInit();
     void UpdateJS();
     void RenderJS();
-
+    void ShowSimpleDemoWindow();
     // Game state queries
     bool IsAttractMode() const;
 
@@ -46,4 +46,6 @@ public:
 
 private:
     void InitializeJavaScriptFramework();
+
+    bool m_showDemoWindow = true;
 };
