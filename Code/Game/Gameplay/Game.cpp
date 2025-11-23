@@ -73,6 +73,10 @@ void Game::UpdateJS()
         ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.update({});", std::to_string(systemDeltaSeconds)));
     }
 
+    // Phase 2.3: ImGui CANNOT be called from worker thread!
+    // ImGui requires main thread context (g.WithinFrameScope assertion)
+    // Restored ImGui rendering to main thread UpdateJS() method
+
     // ImGui Debug Window (Phase 0, Task 0.1: IMGUI Integration Test) - Direct Integration
     ImGui::Begin("SimpleMiner Debug", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
 
@@ -526,6 +530,32 @@ void Game::InitializeJavaScriptFramework()
         DAEMON_LOG(LogGame, eLogVerbosity::Display, "Loading main.js (ES6 module entry point)...");
         ExecuteModuleFile("Data/Scripts/main.js");
 
+        // CRITICAL: Verify that main.js successfully initialized globalThis.JSEngine
+        // This diagnostic check helps identify if module loading failed silently
+        String checkCode = "typeof globalThis.JSEngine !== 'undefined' && typeof globalThis.JSEngine.update === 'function'";
+        bool jsEngineCreated = false;
+
+        if (g_scriptSubsystem->ExecuteScript(checkCode))
+        {
+            String result = g_scriptSubsystem->GetLastResult();
+            jsEngineCreated = (result == "true");
+        }
+
+        if (jsEngineCreated)
+        {
+            DAEMON_LOG(LogGame, eLogVerbosity::Display,
+                       "Game::InitializeJavaScriptFramework() SUCCESS - globalThis.JSEngine verified");
+        }
+        else
+        {
+            DAEMON_LOG(LogGame, eLogVerbosity::Error,
+                       "Game::InitializeJavaScriptFramework() FAILED - globalThis.JSEngine not found after loading main.js");
+            DAEMON_LOG(LogGame, eLogVerbosity::Error,
+                       "  This means main.js either failed to load or failed to create JSEngine instance");
+            DAEMON_LOG(LogGame, eLogVerbosity::Error,
+                       "  Check for module loading errors in the log above");
+        }
+
         DAEMON_LOG(LogGame, eLogVerbosity::Display, "Game::InitializeJavaScriptFramework() complete - Pure ES6 Module architecture initialized");
     }
     catch (...)
@@ -552,20 +582,45 @@ void Game::InitializeJavaScriptFramework()
 //----------------------------------------------------------------------------------------------------
 void Game::UpdateJSWorkerThread(float deltaTime, EntityStateBuffer* entityBuffer, RenderCommandQueue* commandQueue)
 {
-    // TODO Phase 2: Implement JavaScript update logic execution
-    // This will call into JSEngine.update() through ScriptSubsystem
-    // and update entity state buffer based on JavaScript logic
+    // Phase 2.3: Execute JavaScript update logic on worker thread
+    // This is called from JSGameLogicJob worker thread with v8::Locker already acquired
+    if (g_scriptSubsystem && g_scriptSubsystem->IsInitialized())
+    {
+        // Phase 2.3 FIX: Check if JSEngine is initialized before calling it
+        // First verify globalThis.JSEngine exists (defensive programming)
+        String checkCode = "typeof globalThis.JSEngine !== 'undefined' && typeof globalThis.JSEngine.update === 'function'";
+        bool jsEngineReady = false;
 
-    UNUSED(deltaTime);
-    UNUSED(entityBuffer);
-    UNUSED(commandQueue);
+        if (g_scriptSubsystem->ExecuteScript(checkCode))
+        {
+            String result = g_scriptSubsystem->GetLastResult();
+            jsEngineReady = (result == "true");
+        }
 
-    // Phase 2 implementation will:
-    // 1. Acquire v8::Locker
-    // 2. Call ScriptSubsystem::ExecuteUpdateSystemJS()
-    // 3. JavaScript updates entities via EntityScriptInterface
-    // 4. EntityScriptInterface writes to entityBuffer back buffer
-    // 5. RenderCommands submitted to commandQueue
+        if (jsEngineReady)
+        {
+            // JSEngine is ready - execute update
+            ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.update({});", std::to_string(deltaTime)));
+        }
+        else
+        {
+            // JSEngine not ready - log warning (only once per second to avoid spam)
+            static float lastWarningTime = 0.0f;
+            float currentTime = static_cast<float>(Clock::GetSystemClock().GetTotalSeconds());
+
+            if (currentTime - lastWarningTime >= 1.0f)
+            {
+                DAEMON_LOG(LogScript, eLogVerbosity::Warning,
+                           "UpdateJSWorkerThread: globalThis.JSEngine not initialized - skipping JavaScript update");
+                lastWarningTime = currentTime;
+            }
+        }
+    }
+
+    // Phase 2.3: ImGui CANNOT be called from worker thread!
+    // ImGui requires main thread context (g.WithinFrameScope assertion)
+    // Moved ImGui rendering back to main thread UpdateJS() method
+
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -582,22 +637,32 @@ void Game::UpdateJSWorkerThread(float deltaTime, EntityStateBuffer* entityBuffer
 //----------------------------------------------------------------------------------------------------
 void Game::RenderJSWorkerThread(float deltaTime, CameraStateBuffer* cameraBuffer, RenderCommandQueue* commandQueue)
 {
-    // TODO Phase 2: Implement JavaScript render logic execution
-    // This will call into JSEngine.render() through ScriptSubsystem
-    // and update camera state buffer based on JavaScript logic
+    // Phase 2.3: Execute JavaScript render logic on worker thread
+    // This is called from JSGameLogicJob worker thread with v8::Locker already acquired
+    if (g_scriptSubsystem && g_scriptSubsystem->IsInitialized())
+    {
+        // Phase 2.3 FIX: Check if JSEngine is initialized before calling it
+        // First verify globalThis.JSEngine exists (defensive programming)
+        String checkCode = "typeof globalThis.JSEngine !== 'undefined' && typeof globalThis.JSEngine.render === 'function'";
+        bool jsEngineReady = false;
 
-    UNUSED(deltaTime);
-    UNUSED(cameraBuffer);
-    UNUSED(commandQueue);
+        if (g_scriptSubsystem->ExecuteScript(checkCode))
+        {
+            String result = g_scriptSubsystem->GetLastResult();
+            jsEngineReady = (result == "true");
+        }
 
-    // Phase 2 implementation will:
-    // 1. Acquire v8::Locker
-    // 2. Call ScriptSubsystem::ExecuteRenderSystemJS()
-    // 3. JavaScript updates cameras via CameraScriptInterface (M5)
-    // 4. CameraScriptInterface writes to cameraBuffer back buffer
-    // 5. RenderCommands submitted to commandQueue
+        if (jsEngineReady)
+        {
+            // JSEngine is ready - execute render
+            ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.render();"));
+        }
+        else
+        {
+            // JSEngine not ready - silently skip (already logged in UpdateJSWorkerThread)
+        }
+    }
 }
-
 //----------------------------------------------------------------------------------------------------
 // HandleJSException (Worker Thread)
 //

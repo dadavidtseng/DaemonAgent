@@ -11,6 +11,7 @@
 #include "Game/Framework/App.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Game/Framework/GameCommon.hpp"
+#include "Engine/Core/CallbackQueue.hpp"
 #include "Game/Framework/GameScriptInterface.hpp"
 #include "Game/Gameplay/Game.hpp"
 //----------------------------------------------------------------------------------------------------
@@ -88,6 +89,7 @@ void App::Startup()
     g_eventSystem->SubscribeEventCallbackFunction("quit", OnCloseButtonClicked);
 
     // Phase 1: Initialize async architecture infrastructure BEFORE game initialization
+    m_callbackQueue      = new CallbackQueue();
     m_renderCommandQueue = new RenderCommandQueue();
     m_entityStateBuffer  = new EntityStateBuffer();
     m_cameraStateBuffer  = new CameraStateBuffer();
@@ -129,7 +131,7 @@ void App::Startup()
     g_game->PostInit();
 
     // Phase 1: Submit JavaScript worker thread job AFTER game and script initialization
-    m_jsGameLogicJob = new JSGameLogicJob(g_game, m_renderCommandQueue, m_entityStateBuffer);
+    m_jsGameLogicJob = new JSGameLogicJob(g_game, m_renderCommandQueue, m_entityStateBuffer, m_callbackQueue);
     g_jobSystem->SubmitJob(m_jsGameLogicJob);
 
     DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - Async architecture initialized (Phase 1)");
@@ -220,6 +222,11 @@ void App::Shutdown()
         delete m_renderCommandQueue;
         m_renderCommandQueue = nullptr;
     }
+	if (m_callbackQueue)
+	{
+		delete m_callbackQueue;
+		m_callbackQueue = nullptr;
+	}
 
     GEngine::Get().Shutdown();
 }
@@ -320,21 +327,63 @@ void App::Update()
     ProcessRenderCommands();
     
 
-    // Legacy synchronous JavaScript update (TODO: Remove after Phase 1 validation)
-    // Kept temporarily to avoid breaking existing JavaScript functionality
-    // NOTE: This runs synchronously on main thread but accesses V8 via ScriptSubsystem's thread-safe interface
-    g_game->UpdateJS();
+    // Phase 2.3: Async JavaScript execution on worker thread
+    // Main thread triggers worker, continues rendering independently (stable 60 FPS)
+    if (m_jsGameLogicJob)
+    {
+        if (m_jsGameLogicJob->IsFrameComplete())
+        {
+            // Worker finished previous frame - safe to swap buffers and trigger next frame
+            if (m_entityStateBuffer)
+            {
+                m_entityStateBuffer->SwapBuffers();  // Swap entity state (main reads front, worker writes back)
+            }
+            
+            // Trigger next JavaScript frame on worker thread (non-blocking)
+            m_jsGameLogicJob->TriggerNextFrame();
+        }
+        else
+        {
+            // Worker still executing previous frame - frame skip tolerance
+            // Continue rendering with last known state (maintains stable 60 FPS)
+            static uint64_t skipCount = 0;
+            if ((skipCount % 60) == 0)  // Log every 60 skips (~1 second at 60 FPS)
+            {
+                DAEMON_LOG(LogScript, eLogVerbosity::Warning,
+                           Stringf("App::Update - Worker frame skip detected (total: %llu)", skipCount));
+            }
+            skipCount++;
+        }
+    }
 
-    // M4-T8: Execute pending JavaScript callbacks AFTER JavaScript frame completes
-    // CRITICAL: Must be called AFTER UpdateJS() so V8 context exists from the JavaScript execution
-    // The callbacks will execute using the V8 isolate that was just active during UpdateJS()
+    // Phase 2.2: C++ enqueues callbacks (main thread)
+    // Phase 2.4 will move callback dequeue to JavaScript worker thread
     if (m_entityAPI)
     {
-        m_entityAPI->ExecutePendingCallbacks();
+        m_entityAPI->ExecutePendingCallbacks(m_callbackQueue);
     }
     if (m_cameraAPI)
     {
-        m_cameraAPI->ExecutePendingCallbacks();
+        m_cameraAPI->ExecutePendingCallbacks(m_callbackQueue);
+    }
+
+    // Phase 2.3 TEMPORARY FIX: Dequeue and execute callbacks synchronously on main thread
+    // TODO Phase 2.4: Move this to JavaScript worker thread for true async execution
+    // This ensures callbacks are actually invoked until Phase 2.4 is complete
+    if (m_callbackQueue)
+    {
+        m_callbackQueue->DequeueAll([this](CallbackData const& callbackData) {
+            // Route callback to appropriate API based on type
+            if (callbackData.type == CallbackType::CAMERA_CREATED && m_cameraAPI)
+            {
+                m_cameraAPI->ExecuteCallback(callbackData.callbackId, callbackData.resultId);
+            }
+            else if (callbackData.type == CallbackType::ENTITY_CREATED && m_entityAPI)
+            {
+                m_entityAPI->ExecuteCallback(callbackData.callbackId, callbackData.resultId);
+            }
+            // Add other callback types as needed
+        });
     }
 }
 
@@ -698,12 +747,12 @@ void App::ProcessRenderCommands()
                 auto* backBuffer            = m_cameraStateBuffer->GetBackBuffer();
                 (*backBuffer)[cmd.entityId] = state;
 
-                // DIAGNOSTIC: Log camera creation
-                DAEMON_LOG(LogScript, eLogVerbosity::Display,
-                           StringFormat("[DIAGNOSTIC] ProcessRenderCommands CREATE_CAMERA: cameraId={}, type={}, position=({:.2f}, {:.2f}, {:.2f}), orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}), backBuffer size after insert={}",
-                               cmd.entityId, state.type, state.position.x, state.position.y, state.position.z,
-                               state.orientation.m_yawDegrees, state.orientation.m_pitchDegrees, state.orientation.m_rollDegrees,
-                               backBuffer->size()));
+                // Phase 2.3 FIX: Notify CameraAPI that camera creation is complete
+                // This marks the callback as ready so it can be enqueued and executed
+                if (m_cameraAPI && cameraData.callbackId != 0)
+                {
+                    m_cameraAPI->NotifyCallbackReady(cameraData.callbackId, cmd.entityId);
+                }
 
                 // DebuggerPrintf("[TRACE] ProcessRenderCommands - Camera %llu added to back buffer\n", cmd.entityId);
                 break;
@@ -714,18 +763,6 @@ void App::ProcessRenderCommands()
                 auto const& updateData = std::get<CameraUpdateData>(cmd.data);
                 auto*       backBuffer = m_cameraStateBuffer->GetBackBuffer();
                 auto        it         = backBuffer->find(cmd.entityId);
-
-                // DIAGNOSTIC: Log UPDATE_CAMERA command processing
-                static int s_updateCameraCount = 0;
-                s_updateCameraCount++;
-                if (s_updateCameraCount % 60 == 0)
-                {
-                    DAEMON_LOG(LogScript, eLogVerbosity::Display,
-                               StringFormat("[DIAGNOSTIC] ProcessRenderCommands UPDATE_CAMERA: cameraId={}, position=({:.2f}, {:.2f}, {:.2f}), orientation=(yaw={:.2f}, pitch={:.2f}, roll={:.2f}), found={}",
-                                   cmd.entityId, updateData.position.x, updateData.position.y, updateData.position.z,
-                                   updateData.orientation.m_yawDegrees, updateData.orientation.m_pitchDegrees, updateData.orientation.m_rollDegrees,
-                                   it != backBuffer->end() ? 1 : 0));
-                }
 
                 if (it != backBuffer->end())
                 {
@@ -742,7 +779,7 @@ void App::ProcessRenderCommands()
                 {
                     // Camera not found in back buffer!
                     DAEMON_LOG(LogScript, eLogVerbosity::Warning,
-                               StringFormat("[DIAGNOSTIC] ProcessRenderCommands UPDATE_CAMERA: Camera {} NOT FOUND in back buffer!", cmd.entityId));
+                               StringFormat("ProcessRenderCommands UPDATE_CAMERA: Camera {} NOT FOUND in back buffer!", cmd.entityId));
                 }
                 break;
             }
@@ -860,6 +897,15 @@ void App::RenderEntities() const
     }
 
 
+    // Phase 2.3 Fix: Check if worldCamera is valid before rendering
+    // Camera creation is async, so it may not be ready on first few frames
+    if (!worldCamera)
+    {
+        // Skip world entity rendering until camera is ready
+        // This is normal during startup - camera creation happens asynchronously
+        return;
+    }
+    
     g_renderer->BeginCamera(*worldCamera);
 
     int worldRenderedCount = 0;

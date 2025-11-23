@@ -47,6 +47,7 @@
 //----------------------------------------------------------------------------------------------------
 class IJSGameLogicContext;  // Abstract interface for JavaScript execution context
 class RenderCommandQueue;
+class CallbackQueue;        // Phase 2.3: Lock-free callback queue for async callback processing
 
 namespace v8 { class Isolate; }
 
@@ -103,9 +104,10 @@ public:
 	//   - context: Interface to game-specific JavaScript execution context
 	//   - commandQueue: Render command queue for JavaScript → C++ communication
 	//   - entityBuffer: Double-buffered entity state for rendering isolation
+	//   - callbackQueue: Callback queue for async JavaScript callback processing (Phase 2.3)
 	//
 	// Thread Safety: Call from main thread only
-	JSGameLogicJob(IJSGameLogicContext* context, RenderCommandQueue* commandQueue, EntityStateBuffer* entityBuffer);
+	JSGameLogicJob(IJSGameLogicContext* context, RenderCommandQueue* commandQueue, EntityStateBuffer* entityBuffer, CallbackQueue* callbackQueue);
 
 	// Destructor
 	// Ensures clean shutdown if not already performed
@@ -191,6 +193,7 @@ private:
 	IJSGameLogicContext* m_context;         // Interface to JavaScript execution context
 	RenderCommandQueue*  m_commandQueue;    // Render command output queue
 	EntityStateBuffer*   m_entityBuffer;    // Entity state output buffer
+	CallbackQueue*       m_callbackQueue;    // Callback queue for async callback processing (Phase 2.3)
 
 	//------------------------------------------------------------------------------------------------
 	// Frame Synchronization (Main ↔ Worker Communication)

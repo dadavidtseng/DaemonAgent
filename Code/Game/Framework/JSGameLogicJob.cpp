@@ -10,6 +10,7 @@
 #include "Engine/Core/LogSubsystem.hpp"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Script/ScriptSubsystem.hpp"
+#include "Engine/Core/Clock.hpp"
 
 // Suppress V8 header warnings (unreferenced formal parameters, etc.)
 #pragma warning(push)
@@ -29,10 +30,12 @@
 //----------------------------------------------------------------------------------------------------
 JSGameLogicJob::JSGameLogicJob(IJSGameLogicContext* context,
                                RenderCommandQueue*  commandQueue,
-                               EntityStateBuffer*   entityBuffer)
+                               EntityStateBuffer*   entityBuffer,
+                               CallbackQueue*       callbackQueue)
     : m_context(context),
       m_commandQueue(commandQueue),
       m_entityBuffer(entityBuffer),
+      m_callbackQueue(callbackQueue),
       m_frameRequested(false),
       m_frameComplete(true),   // Initially complete (ready for first frame)
       m_shutdownRequested(false),
@@ -52,6 +55,10 @@ JSGameLogicJob::JSGameLogicJob(IJSGameLogicContext* context,
     if (!m_entityBuffer)
     {
         ERROR_AND_DIE("JSGameLogicJob: EntityStateBuffer pointer cannot be null");
+    }
+    if (!m_callbackQueue)
+    {
+        ERROR_AND_DIE("JSGameLogicJob: CallbackQueue pointer cannot be null");
     }
 
     DAEMON_LOG(LogScript, eLogVerbosity::Log, "JSGameLogicJob: Initialized (ready for worker thread execution)");
@@ -258,25 +265,19 @@ void JSGameLogicJob::ExecuteJavaScriptFrame()
     //   - Timeout detection (main thread monitors IsFrameComplete())
 
     // Execute JavaScript update logic
-    // This calls into JSEngine.update() through IJSGameLogicContext interface
+    // Phase 2.3: Call Game::UpdateJSWorkerThread() on worker thread to execute JavaScript
+    // This calls JSEngine.update() which submits render commands
     if (m_context)
     {
-        // TODO Phase 1: Call m_context->UpdateJSWorkerThread() with worker thread context
-        // For now, placeholder implementation (Phase 1 builds infrastructure only)
+        // Calculate deltaTime from system clock (matching UpdateJS() pattern)
+        float const deltaTime = static_cast<float>(Clock::GetSystemClock().GetDeltaSeconds());
 
-        // Example Phase 2 implementation:
-        // float deltaTime = 0.0166f; // 60 FPS
-        // m_context->UpdateJSWorkerThread(deltaTime, m_entityBuffer, m_commandQueue);
+        // Execute JavaScript update on worker thread with proper parameters
+        m_context->UpdateJSWorkerThread(deltaTime, m_entityBuffer, m_commandQueue);
 
-        // Placeholder: Log frame execution
-        static uint64_t frameCount = 0;
-        if (frameCount % 60 == 0)  // Log every 60 frames (≈1 second at 60 FPS)
-        {
-            DAEMON_LOG(LogScript, eLogVerbosity::Display,
-                       Stringf("JSGameLogicJob: Executed frame #%llu on worker thread",
-                           frameCount));
-        }
-        frameCount++;
+        // Execute JavaScript render logic on worker thread
+        // This calls JSEngine.render() which submits render commands
+        m_context->RenderJSWorkerThread(deltaTime, nullptr, m_commandQueue);
     }
 }
 
