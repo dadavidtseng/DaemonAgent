@@ -644,7 +644,11 @@ export class JSGame
                 }
 
                 // Render screen text using screen camera (works in both modes)
-                this.debugRenderSystem.renderScreen(this.screenCamera);
+                // Check if screen camera is ready (async creation may not be complete yet)
+                if (this.screenCamera !== null)
+                {
+                    this.debugRenderSystem.renderScreen(this.screenCamera);
+                }
 
                 // Only render JavaScript entities when in GAME mode
                 // (CppBridgeSystem handles ATTRACT mode rendering)
@@ -660,24 +664,25 @@ export class JSGame
                     shouldRenderValue = globalThis.shouldRender;
                 }
 
-                if (!shouldRenderValue)
-                {
-                    if (renderFrameCount % 60 === 0)
-                    {
-                        console.log('JSGame gameRender: Skipping render (shouldRender=false, F1 toggle)');
-                    }
-                    return;
-                }
-
                 // Use player's camera for rendering (F2 toggle: GameObject vs Entity)
                 let camera;
 
                 camera = this.playerGameObject ? this.playerGameObject.getCamera() : null;
 
+                // console.log('JSGame gameRender: camera =', camera, 'type:', typeof camera);
 
-                if (!camera)
+
+
+                if (!camera || camera === null || camera === undefined)
                 {
                     console.log('JSGame: ERROR - Player camera not available!');
+                    return;
+                }
+
+                // Validate camera is a number (cameraId)
+                if (typeof camera !== 'number')
+                {
+                    console.log('JSGame: ERROR - Player camera is not a number! Type:', typeof camera, 'Value:', camera);
                     return;
                 }
 
