@@ -51,8 +51,8 @@
 // M4-T8: Camera API Script Interface
 #include "Engine/Renderer/CameraScriptInterface.hpp"
 
-// Phase 2.4: CallbackQueue Script Interface
-#include "Game/Framework/CallbackQueueScriptInterface.hpp"
+// Phase 2.4: CallbackQueue Script Interface (moved to Engine)
+#include "Engine/Core/CallbackQueueScriptInterface.hpp"
 
 // Phase 2: Geometry Creation Utilities
 #include "Engine/Math/AABB3.hpp"
