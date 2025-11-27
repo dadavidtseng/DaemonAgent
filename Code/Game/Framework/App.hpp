@@ -14,6 +14,7 @@
 class AudioScriptInterface;
 class Camera;
 class CallbackQueue;
+class CallbackQueueScriptInterface;
 class CameraAPI;
 class CameraStateBuffer;
 class CameraScriptInterface;
@@ -74,13 +75,14 @@ private:
     std::shared_ptr<KADIScriptInterface>              m_kadiScriptInterface;
 
     // Phase 1: Async Architecture Infrastructure
-    RenderCommandQueue*                    m_renderCommandQueue = nullptr;    // Lock-free command queue (JS → C++)
-    CallbackQueue*                         m_callbackQueue      = nullptr;     // Lock-free callback queue (C++ → JS)
-    EntityStateBuffer*                     m_entityStateBuffer  = nullptr;     // Double-buffered entity state
-    CameraStateBuffer*                     m_cameraStateBuffer  = nullptr;     // Double-buffered camera state (Phase 2b)
-    JSGameLogicJob*                        m_jsGameLogicJob     = nullptr;        // Worker thread job for JavaScript
-    EntityAPI*                             m_entityAPI          = nullptr;              // Direct entity management API
-    CameraAPI*                             m_cameraAPI          = nullptr;              // Direct camera management API
-    std::shared_ptr<EntityScriptInterface> m_entityScriptInterface;  // JavaScript interface for entity API
-    std::shared_ptr<CameraScriptInterface> m_cameraScriptInterface;  // JavaScript interface for camera API
+    RenderCommandQueue*                         m_renderCommandQueue = nullptr;    // Lock-free command queue (JS → C++)
+    CallbackQueue*                              m_callbackQueue      = nullptr;     // Lock-free callback queue (C++ → JS)
+    EntityStateBuffer*                          m_entityStateBuffer  = nullptr;     // Double-buffered entity state
+    CameraStateBuffer*                          m_cameraStateBuffer  = nullptr;     // Double-buffered camera state (Phase 2b)
+    JSGameLogicJob*                             m_jsGameLogicJob     = nullptr;        // Worker thread job for JavaScript
+    EntityAPI*                                  m_entityAPI          = nullptr;              // Direct entity management API
+    CameraAPI*                                  m_cameraAPI          = nullptr;              // Direct camera management API
+    std::shared_ptr<EntityScriptInterface>      m_entityScriptInterface;  // JavaScript interface for entity API
+    std::shared_ptr<CameraScriptInterface>      m_cameraScriptInterface;  // JavaScript interface for camera API
+    std::shared_ptr<CallbackQueueScriptInterface> m_callbackQueueScriptInterface;  // JavaScript interface for callback queue (Phase 2.4)
 };

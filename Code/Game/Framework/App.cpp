@@ -51,6 +51,9 @@
 // M4-T8: Camera API Script Interface
 #include "Engine/Renderer/CameraScriptInterface.hpp"
 
+// Phase 2.4: CallbackQueue Script Interface
+#include "Game/Framework/CallbackQueueScriptInterface.hpp"
+
 // Phase 2: Geometry Creation Utilities
 #include "Engine/Math/AABB3.hpp"
 #include "Engine/Renderer/VertexUtils.hpp"
@@ -356,8 +359,9 @@ void App::Update()
         }
     }
 
-    // Phase 2.2: C++ enqueues callbacks (main thread)
-    // Phase 2.4 will move callback dequeue to JavaScript worker thread
+    // Phase 2.4: Callbacks now processed on JavaScript worker thread via CallbackQueue.dequeueAll()
+    // C++ enqueues callbacks to CallbackQueue, JavaScript dequeues and executes them
+    // This achieves true async bidirectional communication between C++ and JavaScript
     if (m_entityAPI)
     {
         m_entityAPI->ExecutePendingCallbacks(m_callbackQueue);
@@ -365,25 +369,6 @@ void App::Update()
     if (m_cameraAPI)
     {
         m_cameraAPI->ExecutePendingCallbacks(m_callbackQueue);
-    }
-
-    // Phase 2.3 TEMPORARY FIX: Dequeue and execute callbacks synchronously on main thread
-    // TODO Phase 2.4: Move this to JavaScript worker thread for true async execution
-    // This ensures callbacks are actually invoked until Phase 2.4 is complete
-    if (m_callbackQueue)
-    {
-        m_callbackQueue->DequeueAll([this](CallbackData const& callbackData) {
-            // Route callback to appropriate API based on type
-            if (callbackData.type == CallbackType::CAMERA_CREATED && m_cameraAPI)
-            {
-                m_cameraAPI->ExecuteCallback(callbackData.callbackId, callbackData.resultId);
-            }
-            else if (callbackData.type == CallbackType::ENTITY_CREATED && m_entityAPI)
-            {
-                m_entityAPI->ExecuteCallback(callbackData.callbackId, callbackData.resultId);
-            }
-            // Add other callback types as needed
-        });
     }
 }
 
@@ -607,6 +592,14 @@ void App::SetupScriptingBindings()
     else
     {
         DAEMON_LOG(LogScript, eLogVerbosity::Warning, StringFormat("(App::SetupScriptingBindings) KADI subsystem not available, skipping registration"));
+    }
+
+    // Phase 2.4: Register CallbackQueue script interface for JavaScript callback dequeuing
+    if (m_callbackQueue)
+    {
+        m_callbackQueueScriptInterface = std::make_shared<CallbackQueueScriptInterface>(m_callbackQueue);
+        g_scriptSubsystem->RegisterScriptableObject("callbackQueue", m_callbackQueueScriptInterface);
+        DAEMON_LOG(LogScript, eLogVerbosity::Log, "App::SetupScriptingBindings - CallbackQueue script interface registered (Phase 2.4)");
     }
 
     g_scriptSubsystem->RegisterGlobalFunction("print", OnPrint);
