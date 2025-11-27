@@ -4,8 +4,8 @@
 // Migrated from low-level RendererInterface to high-level entity system
 //----------------------------------------------------------------------------------------------------
 
-import {Component} from '../../core/Component.js';
-import {EntityAPI} from '../../interfaces/EntityAPI.js';
+import {Component} from '../../Core/Component.js';
+import {EntityAPI} from '../../Interface/EntityAPI.js';
 
 /**
  * MeshComponent - Manages entity creation and state synchronization (Phase 2)

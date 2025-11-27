@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------
 
 import {InputComponent} from './InputComponent.js';
-import {InputInterface} from '../../interfaces/InputInterface.js';
+import {InputInterface} from '../../Interface/InputInterface.js';
 import {KEYCODE_LEFT, KEYCODE_RIGHT, KEYCODE_UP, KEYCODE_DOWN, KEYCODE_SPACE, KEYCODE_W, KEYCODE_A, KEYCODE_S, KEYCODE_D, KEYCODE_Z, KEYCODE_C, KEYCODE_Q, KEYCODE_E, KEYCODE_SHIFT} from '../../InputSystemCommon.js';
 
 /**

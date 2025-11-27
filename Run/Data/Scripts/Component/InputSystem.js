@@ -1,12 +1,12 @@
 // InputSystem.js
 // Phase 4.5 ES6 Module version using Subsystem pattern + Event System
 
-import {Subsystem} from '../core/Subsystem.js';
-import {KEYCODE_F1, KEYCODE_F2, KEYCODE_SPACE, KEYCODE_ESC, KEYCODE_E} from '../InputSystemCommon.js';
+import {Subsystem} from '../Core/Subsystem.js';
+import {KEYCODE_F1, KEYCODE_SPACE, KEYCODE_ESC, KEYCODE_E} from '../InputSystemCommon.js';
 import {GameState} from "../JSGame.js";
 import {jsGameInstance} from "../main.js";
-import {EventTypes} from "../events/EventTypes.js";
-import {GameStateChangedEvent} from "../events/GameStateChangedEvent.js";
+import {EventTypes} from "../Event/EventTypes.js";
+import {GameStateChangedEvent} from "../Event/GameStateChangedEvent.js";
 
 /**
  * InputSystem - Handles all input-related functionality

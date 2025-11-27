@@ -8,8 +8,8 @@
 // - Z-axis: Up direction (positive Z is up, negative Z is down)
 //----------------------------------------------------------------------------------------------------
 
-import {Component} from '../../core/Component.js';
-import {InputInterface} from '../../interfaces/InputInterface.js';
+import {Component} from '../../Core/Component.js';
+import {InputInterface} from '../../Interface/InputInterface.js';
 
 /**
  * FlyingMovementComponent - 3D flying camera movement

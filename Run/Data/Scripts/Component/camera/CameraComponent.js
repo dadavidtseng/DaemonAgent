@@ -3,8 +3,8 @@
 // Camera management using Phase 2b CameraAPI (High-Level Camera Interface)
 //----------------------------------------------------------------------------------------------------
 
-import {Component} from '../../core/Component.js';
-import {CameraAPI} from '../../interfaces/CameraAPI.js';
+import {Component} from '../../Core/Component.js';
+import {CameraAPI} from '../../Interface/CameraAPI.js';
 
 /**
  * CameraComponent - Manages world camera lifecycle using Phase 2b CameraAPI
@@ -59,9 +59,13 @@ export class CameraComponent extends Component
         // Ensure CameraAPI is available
         if (!this.cameraAPI.isAvailable())
         {
-            console.log('CameraComponent: CameraAPI not available!');
+            console.log('CameraComponent: ERROR - CameraAPI not available!');
+            console.log('CameraComponent: globalThis.camera =', globalThis.camera);
+            console.log('CameraComponent: typeof globalThis.camera =', typeof globalThis.camera);
             return;
         }
+
+        console.log('CameraComponent: CameraAPI is available, proceeding with camera creation');
 
         // Get initial position and orientation from GameObject
         const position = [
@@ -82,8 +86,13 @@ export class CameraComponent extends Component
         console.log('  orientation:', orientation);
         console.log('  type: world');
 
-        this.cameraAPI.createCamera(position, orientation, 'world', (cameraId) => {
-            if (cameraId === 0) {
+        console.log('CameraComponent: Calling cameraAPI.createCamera()...');
+        this.cameraAPI.createCamera(position, orientation, 'world', (cameraId) =>
+        {
+            console.log('CameraComponent: *** CALLBACK RECEIVED *** cameraId =', cameraId);
+
+            if (cameraId === 0)
+            {
                 console.log('CameraComponent: ERROR - Camera creation failed!');
                 return;
             }
@@ -93,8 +102,10 @@ export class CameraComponent extends Component
 
             // Activate this camera for rendering
             console.log('CameraComponent: Setting camera as active...');
-            this.cameraAPI.setActive(cameraId, (result) => {
-                if (result === 0) {
+            this.cameraAPI.setActive(cameraId, (result) =>
+            {
+                if (result === 0)
+                {
                     console.log('CameraComponent: ERROR - Failed to set camera active!');
                     return;
                 }
@@ -198,10 +209,14 @@ export class CameraComponent extends Component
             console.log('CameraComponent: Destroying camera ID:', this.cameraId);
 
             // Phase 2b: Async destroy with callback
-            this.cameraAPI.destroy(this.cameraId, (result) => {
-                if (result === 0) {
+            this.cameraAPI.destroy(this.cameraId, (result) =>
+            {
+                if (result === 0)
+                {
                     console.log('CameraComponent: ERROR - Camera destruction failed!');
-                } else {
+                }
+                else
+                {
                     console.log('CameraComponent: Camera destroyed successfully');
                 }
             });

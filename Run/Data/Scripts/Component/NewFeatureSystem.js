@@ -1,7 +1,7 @@
 // NewFeatureSystem.js
 // Phase 4 ES6 Module version using SystemComponent pattern
 
-import { Subsystem } from '../core/Subsystem.js';
+import { Subsystem } from '../Core/Subsystem.js';
 
 /**
  * AudioSystem - JavaScript wrapper for AudioScriptInterface

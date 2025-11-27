@@ -3,7 +3,7 @@
 // Base class for input components (Starship-inspired)
 //----------------------------------------------------------------------------------------------------
 
-import {Component} from '../../core/Component.js';
+import {Component} from '../../Core/Component.js';
 
 /**
  * InputComponent - Abstract base class for input handling

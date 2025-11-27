@@ -3,7 +3,7 @@
 // Base class for prop behaviors (Strategy pattern)
 //----------------------------------------------------------------------------------------------------
 
-import {Component} from '../../core/Component.js';
+import {Component} from '../../Core/Component.js';
 
 /**
  * BehaviorComponent - Abstract base class for prop behaviors

@@ -2,8 +2,8 @@
 // JavaScript wrapper for DebugRenderSystemScriptInterface
 // Provides clean JavaScript API for C++ debug rendering functionality
 
-import { Subsystem } from '../core/Subsystem.js';
-import { DebugRenderInterface } from '../interfaces/DebugRenderInterface.js';
+import { Subsystem } from '../Core/Subsystem.js';
+import { DebugRenderInterface } from '../Interface/DebugRenderInterface.js';
 
 /**
  * DebugRenderSystem - JavaScript wrapper for debug visualization

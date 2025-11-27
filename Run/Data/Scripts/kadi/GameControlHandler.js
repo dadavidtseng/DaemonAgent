@@ -3,7 +3,7 @@
 // KADI game control tool invocation handlers (JavaScript-only)
 //----------------------------------------------------------------------------------------------------
 
-import {hotReloadRegistry} from '../core/HotReloadRegistry.js';
+import {hotReloadRegistry} from '../Core/HotReloadRegistry.js';
 
 /**
  * GameControlHandler - Handles KADI tool invocations for game control

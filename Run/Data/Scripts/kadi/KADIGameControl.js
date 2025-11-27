@@ -3,7 +3,7 @@
 // KADI game control subsystem (registered with JSEngine)
 //----------------------------------------------------------------------------------------------------
 
-import {Subsystem} from '../core/Subsystem.js';
+import {Subsystem} from '../Core/Subsystem.js';
 import {GameControlHandler} from './GameControlHandler.js';
 import {GameControlTools} from './GameControlTools.js';
 import {DevelopmentToolHandler} from './DevelopmentToolHandler.js';
@@ -73,8 +73,7 @@ export class KADIGameControl extends Subsystem
             console.log('KADIGameControl: Connection initiated');
 
             return true;
-        }
-        catch (error)
+        } catch (error)
         {
             console.log('KADIGameControl: ERROR - Failed to connect:', error);
             return false;
@@ -119,8 +118,7 @@ export class KADIGameControl extends Subsystem
             {
                 console.log(`  - ${tool.name}: ${tool.description}`);
             }
-        }
-        catch (error)
+        } catch (error)
         {
             console.log('KADIGameControl: ERROR - Failed to register tools:', error);
             return;
@@ -129,7 +127,8 @@ export class KADIGameControl extends Subsystem
         // Register tool invocation handler
         try
         {
-            kadi.onToolInvoke((requestId, toolName, args) => {
+            kadi.onToolInvoke((requestId, toolName, args) =>
+            {
                 // Route to appropriate handler based on tool name
                 if (GameControlTools.some(tool => tool.name === toolName))
                 {
@@ -149,8 +148,7 @@ export class KADIGameControl extends Subsystem
                 }
             });
             console.log('KADIGameControl: Tool invocation handler registered');
-        }
-        catch (error)
+        } catch (error)
         {
             console.log('KADIGameControl: ERROR - Failed to register tool handler:', error);
         }

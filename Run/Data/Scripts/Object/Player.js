@@ -4,11 +4,11 @@
 // Inspired by Starship GameObject pattern
 //----------------------------------------------------------------------------------------------------
 
-import {GameObject} from '../core/GameObject.js';
-import {KeyboardInputComponent} from '../components/input/KeyboardInputComponent.js';
-import {FlyingMovementComponent} from '../components/movement/FlyingMovementComponent.js';
-import {CameraComponent} from '../components/camera/CameraComponent.js';
-import {hotReloadRegistry} from '../core/HotReloadRegistry.js';
+import {GameObject} from '../Core/GameObject.js';
+import {KeyboardInputComponent} from '../Component/input/KeyboardInputComponent.js';
+import {FlyingMovementComponent} from '../Component/movement/FlyingMovementComponent.js';
+import {CameraComponent} from '../Component/camera/CameraComponent.js';
+import {hotReloadRegistry} from '../Core/HotReloadRegistry.js';
 
 /**
  * Player - Player GameObject with component composition

@@ -3,7 +3,7 @@
 // JavaScript-based physics for rapid prototyping and experimental features
 //----------------------------------------------------------------------------------------------------
 
-import {EntityAPI} from '../interfaces/EntityAPI.js';
+import {EntityAPI} from '../Interface/EntityAPI.js';
 
 /**
  * PhysicsSystem - Gravity, collision detection, and bounce simulation for entities

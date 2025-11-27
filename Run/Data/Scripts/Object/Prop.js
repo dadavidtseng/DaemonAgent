@@ -3,13 +3,13 @@
 // Prop GameObject - Demonstrates component-based architecture for props
 //----------------------------------------------------------------------------------------------------
 
-import {GameObject} from '../core/GameObject.js';
-import {MeshComponent} from '../components/rendering/MeshComponent.js';
-import {RotatePitchRollBehavior} from '../components/behavior/RotatePitchRollBehavior.js';
-import {PulseColorBehavior} from '../components/behavior/PulseColorBehavior.js';
-import {RotateYawBehavior} from '../components/behavior/RotateYawBehavior.js';
-import {StaticBehavior} from '../components/behavior/StaticBehavior.js';
-import {hotReloadRegistry} from '../core/HotReloadRegistry.js';
+import {GameObject} from '../Core/GameObject.js';
+import {MeshComponent} from '../Component/rendering/MeshComponent.js';
+import {RotatePitchRollBehavior} from '../Component/behavior/RotatePitchRollBehavior.js';
+import {PulseColorBehavior} from '../Component/behavior/PulseColorBehavior.js';
+import {RotateYawBehavior} from '../Component/behavior/RotateYawBehavior.js';
+import {StaticBehavior} from '../Component/behavior/StaticBehavior.js';
+import {hotReloadRegistry} from '../Core/HotReloadRegistry.js';
 
 /**
  * Prop - Prop GameObject with component composition

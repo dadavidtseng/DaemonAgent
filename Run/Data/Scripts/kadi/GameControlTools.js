@@ -9,7 +9,7 @@
  */
 export const GameControlTools = [
     {
-        name: "spawn_cube",
+        name: "Spawn_Cube",
         description: "Create a new cube at specified position with optional color",
         inputSchema: {
             type: "object",
