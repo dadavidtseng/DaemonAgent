@@ -3,9 +3,7 @@
 //----------------------------------------------------------------------------------------------------
 
 // === Global Setup ===
-import {EventBus} from './events/EventBus.js';  // Event system for dependency inversion
-import {Clock} from './components/Clock.js';
-import {KEYCODE_F1, KEYCODE_P} from "./InputSystemCommon.js";
+import { EventBus } from './Event/EventBus.js';  // Event system for dependency inversion
 
 /**
  * JSEngine - Core JavaScript engine with system registration framework
@@ -24,10 +22,8 @@ import {KEYCODE_F1, KEYCODE_P} from "./InputSystemCommon.js";
  * - Automatic hot-reload for modified Subsystem instances
  */
 
-export class JSEngine
-{
-    constructor()
-    {
+export class JSEngine {
+    constructor() {
         this.game = null;
         this.isInitialized = true;
         this.frameCount = 0;
@@ -54,8 +50,7 @@ export class JSEngine
     /**
      * Set the game instance
      */
-    setGame(gameInstance)
-    {
+    setGame(gameInstance) {
         this.game = gameInstance;
         console.log('JSEngine: Game instance set');
     }
@@ -73,14 +68,12 @@ export class JSEngine
      * @param {string|null} id - Unique system identifier (legacy) or null (new Subsystem pattern)
      * @param {Object|Subsystem} configOrComponent - Config object (legacy) or Subsystem instance (new)
      */
-    registerSystem(id, configOrComponent = {})
-    {
+    registerSystem(id, configOrComponent = {}) {
         let system;
 
         // Debug logging
         console.log(`JSEngine.registerSystem: id=${id}, configOrComponent type=${typeof configOrComponent}`);
-        if (configOrComponent && typeof configOrComponent === 'object')
-        {
+        if (configOrComponent && typeof configOrComponent === 'object') {
             console.log(`JSEngine.registerSystem: configOrComponent.id=${configOrComponent.id}, priority=${configOrComponent.priority}`);
             console.log(`JSEngine.registerSystem: update type=${typeof configOrComponent.update}, render type=${typeof configOrComponent.render}`);
         }
@@ -95,8 +88,7 @@ export class JSEngine
 
         console.log(`JSEngine.registerSystem: isComponentInstance=${isComponentInstance}`);
 
-        if (isComponentInstance)
-        {
+        if (isComponentInstance) {
             // Subsystem instance pattern
             const component = configOrComponent;
             system = {
@@ -111,11 +103,9 @@ export class JSEngine
 
             console.log(`JSEngine: Registered SystemComponent '${component.id}' (priority: ${component.priority}, ECS pattern)`);
         }
-        else
-        {
+        else {
             // LEGACY PATTERN: Config object (backward compatibility)
-            if (!id || typeof id !== 'string')
-            {
+            if (!id || typeof id !== 'string') {
                 console.log('JSEngine: System ID must be a non-empty string (legacy pattern)');
                 return false;
             }
@@ -133,7 +123,7 @@ export class JSEngine
         }
 
         this.registeredSystems.set(system.id, system);
-        this.queueOperation({type: 'register', system});
+        this.queueOperation({ type: 'register', system });
 
         return true;
     }
@@ -141,15 +131,13 @@ export class JSEngine
     /**
      * Unregister a system
      */
-    unregisterSystem(id)
-    {
-        if (!this.registeredSystems.has(id))
-        {
+    unregisterSystem(id) {
+        if (!this.registeredSystems.has(id)) {
             console.log(`JSEngine: System '${id}' not found`);
             return false;
         }
 
-        this.queueOperation({type: 'unregister', id});
+        this.queueOperation({ type: 'unregister', id });
         console.log(`JSEngine: Queued unregistration for system '${id}'`);
         return true;
     }
@@ -157,11 +145,9 @@ export class JSEngine
     /**
      * Enable or disable a system
      */
-    setSystemEnabled(id, enabled)
-    {
+    setSystemEnabled(id, enabled) {
         const system = this.registeredSystems.get(id);
-        if (!system)
-        {
+        if (!system) {
             console.log(`setSystemEnabled JSEngine: System '${id}' not found`);
             return false;
         }
@@ -174,18 +160,15 @@ export class JSEngine
     /**
      * Get system information
      */
-    getSystem(id)
-    {
+    getSystem(id) {
         return this.registeredSystems.get(id) || null;
     }
 
     /**
      * List all registered systems
      */
-    listSystems()
-    {
-        return Array.from(this.registeredSystems.keys()).map(id =>
-        {
+    listSystems() {
+        return Array.from(this.registeredSystems.keys()).map(id => {
             const sys = this.registeredSystems.get(id);
             return {
                 id: sys.id,
@@ -202,37 +185,29 @@ export class JSEngine
     // INTERNAL SYSTEM MANAGEMENT
     // ============================================================================
 
-    queueOperation(operation)
-    {
+    queueOperation(operation) {
         this.pendingOperations.push(operation);
     }
 
-    processOperations()
-    {
-        for (const op of this.pendingOperations)
-        {
-            if (op.type === 'register')
-            {
+    processOperations() {
+        for (const op of this.pendingOperations) {
+            if (op.type === 'register') {
                 this.addSystemToLists(op.system);
             }
-            else if (op.type === 'unregister')
-            {
+            else if (op.type === 'unregister') {
                 this.removeSystemFromLists(op.id);
             }
         }
         this.pendingOperations = [];
     }
 
-    addSystemToLists(system)
-    {
-        if (system.update && typeof system.update === 'function')
-        {
+    addSystemToLists(system) {
+        if (system.update && typeof system.update === 'function') {
             this.updateSystems.push(system);
             this.updateSystems.sort((a, b) => a.priority - b.priority);
         }
 
-        if (system.render && typeof system.render === 'function')
-        {
+        if (system.render && typeof system.render === 'function') {
             this.renderSystems.push(system);
             this.renderSystems.sort((a, b) => a.priority - b.priority);
         }
@@ -240,8 +215,7 @@ export class JSEngine
         console.log(`JSEngine: System '${system.id}' added to execution lists`);
     }
 
-    removeSystemFromLists(id)
-    {
+    removeSystemFromLists(id) {
         this.updateSystems = this.updateSystems.filter(sys => sys.id !== id);
         this.renderSystems = this.renderSystems.filter(sys => sys.id !== id);
         this.registeredSystems.delete(id);
@@ -257,15 +231,12 @@ export class JSEngine
      * Check for hot-reloads and upgrade system instances automatically
      * Called every frame to detect when C++ has reloaded module files
      */
-    checkForHotReloads()
-    {
-        for (const [id, system] of this.registeredSystems)
-        {
+    checkForHotReloads() {
+        for (const [id, system] of this.registeredSystems) {
             const instance = system.componentInstance;
             if (!instance) continue; // Skip legacy systems
 
-            try
-            {
+            try {
                 // Get the class name and try to find it in global scope
                 const className = instance.constructor.name;
                 const GlobalClass = globalThis[className];
@@ -273,8 +244,7 @@ export class JSEngine
                 if (!GlobalClass) continue; // Class not in global scope
 
                 // Check if constructor function changed (class was reloaded)
-                if (instance.constructor !== GlobalClass)
-                {
+                if (instance.constructor !== GlobalClass) {
                     console.log(`JSEngine: Hot-reload detected for '${id}', upgrading instance methods`);
                     this.upgradeInstanceMethods(instance, GlobalClass);
 
@@ -287,8 +257,7 @@ export class JSEngine
 
                     console.log(`JSEngine: Hot-reload complete for '${id}'`);
                 }
-            } catch (e)
-            {
+            } catch (e) {
                 // Silently ignore errors (class might not be in global scope)
             }
         }
@@ -301,20 +270,17 @@ export class JSEngine
      * @param {Object} instance - Existing instance to upgrade
      * @param {Function} NewClass - New class definition with updated methods
      */
-    upgradeInstanceMethods(instance, NewClass)
-    {
+    upgradeInstanceMethods(instance, NewClass) {
         const proto = NewClass.prototype;
         const methodNames = Object.getOwnPropertyNames(proto);
 
         let upgradedCount = 0;
 
-        for (const methodName of methodNames)
-        {
+        for (const methodName of methodNames) {
             if (methodName === 'constructor') continue;
 
             const descriptor = Object.getOwnPropertyDescriptor(proto, methodName);
-            if (descriptor && typeof descriptor.value === 'function')
-            {
+            if (descriptor && typeof descriptor.value === 'function') {
                 // Replace method with new version (bound to instance)
                 instance[methodName] = descriptor.value.bind(instance);
                 upgradedCount++;
@@ -324,47 +290,150 @@ export class JSEngine
         console.log(`JSEngine: Upgraded ${upgradedCount} methods for '${instance.id}'`);
     }
 
+    // ============================================================================
+    // CALLBACK PROCESSING (Phase 2.4)
+    // ============================================================================
+
+    /**
+     * Process callbacks from C++ CallbackQueue
+     * Dequeues all available callbacks and executes them
+     * Called at start of update() to ensure callbacks processed early in frame
+     */
+    processCallbacks() {
+        // Check if callbackQueue is available (exposed by CallbackQueueScriptInterface)
+        if (typeof globalThis.callbackQueue === 'undefined' || !globalThis.callbackQueue) {
+            // CallbackQueue not yet registered - skip processing
+            // This is expected during early initialization
+            return;
+        }
+
+        try {
+            // Dequeue all callbacks from C++ queue
+            // Phase 2.4 Type Safety: V8 auto-parses JSON string to JavaScript array
+            // C++ returns JSON string via ScriptMethodResult::Success(jsonString)
+            // V8 automatically deserializes it to JavaScript objects
+            const callbacks = globalThis.callbackQueue.dequeueAll();
+
+            // Skip diagnostic logging - callbacks are working correctly now
+
+            // Skip if no callbacks (null, undefined, or empty array)
+            // Phase 2.4: V8 returns already-parsed array, not JSON string
+            if (!callbacks || !Array.isArray(callbacks) || callbacks.length === 0) {
+                return;
+            }
+
+            // No JSON.parse needed - V8 already deserialized the JSON for us
+
+            // Skip if parsed result is empty array
+            if (!callbacks || callbacks.length === 0) {
+                return;
+            }
+
+            // Process each callback
+            for (const cb of callbacks) {
+                this.executeCallback(cb);
+            }
+
+        } catch (error) {
+            // Phase 2.4: Suppress JSON parse errors for empty callback queues
+            // This is expected behavior when no callbacks are pending
+            if (error.message && error.message.includes('JSON')) {
+                // Silent skip - this is normal when queue is empty
+                return;
+            }
+
+            // Log other unexpected errors
+            console.log(`JSEngine: Error processing callbacks: ${error.message}`);
+            if (error.stack) {
+                console.log(`Stack: ${error.stack}`);
+            }
+        }
+    }
+
+    /**
+     * Execute a single callback from C++
+     * Looks up callback handler in game/systems and invokes it
+     *
+     * @param {Object} callbackData - Callback data from C++
+     *   {callbackId, resultId, errorMessage, type}
+     */
+    executeCallback(callbackData) {
+        try {
+            const {callbackId, resultId, errorMessage, type} = callbackData;
+
+            // Callback execution - routing to appropriate API handler
+
+            // Route callback to appropriate handler based on type
+            switch (type) {
+                case 'ENTITY_CREATED':
+                    // Forward to EntityAPI callback handler
+                    if (globalThis.EntityAPI && globalThis.EntityAPI.handleCallback) {
+                        globalThis.EntityAPI.handleCallback(callbackId, resultId, errorMessage);
+                    } else {
+                        console.log(`JSEngine: EntityAPI callback handler not available for callback ${callbackId}`);
+                    }
+                    break;
+
+                case 'CAMERA_CREATED':
+                    // Forward to CameraAPI callback handler
+                    if (globalThis.CameraAPI && globalThis.CameraAPI.handleCallback) {
+                        globalThis.CameraAPI.handleCallback(callbackId, resultId, errorMessage);
+                    } else {
+                        console.log(`JSEngine: CameraAPI callback handler not available for callback ${callbackId}`);
+                    }
+                    break;
+
+                case 'RESOURCE_LOADED':
+                case 'GENERIC':
+                default:
+                    console.log(`JSEngine: Unhandled callback type '${type}' for callback ${callbackId}`);
+                    break;
+            }
+
+        } catch (error) {
+            console.log(`JSEngine: Error executing callback: ${error.message}`);
+            if (error.stack) {
+                console.log(`Stack: ${error.stack}`);
+            }
+        }
+    }
+
 
     /**
      * Update method - called by C++ engine
      * Now processes both game and registered systems
      */
-    update(systemDeltaSeconds)
-    {
-        if (!this.isInitialized)
-        {
+    update(systemDeltaSeconds) {
+        if (!this.isInitialized) {
             return;
         }
 
         this.frameCount++;
         this.processOperations();
 
+        // Phase 2.4: Process callbacks from C++ BEFORE system updates
+        // This ensures callbacks are handled early in the frame
+        this.processCallbacks();
+
         // AUTOMATIC HOT-RELOAD: Check for module reloads every frame
-        if (this.hotReloadEnabled)
-        {
+        if (this.hotReloadEnabled) {
             this.checkForHotReloads();
         }
 
         // Execute all registered update systems
-        for (const system of this.updateSystems)
-        {
-            if (system.enabled && system.update)
-            {
-                try
-                {
+        for (const system of this.updateSystems) {
+            if (system.enabled && system.update) {
+                try {
                     // Pass both gameDeltaSeconds and systemDeltaSeconds to allow systems to choose
                     system.update(jsGameInstance.gameClock.getDeltaSeconds(), systemDeltaSeconds);
 
-                } catch (error)
-                {
+                } catch (error) {
                     // Enhanced error logging with multiple fallbacks
-                    if (error instanceof Error)
-                    {
+                    if (error instanceof Error) {
                         console.log(`JSEngine: Error in system '${system.id}' update: ${error.message}`);
                         console.log(`Stack: ${error.stack}`);
                     }
-                    else
-                    {
+                    else {
                         console.log(`JSEngine: Error in system '${system.id}' update: ${JSON.stringify(error)}`);
                     }
                 }
@@ -376,31 +445,23 @@ export class JSEngine
      * Render method - called by C++ engine
      * Now processes both game and registered systems
      */
-    render()
-    {
-        if (!this.isInitialized)
-        {
+    render() {
+        if (!this.isInitialized) {
             return;
         }
 
         // Execute all registered render systems
-        for (const system of this.renderSystems)
-        {
-            if (system.enabled && system.render)
-            {
-                try
-                {
+        for (const system of this.renderSystems) {
+            if (system.enabled && system.render) {
+                try {
                     system.render();
-                } catch (error)
-                {
+                } catch (error) {
                     // Enhanced error logging with multiple fallbacks
-                    if (error instanceof Error)
-                    {
+                    if (error instanceof Error) {
                         console.log(`JSEngine: Error in system '${system.id}' render: ${error.message}`);
                         console.log(`Stack: ${error.stack}`);
                     }
-                    else
-                    {
+                    else {
                         console.log(`JSEngine: Error in system '${system.id}' render: ${JSON.stringify(error)}`);
                     }
                 }
@@ -412,8 +473,7 @@ export class JSEngine
      * C++ Engine interface methods - called by JSGame
      * These bridge to the actual C++ engine functions
      */
-    updateCppEngine(gameDeltaSeconds, systemDeltaSeconds)
-    {
+    updateCppEngine(gameDeltaSeconds, systemDeltaSeconds) {
         // if (typeof game !== 'undefined' && game.update)
         // {
         //     game.update(systemDeltaSeconds || 0.0);
@@ -423,8 +483,7 @@ export class JSEngine
         // return false;
     }
 
-    renderCppEngine()
-    {
+    renderCppEngine() {
         // if (typeof game !== 'undefined' && game.render)
         // {
         //     game.render();
@@ -437,8 +496,7 @@ export class JSEngine
     /**
      * Get engine status
      */
-    getStatus()
-    {
+    getStatus() {
         return {
             isInitialized: this.isInitialized,
             hasGame: this.game !== null,

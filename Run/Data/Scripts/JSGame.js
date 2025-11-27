@@ -2,22 +2,18 @@
 // JSGame.js - Game System Coordinator
 //----------------------------------------------------------------------------------------------------
 
-import {CppBridgeSystem} from './components/CppBridgeSystem.js';
-import {InputSystem} from './components/InputSystem.js';
-import {AudioSystem} from './components/AudioSystem.js';
-// Phase 2b: CameraSystem removed - replaced by CameraAPI
-// import {CameraSystem} from './components/CameraSystem.js';
-// Phase 2: RendererSystem removed - replaced by EntityAPI
-// import {RendererSystem} from './components/RendererSystem.js';
-import {DebugRenderSystem} from './components/DebugRenderSystem.js';
+import {CppBridgeSystem} from './Component/CppBridgeSystem.js';
+import {InputSystem} from './Component/InputSystem.js';
+import {AudioSystem} from './Component/AudioSystem.js';
+import {DebugRenderSystem} from './Component/DebugRenderSystem.js';
 import {KADIGameControl} from './kadi/KADIGameControl.js';
-import {PhysicsSystem} from './components/PhysicsSystem.js';  // Physics simulation system
-import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon";
-import {Player} from './objects/Player.js';
-import {Prop} from './objects/Prop.js';
+import {PhysicsSystem} from './Component/PhysicsSystem.js';  // Physics simulation system
+import {KEYCODE_O, KEYCODE_P} from "./InputSystemCommon.js";
+import {Player} from './Object/Player.js';
+import {Prop} from './Object/Prop.js';
 import {hotReloadRegistry} from './core/HotReloadRegistry.js';
-import {CameraAPI} from './interfaces/CameraAPI.js';  // Phase 2b: Screen camera creation
-
+import {CameraAPI} from './Interface/CameraAPI.js';  // Phase 2b: Screen camera creation
+import {Clock} from './Component/Clock.js';
 // import {NewFeatureSystem} from './components/NewFeatureSystem.js';
 
 export const GameState = Object.freeze({
@@ -184,8 +180,10 @@ export class JSGame
             [0, 0, 0],  // position (not used for screen cameras)
             [0, 0, 0],  // orientation (not used for screen cameras)
             'screen',   // type: orthographic 2D camera for UI
-            (cameraId) => {
-                if (cameraId === 0) {
+            (cameraId) =>
+            {
+                if (cameraId === 0)
+                {
                     console.log('JSGame: ERROR - Screen camera creation failed!');
                     return;
                 }
@@ -258,39 +256,47 @@ export class JSGame
     {
         console.log('JSGame: Creating 4 Prop GameObjects matching C++ Game behavior...');
 
-        try {
+        try
+        {
             // Prop 0: Rotating cube at (2, 2, 0) - pitch+roll += 30°/s (Phase 2)
             const prop0 = new Prop('cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll');
             this.propGameObjects.push(prop0);
             console.log('JSGame: Prop 0 created successfully');
-        } catch (error) {
+        } catch (error)
+        {
             console.log('JSGame: ERROR creating Prop 0:', error);
         }
 
-        try {
+        try
+        {
             // Prop 1: Pulsing color cube at (-2, -2, 0) - sin wave color (Phase 2)
             const prop1 = new Prop('cube', {x: -2, y: -2, z: 0}, 'pulse-color');
             this.propGameObjects.push(prop1);
             console.log('JSGame: Prop 1 created successfully');
-        } catch (error) {
+        } catch (error)
+        {
             console.log('JSGame: ERROR creating Prop 1:', error);
         }
 
-        try {
+        try
+        {
             // Prop 2: Rotating sphere at (10, -5, 1) - yaw += 45°/s (Phase 2)
             const prop2 = new Prop('sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw');
             this.propGameObjects.push(prop2);
             console.log('JSGame: Prop 2 created successfully');
-        } catch (error) {
+        } catch (error)
+        {
             console.log('JSGame: ERROR creating Prop 2:', error);
         }
 
-        try {
+        try
+        {
             // Prop 3: Static grid at (0, 0, 0) (Phase 2)
             const prop3 = new Prop('grid', {x: 0, y: 0, z: 0}, 'static');
             this.propGameObjects.push(prop3);
             console.log('JSGame: Prop 3 created successfully');
-        } catch (error) {
+        } catch (error)
+        {
             console.log('JSGame: ERROR creating Prop 3:', error);
         }
 
@@ -316,7 +322,8 @@ export class JSGame
 
         for (let i = 0; i < numObjects; i++)
         {
-            try {
+            try
+            {
                 // Calculate grid position
                 const gridX = i % gridSize;
                 const gridY = Math.floor(i / gridSize);
@@ -366,7 +373,8 @@ export class JSGame
                 this.propGameObjects.push(physicsObject);
                 createdCount++;
 
-            } catch (error) {
+            } catch (error)
+            {
                 console.log(`JSGame: ERROR creating physics test object ${i}:`, error);
             }
         }
@@ -668,10 +676,6 @@ export class JSGame
                 let camera;
 
                 camera = this.playerGameObject ? this.playerGameObject.getCamera() : null;
-
-                // console.log('JSGame gameRender: camera =', camera, 'type:', typeof camera);
-
-
 
                 if (!camera || camera === null || camera === undefined)
                 {
