@@ -384,7 +384,6 @@ void App::Render() const
     Rgba8 const clearColor = Rgba8::GREY;
 
     g_renderer->ClearScreen(clearColor, Rgba8::BLACK);
-    g_game->RenderJS();
 
     // Phase 2: Render all entities from EntityStateBuffer
     // Only render entities in GAME mode, not in ATTRACT mode
