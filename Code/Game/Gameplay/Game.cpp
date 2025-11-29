@@ -664,28 +664,61 @@ void Game::RenderJSWorkerThread(float deltaTime, CameraStateBuffer* cameraBuffer
     }
 }
 //----------------------------------------------------------------------------------------------------
-// HandleJSException (Worker Thread)
+// HandleJSException (Worker Thread - Phase 3.2 Implementation)
 //
 // Handle JavaScript exception from worker thread.
 // Called by JSGameLogicJob when JavaScript errors occur.
 //
 // Thread Safety:
 //   - Called from worker thread
-//   - Should log error, signal recovery
-//   - Should NOT crash worker thread
+//   - m_jsExceptionCount: Atomic, thread-safe increment
+//   - DAEMON_LOG: Thread-safe logging
+//
+// Recovery Behavior:
+//   - Logs error with full details (message + stack trace)
+//   - Increments exception counter for monitoring
+//   - Does NOT crash worker thread (fault isolation)
+//   - Worker thread continues to next frame (graceful degradation)
+//   - Main thread continues rendering with last valid state
+//
+// Future Extensions (Phase 3.3+):
+//   - Hot-reload recovery: Attempt to reload last known good script
+//   - Visual indicator: Signal main thread to display error overlay
+//   - Error throttling: Rate-limit repeated identical errors
 //----------------------------------------------------------------------------------------------------
 void Game::HandleJSException(char const* errorMessage, char const* stackTrace)
 {
-    // TODO Phase 3: Implement JavaScript error recovery
-    // This will log the error and attempt hot-reload recovery
+    // Phase 3.2: Increment exception counter for monitoring
+    uint64_t exceptionNumber = m_jsExceptionCount.fetch_add(1, std::memory_order_relaxed) + 1;
+
+    // Phase 3.2: Log error with full details
+    DAEMON_LOG(LogGame, eLogVerbosity::Error,
+               StringFormat("=== JavaScript Exception #{} ===", exceptionNumber));
+
+    // Log error message (with file:line:col from JSGameLogicJob)
+    if (errorMessage && errorMessage[0] != '\0')
+    {
+        DAEMON_LOG(LogGame, eLogVerbosity::Error,
+                   StringFormat("Error: {}", errorMessage));
+    }
+
+    // Log stack trace if available
+    if (stackTrace && stackTrace[0] != '\0')
+    {
+        DAEMON_LOG(LogGame, eLogVerbosity::Error,
+                   StringFormat("Stack Trace:\n{}", stackTrace));
+    }
 
     DAEMON_LOG(LogGame, eLogVerbosity::Error,
-               StringFormat("JavaScript Exception (Worker Thread):\n{}\n{}",
-                            errorMessage, stackTrace));
+               "=== End JavaScript Exception ===");
 
-    // Phase 3 implementation will:
-    // 1. Log error to console with stack trace
-    // 2. Attempt hot-reload recovery (reload last known good script)
-    // 3. Signal main thread of error state (visual indicator)
-    // 4. Continue worker thread execution with last known good state
+    // Phase 3.2: Recovery behavior
+    // - Worker thread continues execution (fault isolation)
+    // - Main thread continues rendering with last valid state
+    // - Next frame will retry JavaScript execution
+    //
+    // Future Phase 3.3: Hot-reload recovery
+    // - Detect if error is due to recent script change
+    // - Attempt to reload previous version
+    // - Signal main thread if recovery successful
 }

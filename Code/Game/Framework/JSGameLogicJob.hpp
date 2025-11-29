@@ -49,7 +49,12 @@ class IJSGameLogicContext;  // Abstract interface for JavaScript execution conte
 class RenderCommandQueue;
 class CallbackQueue;        // Phase 2.3: Lock-free callback queue for async callback processing
 
-namespace v8 { class Isolate; }
+namespace v8 {
+class Isolate;
+class TryCatch;
+template<class T> class Local;
+class Context;
+}
 
 //----------------------------------------------------------------------------------------------------
 // JSGameLogicJob
@@ -186,6 +191,11 @@ private:
 	// Initialize V8 thread-local data (called once at worker thread startup)
 	// Thread Safety: Worker thread only, no locking needed
 	void InitializeWorkerThreadV8();
+
+	// Phase 3.2: Handle V8 exception during JavaScript execution
+	// Extracts error message and stack trace, forwards to Game::HandleJSException()
+	// Thread Safety: Worker thread only, v8::Locker must be held
+	void HandleV8Exception(v8::TryCatch& tryCatch, v8::Local<v8::Context> context, char const* phase);
 
 	//------------------------------------------------------------------------------------------------
 	// Dependencies (Injected via Constructor)

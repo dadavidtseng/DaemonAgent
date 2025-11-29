@@ -9,6 +9,9 @@
 #include "Engine/Entity/EntityStateBuffer.hpp"
 #include "Engine/Script/IJSGameLogicContext.hpp"
 
+#include <atomic>
+#include <cstdint>
+
 //----------------------------------------------------------------------------------------------------
 class Game : public IJSGameLogicContext
 {
@@ -44,8 +47,26 @@ public:
     // Called by JSGameLogicJob when JavaScript errors occur
     void HandleJSException(char const* errorMessage, char const* stackTrace) override;
 
+    //------------------------------------------------------------------------------------------------
+    // Phase 3.2: JavaScript Error Monitoring API
+    //------------------------------------------------------------------------------------------------
+
+    // Get total JavaScript exceptions encountered
+    uint64_t GetJSExceptionCount() const { return m_jsExceptionCount.load(std::memory_order_relaxed); }
+
+    // Check if any JavaScript exceptions have occurred
+    bool HasJSExceptions() const { return m_jsExceptionCount.load(std::memory_order_relaxed) > 0; }
+
+    // Reset JavaScript exception counter (e.g., after hot-reload recovery)
+    void ResetJSExceptionCount() { m_jsExceptionCount.store(0, std::memory_order_relaxed); }
+
 private:
     void InitializeJavaScriptFramework();
 
     bool m_showDemoWindow = true;
+
+    //------------------------------------------------------------------------------------------------
+    // Phase 3.2: JavaScript Error Tracking
+    //------------------------------------------------------------------------------------------------
+    std::atomic<uint64_t> m_jsExceptionCount{0};  // Total JavaScript exceptions encountered
 };

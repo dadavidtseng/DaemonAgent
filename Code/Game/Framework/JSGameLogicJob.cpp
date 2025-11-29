@@ -240,9 +240,11 @@ bool JSGameLogicJob::IsShutdownComplete() const
 //   - Writes to back entity buffer (safe, main thread reads front buffer)
 //   - Submits render commands to queue (lock-free SPSC queue)
 //
-// Error Handling (Phase 1):
-//   - No try-catch (errors propagate to worker thread termination)
-//   - Phase 3: Add JavaScript exception handling and recovery
+// Error Handling (Phase 3.2):
+//   - v8::TryCatch wraps JavaScript execution for exception handling
+//   - Error isolation: JavaScript errors don't crash C++ worker thread
+//   - Stack trace extraction for debugging
+//   - Recovery: Signal frame complete, allow next frame to proceed
 //----------------------------------------------------------------------------------------------------
 void JSGameLogicJob::ExecuteJavaScriptFrame()
 {
@@ -251,18 +253,13 @@ void JSGameLogicJob::ExecuteJavaScriptFrame()
     v8::Locker         locker(m_isolate);
     v8::Isolate::Scope isolateScope(m_isolate);
 
-    // Phase 1: Simple delegation to Game::UpdateJS()
-    // Game class handles JavaScript execution through ScriptSubsystem
-    //
-    // Future (Phase 2):
-    //   - Direct JavaScript function calls for update/render
-    //   - Entity state buffer updates
-    //   - Render command submissions
-    //
-    // Future (Phase 3):
-    //   - Try-catch for JavaScript exception handling
-    //   - Error isolation (log error, signal frame complete, continue)
-    //   - Timeout detection (main thread monitors IsFrameComplete())
+    // Phase 3.2: Get context for V8 exception handling
+    v8::HandleScope    handleScope(m_isolate);
+    v8::Local<v8::Context> context = m_isolate->GetCurrentContext();
+
+    // Phase 3.2: Set up v8::TryCatch for JavaScript exception handling
+    // This catches any V8 exceptions thrown during JavaScript execution
+    v8::TryCatch tryCatch(m_isolate);
 
     // Execute JavaScript update logic
     // Phase 2.3: Call Game::UpdateJSWorkerThread() on worker thread to execute JavaScript
@@ -275,10 +272,28 @@ void JSGameLogicJob::ExecuteJavaScriptFrame()
         // Execute JavaScript update on worker thread with proper parameters
         m_context->UpdateJSWorkerThread(deltaTime, m_entityBuffer, m_commandQueue);
 
+        // Phase 3.2: Check for JavaScript exceptions after update
+        if (tryCatch.HasCaught())
+        {
+            HandleV8Exception(tryCatch, context, "UpdateJSWorkerThread");
+            tryCatch.Reset();  // Clear exception state for render phase
+        }
+
         // Execute JavaScript render logic on worker thread
         // This calls JSEngine.render() which submits render commands
         m_context->RenderJSWorkerThread(deltaTime, nullptr, m_commandQueue);
+
+        // Phase 3.2: Check for JavaScript exceptions after render
+        if (tryCatch.HasCaught())
+        {
+            HandleV8Exception(tryCatch, context, "RenderJSWorkerThread");
+            // No need to reset - we're done with this frame
+        }
     }
+
+    // Phase 3.2: Frame continues even if exceptions occurred
+    // Main thread will receive frame complete signal and can continue
+    // Next frame will retry JavaScript execution (hot-reload may fix issues)
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -303,6 +318,104 @@ void JSGameLogicJob::InitializeWorkerThreadV8()
 
     DAEMON_LOG(LogScript, eLogVerbosity::Log,
                "JSGameLogicJob: V8 isolate initialized for worker thread");
+}
+
+//----------------------------------------------------------------------------------------------------
+// HandleV8Exception (Phase 3.2 - Worker Thread)
+//
+// Extract JavaScript exception details from v8::TryCatch and forward to Game::HandleJSException().
+//
+// Parameters:
+//   - tryCatch: V8 exception handler with caught exception
+//   - context: V8 context for message extraction
+//   - phase: String identifier for where exception occurred ("UpdateJSWorkerThread" or "RenderJSWorkerThread")
+//
+// Thread Safety:
+//   - Called from worker thread with v8::Locker held
+//   - Extracts exception message and stack trace from V8
+//   - Forwards to Game::HandleJSException() for logging and recovery
+//
+// Recovery Behavior:
+//   - Does NOT rethrow exception (fault isolation)
+//   - Worker thread continues to next phase or frame
+//   - Main thread continues rendering with last valid state
+//----------------------------------------------------------------------------------------------------
+void JSGameLogicJob::HandleV8Exception(v8::TryCatch& tryCatch,
+                                       v8::Local<v8::Context> context,
+                                       char const* phase)
+{
+    v8::HandleScope handleScope(m_isolate);
+
+    // Extract exception message
+    std::string errorMessage = "Unknown JavaScript error";
+    v8::Local<v8::Value> exception = tryCatch.Exception();
+    if (!exception.IsEmpty())
+    {
+        v8::String::Utf8Value exceptionUtf8(m_isolate, exception);
+        if (*exceptionUtf8)
+        {
+            errorMessage = *exceptionUtf8;
+        }
+    }
+
+    // Extract detailed error information from v8::Message
+    std::string detailedMessage;
+    v8::Local<v8::Message> message = tryCatch.Message();
+    if (!message.IsEmpty())
+    {
+        // Get filename and line number
+        v8::String::Utf8Value filename(m_isolate, message->GetScriptResourceName());
+        int lineNum = message->GetLineNumber(context).FromMaybe(-1);
+        int colNum = message->GetStartColumn(context).FromMaybe(-1);
+
+        detailedMessage = StringFormat("[{}] {}:{}:{}: {}",
+                                       phase,
+                                       *filename ? *filename : "<unknown>",
+                                       lineNum,
+                                       colNum,
+                                       errorMessage);
+
+        // Get source line if available
+        v8::MaybeLocal<v8::String> sourceLine = message->GetSourceLine(context);
+        if (!sourceLine.IsEmpty())
+        {
+            v8::String::Utf8Value sourceLineUtf8(m_isolate, sourceLine.ToLocalChecked());
+            if (*sourceLineUtf8)
+            {
+                detailedMessage += StringFormat("\n  Source: {}", *sourceLineUtf8);
+            }
+        }
+    }
+    else
+    {
+        detailedMessage = StringFormat("[{}] {}", phase, errorMessage);
+    }
+
+    // Extract stack trace
+    std::string stackTrace;
+    v8::MaybeLocal<v8::Value> maybeStackTrace = tryCatch.StackTrace(context);
+    if (!maybeStackTrace.IsEmpty())
+    {
+        v8::Local<v8::Value> stackTraceValue = maybeStackTrace.ToLocalChecked();
+        v8::String::Utf8Value stackTraceUtf8(m_isolate, stackTraceValue);
+        if (*stackTraceUtf8)
+        {
+            stackTrace = *stackTraceUtf8;
+        }
+    }
+
+    // Forward to Game::HandleJSException() for logging and recovery
+    if (m_context)
+    {
+        m_context->HandleJSException(detailedMessage.c_str(), stackTrace.c_str());
+    }
+    else
+    {
+        // Fallback logging if context is not available
+        DAEMON_LOG(LogScript, eLogVerbosity::Error,
+                   StringFormat("JSGameLogicJob::HandleV8Exception - No context available\n{}\n{}",
+                                detailedMessage, stackTrace));
+    }
 }
 
 //----------------------------------------------------------------------------------------------------
