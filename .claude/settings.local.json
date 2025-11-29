@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__notion__search",
+      "mcp__notion__fetch",
+      "mcp__notion__notion-update-page",
+      "mcp__notion__notion-create-pages",
+      "mcp__shrimp-ProtogameJS3D__split_tasks",
+      "mcp__shrimp-ProtogameJS3D__query_task",
+      "mcp__shrimp-ProtogameJS3D__execute_task",
+      "mcp__shrimp-ProtogameJS3D__verify_task",
+      "mcp__shrimp-ProtogameJS3D__get_task_detail",
+      "mcp__shrimp-ProtogameJS3D__plan_task",
+      "mcp__shrimp-ProtogameJS3D__analyze_task",
+      "mcp__shrimp-ProtogameJS3D__reflect_task",
+      "mcp__shrimp-ProtogameJS3D__process_thought",
+      "mcp__shrimp-ProtogameJS3D__list_tasks",
+      "mcp__spec-workflow-ProtogameJS3D__spec-status"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "shrimp-ProtogameJS3D",
+    "spec-workflow-ProtogameJS3D"
+  ]
+}
