@@ -537,7 +537,7 @@ void App::SetupScriptingBindings()
     DAEMON_LOG(LogScript, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings)(start)"));
 
     // Initialize hot-reload system (now integrated into ScriptSubsystem)
-    std::string projectRoot = "C:/p4/Personal/SD/ProtogameJS3D/";
+    std::string projectRoot = "../";
 
     if (g_scriptSubsystem->InitializeHotReload(projectRoot))
     {
