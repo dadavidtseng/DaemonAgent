@@ -528,7 +528,7 @@ export class JSGame
             {
                 // Convert systemDelta from seconds to milliseconds
                 const deltaTimeMs = systemDelta * 1000.0;
-
+                // throw new Error("Phase 3.2 Test: Injected runtime error");
                 // === HOT-RELOAD DETECTION: Check for Player class updates ===
                 if (hotReloadRegistry.hasUpdated('Player', this.playerVersion))
                 {
