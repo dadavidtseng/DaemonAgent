@@ -67,8 +67,8 @@ export class KADIGameControl extends Subsystem
 
             // Connect to KADI broker (localhost:8080 from Phase 4)
             console.log('KADIGameControl: Connecting to ws://localhost:8080...');
-            kadi.connect('ws://kadi.build:8080/kadi', keyPair.publicKey, keyPair.privateKey);
-            // kadi.connect('ws://localhost:8080', keyPair.publicKey, keyPair.privateKey);
+            // kadi.connect('ws://kadi.build:8080/kadi', keyPair.publicKey, keyPair.privateKey);
+            kadi.connect('ws://localhost:8080/kadi', keyPair.publicKey, keyPair.privateKey);
             this.connectionInitiated = true;
             console.log('KADIGameControl: Connection initiated');
 
