@@ -15,7 +15,9 @@
       "mcp__shrimp-ProtogameJS3D__reflect_task",
       "mcp__shrimp-ProtogameJS3D__process_thought",
       "mcp__shrimp-ProtogameJS3D__list_tasks",
-      "mcp__spec-workflow-ProtogameJS3D__spec-status"
+      "mcp__spec-workflow-ProtogameJS3D__spec-status",
+      "mcp__shrimp-ProtogameJS3D__update_task",
+      "mcp__shrimp-ProtogameJS3D__clear_all_tasks"
     ],
     "deny": [],
     "ask": []
