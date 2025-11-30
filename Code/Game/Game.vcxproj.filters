@@ -41,6 +41,9 @@
     <ClCompile Include="Gameplay\Game.cpp">
       <Filter>Gameplay</Filter>
     </ClCompile>
+    <ClCompile Include="Framework\RenderResourceManager.cpp">
+      <Filter>Framework</Filter>
+    </ClCompile>
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
   <!-- Header File -->
@@ -63,6 +66,9 @@
     </ClInclude>
     <ClInclude Include="Gameplay\Game.hpp">
       <Filter>Gameplay</Filter>
+    </ClInclude>
+    <ClInclude Include="Framework\RenderResourceManager.hpp">
+      <Filter>Framework</Filter>
     </ClInclude>
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->

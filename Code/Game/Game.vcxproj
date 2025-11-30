@@ -312,6 +312,7 @@
     <ClCompile Include="Framework\GameScriptInterface.cpp" />
     <ClCompile Include="Framework\JSGameLogicJob.cpp" />
     <ClCompile Include="Framework\Main_Windows.cpp" />
+    <ClCompile Include="Framework\RenderResourceManager.cpp" />
     <ClCompile Include="Gameplay\Game.cpp" />
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
@@ -323,6 +324,7 @@
     <ClInclude Include="Framework\GameCommon.hpp" />
     <ClInclude Include="Framework\GameScriptInterface.hpp" />
     <ClInclude Include="Framework\JSGameLogicJob.hpp" />
+    <ClInclude Include="Framework\RenderResourceManager.hpp" />
     <ClInclude Include="Gameplay\Game.hpp" />
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
