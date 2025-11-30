@@ -26,6 +26,7 @@ class GameScriptInterface;
 class InputScriptInterface;
 class KADIScriptInterface;
 class RenderCommandQueue;
+class RenderResourceManager;
 class JSGameLogicJob;
 
 //----------------------------------------------------------------------------------------------------
@@ -64,9 +65,6 @@ private:
     // Phase 2: Entity Rendering
     void RenderEntities() const;  // Render all active entities from EntityStateBuffer
 
-    // Phase 2: Geometry Creation Helper
-    int CreateGeometryForMeshType(String const& meshType, float radius, Rgba8 const& color);
-
     std::shared_ptr<InputScriptInterface>             m_inputScriptInterface;
     std::shared_ptr<AudioScriptInterface>             m_audioScriptInterface;
     std::shared_ptr<ClockScriptInterface>             m_clockScriptInterface;
@@ -85,4 +83,7 @@ private:
     std::shared_ptr<EntityScriptInterface>      m_entityScriptInterface;  // JavaScript interface for entity API
     std::shared_ptr<CameraScriptInterface>      m_cameraScriptInterface;  // JavaScript interface for camera API
     std::shared_ptr<CallbackQueueScriptInterface> m_callbackQueueScriptInterface;  // JavaScript interface for callback queue (Phase 2.4)
+
+    // Phase 5: Render Resource Management
+    RenderResourceManager*                      m_renderResourceManager = nullptr;  // Manages entity → VBO mapping (separation of concerns)
 };

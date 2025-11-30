@@ -11,6 +11,7 @@
 #include "Game/Framework/App.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Game/Framework/GameCommon.hpp"
+#include "Game/Framework/RenderResourceManager.hpp"
 #include "Engine/Core/CallbackQueue.hpp"
 #include "Game/Framework/GameScriptInterface.hpp"
 #include "Game/Gameplay/Game.hpp"
@@ -66,12 +67,6 @@ App*  g_app  = nullptr;       // Created and owned by Main_Windows.cpp
 Game* g_game = nullptr;       // Created and owned by the App
 
 //----------------------------------------------------------------------------------------------------
-// Phase 2: Static Vertex Buffer Storage
-// Shared between CreateGeometryForMeshType() and RenderEntities()
-static std::unordered_map<int, VertexList_PCU> g_vertexBuffers;
-static int                                     g_nextVertexBufferHandle = 1;
-
-//----------------------------------------------------------------------------------------------------
 App::App()
 {
     GEngine::Get().Construct();
@@ -96,6 +91,17 @@ void App::Startup()
     m_renderCommandQueue = new RenderCommandQueue();
     m_entityStateBuffer  = new EntityStateBuffer();
     m_cameraStateBuffer  = new CameraStateBuffer();
+
+    // Phase 5: Initialize render resource manager
+    m_renderResourceManager = new RenderResourceManager();
+    DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - RenderResourceManager initialized (Phase 5)");
+
+    // Phase 4.2: Enable per-key dirty tracking optimization for both buffers
+    // This reduces SwapBuffers() cost from O(n) to O(d) where d = dirty entity count
+    // Expected performance gain: 10-1000x speedup for sparse updates (typical gameplay)
+    m_entityStateBuffer->EnableDirtyTracking(true);
+    m_cameraStateBuffer->EnableDirtyTracking(true);
+    DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Startup - Per-key dirty tracking enabled (Phase 4.2)");
 
     // M4-T8: Initialize EntityAPI and CameraAPI directly (removed HighLevelEntityAPI facade)
     m_entityAPI = new EntityAPI(m_renderCommandQueue, g_scriptSubsystem);
@@ -206,6 +212,14 @@ void App::Shutdown()
         delete m_cameraAPI;
         m_cameraAPI = nullptr;
         DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - CameraAPI destroyed (M4-T8)");
+    }
+
+    // Phase 5: Cleanup RenderResourceManager BEFORE state buffers
+    if (m_renderResourceManager)
+    {
+        delete m_renderResourceManager;
+        m_renderResourceManager = nullptr;
+        DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - RenderResourceManager destroyed (Phase 5)");
     }
 
     if (m_entityStateBuffer)
@@ -639,7 +653,9 @@ void App::ProcessRenderCommands()
                 MeshCreationData const& meshData = std::get<MeshCreationData>(cmd.data);
                 // DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_MESH: meshType=%s, pos=(%.1f,%.1f,%.1f), radius=%.1f\n",
                 //                meshData.meshType.c_str(), meshData.position.x, meshData.position.y, meshData.position.z, meshData.radius);
-                int vbHandle = CreateGeometryForMeshType(meshData.meshType, meshData.radius, meshData.color);
+
+                // Phase 5: Use RenderResourceManager instead of CreateGeometryForMeshType
+                int vbHandle = m_renderResourceManager->RegisterEntity(cmd.entityId, meshData.meshType, meshData.radius, meshData.color);
 
                 if (vbHandle != 0)
                 {
@@ -650,11 +666,14 @@ void App::ProcessRenderCommands()
                     state.radius             = meshData.radius;
                     state.meshType           = meshData.meshType;
                     state.isActive           = true;
-                    state.vertexBufferHandle = vbHandle;
+                    // Phase 5: Removed vertexBufferHandle from EntityState (moved to RenderResourceManager)
                     state.cameraType         = "world";  // Phase 2: All mesh entities use world camera by default
 
                     auto* backBuffer            = m_entityStateBuffer->GetBackBuffer();
                     (*backBuffer)[cmd.entityId] = state;
+
+                    // Phase 4.2: Mark entity as dirty for per-key copy optimization
+                    m_entityStateBuffer->MarkDirty(cmd.entityId);
 
                     // DebuggerPrintf("[TRACE] ProcessRenderCommands - Entity %llu added to back buffer (vbHandle=%d, vertCount=%zu)\n",
                     //                cmd.entityId, vbHandle, backBuffer->size());
@@ -677,6 +696,9 @@ void App::ProcessRenderCommands()
                     if (updateData.position.has_value()) it->second.position = updateData.position.value();
                     if (updateData.orientation.has_value()) it->second.orientation = updateData.orientation.value();
                     if (updateData.color.has_value()) it->second.color = updateData.color.value();
+
+                    // Phase 4.2: Mark entity as dirty for per-key copy optimization
+                    m_entityStateBuffer->MarkDirty(cmd.entityId);
                 }
                 break;
             }
@@ -739,6 +761,9 @@ void App::ProcessRenderCommands()
                 auto* backBuffer            = m_cameraStateBuffer->GetBackBuffer();
                 (*backBuffer)[cmd.entityId] = state;
 
+                // Phase 4.2: Mark camera as dirty for per-key copy optimization
+                m_cameraStateBuffer->MarkDirty(cmd.entityId);
+
                 // Phase 2.3 FIX: Notify CameraAPI that camera creation is complete
                 // This marks the callback as ready so it can be enqueued and executed
                 if (m_cameraAPI && cameraData.callbackId != 0)
@@ -764,6 +789,9 @@ void App::ProcessRenderCommands()
 
                     it->second.position    = updateData.position;
                     it->second.orientation = updateData.orientation;
+
+                    // Phase 4.2: Mark camera as dirty for per-key copy optimization
+                    m_cameraStateBuffer->MarkDirty(cmd.entityId);
 
                     // DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA: cameraId=%llu updated\n", cmd.entityId);
                 }
@@ -911,15 +939,9 @@ void App::RenderEntities() const
         // Skip entities not tagged for world camera
         if (state.cameraType != "world") continue;
 
-        // Skip entities without valid vertex buffer handles
-        if (state.vertexBufferHandle == 0) continue;
-
-        // Find vertex data in global vertex buffer storage
-        auto it = g_vertexBuffers.find(state.vertexBufferHandle);
-        if (it == g_vertexBuffers.end()) continue;
-
-        VertexList_PCU const& verts = it->second;
-        if (verts.empty()) continue;
+        // Phase 5: Query vertex data from RenderResourceManager instead of EntityState
+        VertexList_PCU const* verts = m_renderResourceManager->GetVerticesForEntity(entityId);
+        if (!verts || verts->empty()) continue;
 
         // Set model transformation matrix
         // Coordinate System: X-forward, Y-left, Z-up
@@ -933,7 +955,7 @@ void App::RenderEntities() const
         g_renderer->BindTexture(nullptr);  // Phase 2.5: Will be replaced with per-entity texture binding
 
         // Draw entity geometry
-        g_renderer->DrawVertexArray(static_cast<int>(verts.size()), verts.data());
+        g_renderer->DrawVertexArray(static_cast<int>(verts->size()), verts->data());
         worldRenderedCount++;
     }
 
@@ -994,112 +1016,4 @@ void App::RenderEntities() const
         }
     }
     */
-}
-
-//----------------------------------------------------------------------------------------------------
-// CreateGeometryForMeshType (Phase 2 Helper Method)
-//
-// Creates geometry for a given mesh type and returns vertex buffer handle.
-// Returns 0 on failure.
-//----------------------------------------------------------------------------------------------------
-int App::CreateGeometryForMeshType(std::string const& meshType, float radius, Rgba8 const& color)
-{
-    // Create vertex list
-    VertexList_PCU verts;
-
-    if (meshType == "cube")
-    {
-        // Create cube geometry
-        // AABB3 cubeBox(Vec3(-radius, -radius, -radius), Vec3(radius, radius, radius));
-        // AddVertsForAABB3D(verts, cubeBox, color);
-
-        Vec3 const frontBottomLeft(0.5f, -0.5f, -0.5f);
-        Vec3 const frontBottomRight(0.5f, 0.5f, -0.5f);
-        Vec3 const frontTopLeft(0.5f, -0.5f, 0.5f);
-        Vec3 const frontTopRight(0.5f, 0.5f, 0.5f);
-        Vec3 const backBottomLeft(-0.5f, 0.5f, -0.5f);
-        Vec3 const backBottomRight(-0.5f, -0.5f, -0.5f);
-        Vec3 const backTopLeft(-0.5f, 0.5f, 0.5f);
-        Vec3 const backTopRight(-0.5f, -0.5f, 0.5f);
-
-        AddVertsForQuad3D(verts, frontBottomLeft, frontBottomRight, frontTopLeft, frontTopRight, color);          // +X Red
-        AddVertsForQuad3D(verts, backBottomLeft, backBottomRight, backTopLeft, backTopRight, color);             // -X -Red (Cyan)
-        AddVertsForQuad3D(verts, frontBottomRight, backBottomLeft, frontTopRight, backTopLeft, color);          // -Y -Green (Magenta)
-        AddVertsForQuad3D(verts, backBottomRight, frontBottomLeft, backTopRight, frontTopLeft, color);        // +Y Green
-        AddVertsForQuad3D(verts, frontTopLeft, frontTopRight, backTopRight, backTopLeft, color);                 // +Z Blue
-        AddVertsForQuad3D(verts, backBottomRight, backBottomLeft, frontBottomLeft, frontBottomRight, color);   // -Z -Blue (Yellow)
-    }
-    else if (meshType == "sphere")
-    {
-        // Create sphere geometry
-        AddVertsForSphere3D(verts, Vec3::ZERO, radius, color, AABB2::ZERO_TO_ONE, 32, 16);
-    }
-    else if (meshType == "grid")
-    {
-        // Create grid geometry with multiple colored lines
-        // Based on original Prop::InitializeLocalVertsForGrid() implementation
-        // Grid lies in XY plane (horizontal when looking down Z-axis)
-        float gridLineLength = 100.f;
-
-        for (int i = -(int)gridLineLength / 2; i < (int)gridLineLength / 2; i++)
-        {
-            float lineWidth = 0.05f;
-            if (i == 0)
-            {
-                lineWidth = 0.3f;  // Center lines are thicker
-            }
-
-            // Create line boxes in X direction (X-axis lines)
-            AABB3 boundsX(
-                Vec3(-gridLineLength / 2.f, -lineWidth / 2.f + (float)i, -lineWidth / 2.f),
-                Vec3(gridLineLength / 2.f, lineWidth / 2.f + (float)i, lineWidth / 2.f)
-            );
-
-            // Create line boxes in Y direction (Y-axis lines)
-            AABB3 boundsY(
-                Vec3(-lineWidth / 2.f + (float)i, -gridLineLength / 2.f, -lineWidth / 2.f),
-                Vec3(lineWidth / 2.f + (float)i, gridLineLength / 2.f, lineWidth / 2.f)
-            );
-
-            // Determine line colors
-            Rgba8 colorX = Rgba8::DARK_GREY;
-            Rgba8 colorY = Rgba8::DARK_GREY;
-
-            if (i % 5 == 0)  // Every 5th line is colored
-            {
-                colorX = Rgba8::RED;    // X-axis lines are red
-                colorY = Rgba8::GREEN;  // Y-axis lines are green
-            }
-
-            // Add geometry for both X and Y direction lines
-            AddVertsForAABB3D(verts, boundsX, colorX);
-            AddVertsForAABB3D(verts, boundsY, colorY);
-        }
-    }
-    else if (meshType == "plane")
-    {
-        // Create plane geometry (simple quad)
-        float halfSize = radius;
-        Vec3  bottomLeft(-halfSize, -halfSize, 0.0f);
-        Vec3  bottomRight(halfSize, -halfSize, 0.0f);
-        Vec3  topLeft(-halfSize, halfSize, 0.0f);
-        Vec3  topRight(halfSize, halfSize, 0.0f);
-        AddVertsForQuad3D(verts, bottomLeft, bottomRight, topLeft, topRight, color);
-    }
-    else
-    {
-        return 0;  // Unknown mesh type
-    }
-
-    // Check if geometry was created
-    if (verts.empty())
-    {
-        return 0;
-    }
-
-    // Allocate handle and store vertex data in global storage
-    int handle              = g_nextVertexBufferHandle++;
-    g_vertexBuffers[handle] = verts;
-
-    return handle;
 }
