@@ -12,3 +12,4 @@
 #pragma once
 #define ENGINE_DEBUG_RENDER
 #define CONSOLE_HANDLER
+#define ENGINE_SCRIPTING_ENABLED  // Phase 2: Enable async audio via AudioCommandQueue

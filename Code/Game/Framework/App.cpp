@@ -41,6 +41,7 @@
 #include "Engine/Entity/EntityStateBuffer.hpp"
 #include "Engine/Renderer/CameraStateBuffer.hpp"
 #include "Engine/Renderer/RenderCommandQueue.hpp"
+#include "Engine/Audio/AudioCommandQueue.hpp"
 #include "Game/Framework/JSGameLogicJob.hpp"
 
 // Phase 2: High-Level Entity API Includes
@@ -88,6 +89,7 @@ void App::Startup()
     // Phase 1: Initialize async architecture infrastructure BEFORE game initialization
     m_callbackQueue      = new CallbackQueue();
     m_renderCommandQueue = new RenderCommandQueue();
+    m_audioCommandQueue  = new AudioCommandQueue();  // Phase 2: Audio command queue for async JavaScript audio
     m_entityStateBuffer  = new EntityStateBuffer();
     m_cameraStateBuffer  = new CameraStateBuffer();
 
@@ -238,6 +240,14 @@ void App::Shutdown()
         delete m_renderCommandQueue;
         m_renderCommandQueue = nullptr;
     }
+
+    if (m_audioCommandQueue)
+    {
+        delete m_audioCommandQueue;
+        m_audioCommandQueue = nullptr;
+        DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::Shutdown - AudioCommandQueue destroyed (Phase 2)");
+    }
+
 	if (m_callbackQueue)
 	{
 		delete m_callbackQueue;
@@ -569,6 +579,16 @@ void App::SetupScriptingBindings()
 
     m_audioScriptInterface = std::make_shared<AudioScriptInterface>(g_audio);
     g_scriptSubsystem->RegisterScriptableObject("audio", m_audioScriptInterface);
+
+#ifdef ENGINE_SCRIPTING_ENABLED
+    // Phase 2: Configure AudioCommandQueue for async JavaScript audio operations
+    if (m_audioCommandQueue && m_callbackQueue && g_audio)
+    {
+        g_audio->SetCommandQueue(m_audioCommandQueue, m_callbackQueue);
+        m_audioScriptInterface->SetCommandQueue(m_audioCommandQueue, m_callbackQueue);
+        DAEMON_LOG(LogScript, eLogVerbosity::Display, "App::SetupScriptingBindings - AudioCommandQueue configured (Phase 2)");
+    }
+#endif
 
     m_debugRenderSystemScriptInterface = std::make_shared<DebugRenderSystemScriptInterface>();
     g_scriptSubsystem->RegisterScriptableObject("debugRenderInterface", m_debugRenderSystemScriptInterface);

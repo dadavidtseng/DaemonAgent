@@ -11,6 +11,7 @@
 #include <any>
 
 //-Forward-Declaration--------------------------------------------------------------------------------
+class AudioCommandQueue;
 class AudioScriptInterface;
 class Camera;
 class CallbackQueue;
@@ -74,6 +75,7 @@ private:
 
     // Phase 1: Async Architecture Infrastructure
     RenderCommandQueue*                         m_renderCommandQueue = nullptr;    // Lock-free command queue (JS → C++)
+    AudioCommandQueue*                          m_audioCommandQueue  = nullptr;    // Lock-free audio command queue (JS → C++) - Phase 2
     CallbackQueue*                              m_callbackQueue      = nullptr;     // Lock-free callback queue (C++ → JS)
     EntityStateBuffer*                          m_entityStateBuffer  = nullptr;     // Double-buffered entity state
     CameraStateBuffer*                          m_cameraStateBuffer  = nullptr;     // Double-buffered camera state (Phase 2b)
