@@ -17,11 +17,20 @@
  * - Testability: Can be mocked for unit testing
  *
  * C++ Interface Methods (exposed via globalThis.audio):
+ *
+ * SYNCHRONOUS (C++ internal use only):
  * - createOrGetSound(soundPath, dimension): soundID
  * - startSound(soundID): playbackID
  * - startSoundAdvanced(soundID, isLooped, volume, balance, speed, isPaused): playbackID
  * - stopSound(playbackID): void
  * - setSoundVolume(playbackID, volume): void
+ *
+ * ASYNCHRONOUS (JavaScript → C++ via AudioCommandQueue):
+ * - loadSoundAsync(soundPath): Promise<soundID> via callback
+ * - playSoundAsync(soundID, volume, looped): Promise<playbackID> via callback
+ * - stopSoundAsync(playbackID): Promise<void> via callback
+ * - setVolumeAsync(playbackID, volume): Promise<void> via callback
+ * - update3DPositionAsync(playbackID, x, y, z): Promise<void> via callback
  *
  * Usage Example:
  * ```javascript
@@ -149,9 +158,101 @@ export class AudioInterface
                 startSound: typeof this.cppAudio.startSound === 'function',
                 startSoundAdvanced: typeof this.cppAudio.startSoundAdvanced === 'function',
                 stopSound: typeof this.cppAudio.stopSound === 'function',
-                setSoundVolume: typeof this.cppAudio.setSoundVolume === 'function'
+                setSoundVolume: typeof this.cppAudio.setSoundVolume === 'function',
+                loadSoundAsync: typeof this.cppAudio.loadSoundAsync === 'function',
+                playSoundAsync: typeof this.cppAudio.playSoundAsync === 'function',
+                stopSoundAsync: typeof this.cppAudio.stopSoundAsync === 'function',
+                setVolumeAsync: typeof this.cppAudio.setVolumeAsync === 'function',
+                update3DPositionAsync: typeof this.cppAudio.update3DPositionAsync === 'function'
             } : null
         };
+    }
+
+    // ========================================
+    // ASYNC METHODS (Phase 2: AudioCommandQueue)
+    // ========================================
+    // These methods call C++ async operations and return callbackIds
+    // AudioAPI wraps these with Promise-based interface and callback registry
+
+    /**
+     * Load sound asynchronously via AudioCommandQueue
+     * @param {string} soundPath - Path to the sound file
+     * @returns {number} CallbackID for tracking this operation
+     */
+    loadSoundAsync(soundPath)
+    {
+        if (!this.cppAudio || !this.cppAudio.loadSoundAsync)
+        {
+            console.log('AudioInterface: loadSoundAsync not available');
+            return 0;
+        }
+        return this.cppAudio.loadSoundAsync(soundPath);
+    }
+
+    /**
+     * Play sound asynchronously via AudioCommandQueue
+     * @param {number} soundID - Sound ID from loadSoundAsync
+     * @param {number} volume - Volume (0.0 to 1.0)
+     * @param {boolean} looped - Whether sound should loop
+     * @returns {number} CallbackID for tracking this operation
+     */
+    playSoundAsync(soundID, volume = 1.0, looped = false)
+    {
+        if (!this.cppAudio || !this.cppAudio.playSoundAsync)
+        {
+            console.log('AudioInterface: playSoundAsync not available');
+            return 0;
+        }
+        return this.cppAudio.playSoundAsync(soundID, volume, looped);
+    }
+
+    /**
+     * Stop sound asynchronously via AudioCommandQueue
+     * @param {number} playbackID - Playback ID from playSoundAsync
+     * @returns {number} CallbackID for tracking this operation
+     */
+    stopSoundAsync(playbackID)
+    {
+        if (!this.cppAudio || !this.cppAudio.stopSoundAsync)
+        {
+            console.log('AudioInterface: stopSoundAsync not available');
+            return 0;
+        }
+        return this.cppAudio.stopSoundAsync(playbackID);
+    }
+
+    /**
+     * Set volume asynchronously via AudioCommandQueue
+     * @param {number} playbackID - Playback ID
+     * @param {number} volume - Volume (0.0 to 1.0)
+     * @returns {number} CallbackID for tracking this operation
+     */
+    setVolumeAsync(playbackID, volume)
+    {
+        if (!this.cppAudio || !this.cppAudio.setVolumeAsync)
+        {
+            console.log('AudioInterface: setVolumeAsync not available');
+            return 0;
+        }
+        return this.cppAudio.setVolumeAsync(playbackID, volume);
+    }
+
+    /**
+     * Update 3D position asynchronously via AudioCommandQueue
+     * @param {number} playbackID - Playback ID
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} z - Z coordinate
+     * @returns {number} CallbackID for tracking this operation
+     */
+    update3DPositionAsync(playbackID, x, y, z)
+    {
+        if (!this.cppAudio || !this.cppAudio.update3DPositionAsync)
+        {
+            console.log('AudioInterface: update3DPositionAsync not available');
+            return 0;
+        }
+        return this.cppAudio.update3DPositionAsync(playbackID, x, y, z);
     }
 }
 

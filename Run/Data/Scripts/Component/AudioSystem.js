@@ -4,6 +4,7 @@
 import { Subsystem } from '../Core/Subsystem.js';
 import { EventTypes } from '../Event/EventTypes.js';
 import { AudioInterface } from '../Interface/AudioInterface.js';
+import { audioAPI } from '../Interface/AudioAPI.js';  // Phase 2: Async audio via AudioCommandQueue
 
 /**
  * AudioSystem - JavaScript wrapper for AudioScriptInterface
@@ -60,19 +61,24 @@ export class AudioSystem extends Subsystem {
      * Handle GameStateChanged event (event-driven audio)
      * @param {GameStateChangedEvent} event - Game state change event
      */
-    onGameStateChanged(event) {
+    async onGameStateChanged(event) {
         console.log('XXXAudioSystem: GameStateChanged event received:', event.toString());
 
         // Play click sound when entering GAME state from ATTRACT
         if (event.isEnteringGame()) {
             console.log('AudioSystem: Playing state transition sound (ATTRACT → GAME)');
 
-            const clickSound = this.createOrGetSound("Data/Audio/TestSound.mp3", "Sound2D");
-            if (clickSound !== null && clickSound !== undefined) {
-                this.startSound(clickSound);
-                console.log('AudioSystem: Click sound played successfully');
-            } else {
-                console.log('AudioSystem: Failed to play click sound (sound not loaded)');
+            try {
+                // Phase 2: Use async audio methods via AudioCommandQueue
+                const soundID = await this.loadSoundAsync("Data/Audio/TestSound.mp3");
+                if (soundID !== null && soundID !== undefined) {
+                    const playbackID = await this.playSoundAsync(soundID);
+                    console.log(`AudioSystem: Click sound played successfully (soundID=${soundID}, playbackID=${playbackID})`);
+                } else {
+                    console.log('AudioSystem: Failed to load click sound');
+                }
+            } catch (error) {
+                console.log('AudioSystem: Error playing click sound:', error.message);
             }
         }
 
@@ -332,6 +338,125 @@ export class AudioSystem extends Subsystem {
             console.log('AudioSystem: Cleanup completed');
         } catch (error) {
             console.log('AudioSystem: Error during cleanup:', error);
+        }
+    }
+
+    // ========================================
+    // ASYNC METHODS (Phase 2: AudioCommandQueue)
+    // ========================================
+    // Delegate to audioAPI which handles callback registry and Promise wrapping
+
+    /**
+     * Load sound asynchronously via AudioCommandQueue
+     * @param {string} soundPath - Path to the sound file
+     * @returns {Promise<number>} Promise resolving to soundID
+     */
+    async loadSoundAsync(soundPath) {
+        try {
+            if (!this.isInitialized) {
+                throw new Error('AudioSystem not initialized');
+            }
+
+            // Check cache first
+            const cacheKey = `${soundPath}_Sound2D`;
+            if (this.loadedSounds.has(cacheKey)) {
+                const soundID = this.loadedSounds.get(cacheKey);
+                console.log(`AudioSystem: Using cached sound ID ${soundID} for ${soundPath}`);
+                return soundID;
+            }
+
+            // Load sound through AudioAPI (handles callback registry)
+            const soundID = await audioAPI.loadSoundAsync(soundPath);
+
+            // Phase 2: soundID 0 is VALID (first loaded sound gets ID 0)
+            // Only reject null/undefined (actual failures)
+            if (soundID !== null && soundID !== undefined) {
+                this.loadedSounds.set(cacheKey, soundID);
+                console.log(`AudioSystem: Loaded sound ${soundPath} async with ID ${soundID}`);
+                return soundID;
+            } else {
+                throw new Error(`Failed to load sound ${soundPath}`);
+            }
+        } catch (error) {
+            console.log(`AudioSystem: Error loading sound async ${soundPath}:`, error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Play sound asynchronously via AudioCommandQueue
+     * @param {number} soundID - Sound ID from loadSoundAsync
+     * @param {number} volume - Volume (0.0 to 1.0)
+     * @param {boolean} looped - Whether sound should loop
+     * @returns {Promise<number>} Promise resolving to playbackID
+     */
+    async playSoundAsync(soundID, volume = 1.0, looped = false) {
+        try {
+            if (soundID === null || soundID === undefined) {
+                throw new Error('Invalid sound ID');
+            }
+
+            // Play sound through AudioAPI (handles callback registry)
+            const playbackID = await audioAPI.playSoundAsync(soundID, volume, looped);
+
+            if (playbackID && playbackID > 0) {
+                this.activeSounds.set(playbackID, { soundID, startTime: Date.now(), volume, looped });
+                console.log(`AudioSystem: Started sound ${soundID} async with playback ID ${playbackID}`);
+                return playbackID;
+            } else {
+                throw new Error(`Failed to start sound ${soundID}`);
+            }
+        } catch (error) {
+            console.log(`AudioSystem: Error playing sound async ${soundID}:`, error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Stop sound asynchronously via AudioCommandQueue
+     * @param {number} playbackID - Playback ID from playSoundAsync
+     * @returns {Promise<void>}
+     */
+    async stopSoundAsync(playbackID) {
+        try {
+            if (!playbackID) {
+                throw new Error('Invalid playback ID');
+            }
+
+            // Stop sound through AudioAPI (handles callback registry)
+            await audioAPI.stopSoundAsync(playbackID);
+            this.activeSounds.delete(playbackID);
+            console.log(`AudioSystem: Stopped sound async with playback ID ${playbackID}`);
+        } catch (error) {
+            console.log(`AudioSystem: Error stopping sound async ${playbackID}:`, error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Set volume asynchronously via AudioCommandQueue
+     * @param {number} playbackID - Playback ID
+     * @param {number} volume - Volume (0.0 to 1.0)
+     * @returns {Promise<void>}
+     */
+    async setVolumeAsync(playbackID, volume) {
+        try {
+            if (!playbackID) {
+                throw new Error('Invalid playback ID');
+            }
+
+            // Set volume through AudioAPI (handles callback registry)
+            await audioAPI.setVolumeAsync(playbackID, volume);
+
+            // Update cached info
+            if (this.activeSounds.has(playbackID)) {
+                this.activeSounds.get(playbackID).volume = volume;
+            }
+
+            console.log(`AudioSystem: Set volume async ${volume} for playback ID ${playbackID}`);
+        } catch (error) {
+            console.log(`AudioSystem: Error setting volume async for ${playbackID}:`, error.message);
+            throw error;
         }
     }
 }

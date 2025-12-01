@@ -384,6 +384,14 @@ export class JSEngine {
                     break;
 
                 case 'RESOURCE_LOADED':
+                    // Phase 2: Forward audio async callbacks to AudioAPI
+                    if (globalThis.audioAPI && globalThis.audioAPI.handleCallback) {
+                        globalThis.audioAPI.handleCallback(callbackId, resultId, errorMessage);
+                    } else {
+                        console.log(`JSEngine: AudioAPI callback handler not available for callback ${callbackId}`);
+                    }
+                    break;
+
                 case 'GENERIC':
                 default:
                     console.log(`JSEngine: Unhandled callback type '${type}' for callback ${callbackId}`);
