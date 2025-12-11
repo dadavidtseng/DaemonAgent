@@ -3,10 +3,10 @@
     "shrimp-ProtogameJS3D": {
       "command": "node",
       "args": [
-        "C:\\GitHub-Reference\\mcp-shrimp-task-manager\\dist\\index.js"
+        "C:\\GitHub\\mcp-shrimp-task-manager\\dist\\index.js"
       ],
       "env": {
-        "DATA_DIR": "C:\\GitHub\\ProtogameJS3D\\.claude\\shrimp_data",
+        "DATA_DIR": "C:\\p4\\Personal\\SD\\ProtogameJS3D\\.claude\\shrimp_data",
         "TEMPLATES_USE": "en",
         "ENABLE_GUI": "true",
         "WEB_PORT": "3001"
