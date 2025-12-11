@@ -17,7 +17,7 @@
  * - Testability: Can be mocked for unit testing
  *
  * C++ Interface Methods (exposed via globalThis.debugRenderInterface):
- * Control: setVisible(), setHidden(), clear(), beginFrame(), endFrame()
+ * Control: setVisible(), setHidden(), clear(), clearAll(), beginFrame(), endFrame()
  * Output: renderWorld(camera), renderScreen(camera)
  * World Geometry: addWorldPoint, addWorldLine, addWorldCylinder, addWorldWireSphere,
  *                 addWorldArrow, addWorldText, addBillboardText, addWorldBasis
@@ -86,6 +86,19 @@ export class DebugRenderInterface
             return;
         }
         return this.cppDebugRender.clear();
+    }
+
+    /**
+     * Clear all debug primitives from StateBuffer (use when changing game states)
+     */
+    clearAll()
+    {
+        if (!this.cppDebugRender || !this.cppDebugRender.clearAll)
+        {
+            console.log('DebugRenderInterface: clearAll not available');
+            return;
+        }
+        return this.cppDebugRender.clearAll();
     }
 
     // === OUTPUT METHODS ===
@@ -404,6 +417,7 @@ export class DebugRenderInterface
                 setVisible: typeof this.cppDebugRender.setVisible === 'function',
                 setHidden: typeof this.cppDebugRender.setHidden === 'function',
                 clear: typeof this.cppDebugRender.clear === 'function',
+                clearAll: typeof this.cppDebugRender.clearAll === 'function',
                 beginFrame: typeof this.cppDebugRender.beginFrame === 'function',
                 endFrame: typeof this.cppDebugRender.endFrame === 'function',
                 // Output methods

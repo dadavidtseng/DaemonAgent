@@ -4,6 +4,7 @@
 
 import { Subsystem } from '../Core/Subsystem.js';
 import { DebugRenderInterface } from '../Interface/DebugRenderInterface.js';
+import { CameraAPI } from '../Interface/CameraAPI.js';
 
 /**
  * DebugRenderSystem - JavaScript wrapper for debug visualization
@@ -26,6 +27,7 @@ export class DebugRenderSystem extends Subsystem
 
         this.isInitialized = false;
         this.debugRenderInterface = new DebugRenderInterface();
+        this.cameraAPI = new CameraAPI();  // Phase 5: Use CameraAPI abstraction instead of direct globalThis access
 
         console.log('DebugRenderSystem: Module loaded (Phase 4 ES6)');
         console.log(`DebugRenderSystem: this.id = ${this.id}, this.priority = ${this.priority}`);
@@ -118,6 +120,14 @@ export class DebugRenderSystem extends Subsystem
         return this.debugRenderInterface.clear();
     }
 
+    /**
+     * Clear all debug primitives from StateBuffer (use when changing game states)
+     */
+    clearAll()
+    {
+        return this.debugRenderInterface.clearAll();
+    }
+
     // === OUTPUT METHODS ===
 
     /**
@@ -134,15 +144,14 @@ export class DebugRenderSystem extends Subsystem
      */
     renderWorld(cameraId)
     {
-        // M4-T8: Look up camera handle from camera ID
-        // getHandle is exposed through globalThis.camera (CameraScriptInterface)
-        if (!globalThis.camera || !globalThis.camera.getHandle)
+        // Phase 5: Use CameraAPI abstraction instead of direct globalThis access
+        if (!this.cameraAPI || !this.cameraAPI.isAvailable())
         {
-            console.log('DebugRenderSystem.renderWorld: camera.getHandle not available');
+            console.log('DebugRenderSystem.renderWorld: CameraAPI not available');
             return;
         }
 
-        const cameraHandle = globalThis.camera.getHandle(cameraId);
+        const cameraHandle = this.cameraAPI.getHandle(cameraId);
         if (cameraHandle === 0)
         {
             console.log(`DebugRenderSystem.renderWorld: Camera ${cameraId} not found`);
@@ -158,15 +167,14 @@ export class DebugRenderSystem extends Subsystem
      */
     renderScreen(cameraId)
     {
-        // M4-T8: Look up camera handle from camera ID
-        // getHandle is exposed through globalThis.camera (CameraScriptInterface)
-        if (!globalThis.camera || !globalThis.camera.getHandle)
+        // Phase 5: Use CameraAPI abstraction instead of direct globalThis access
+        if (!this.cameraAPI || !this.cameraAPI.isAvailable())
         {
-            console.log('DebugRenderSystem.renderScreen: camera.getHandle not available');
+            console.log('DebugRenderSystem.renderScreen: CameraAPI not available');
             return;
         }
 
-        const cameraHandle = globalThis.camera.getHandle(cameraId);
+        const cameraHandle = this.cameraAPI.getHandle(cameraId);
         if (cameraHandle === 0)
         {
             console.log(`DebugRenderSystem.renderScreen: Camera ${cameraId} not found`);

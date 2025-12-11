@@ -496,6 +496,31 @@ export class CameraAPI
         }
     }
 
+    /**
+     * Get camera handle for debug rendering
+     * @param {number} cameraId - Camera ID
+     * @returns {number} Camera handle (pointer as number) for debug rendering, 0 if failed
+     */
+    getHandle(cameraId)
+    {
+        if (!this.cppCamera || !this.cppCamera.getHandle)
+        {
+            console.log('CameraAPI: ERROR - getHandle not available');
+            return 0;
+        }
+
+        try
+        {
+            // Direct C++ call - no flattening needed (single parameter)
+            return this.cppCamera.getHandle(cameraId);
+        }
+        catch (error)
+        {
+            console.log('CameraAPI: ERROR - getHandle exception:', error);
+            return 0;
+        }
+    }
+
     //----------------------------------------------------------------------------------------------------
     // Utility Methods
     //----------------------------------------------------------------------------------------------------

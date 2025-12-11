@@ -2,7 +2,7 @@
 // JSGame.js - Game System Coordinator
 //----------------------------------------------------------------------------------------------------
 
-import {CppBridgeSystem} from './Component/CppBridgeSystem.js';
+// import {CppBridgeSystem} from './Component/CppBridgeSystem.js';  // DISABLED: Deprecated
 import {InputSystem} from './Component/InputSystem.js';
 import {AudioSystem} from './Component/AudioSystem.js';
 import {DebugRenderSystem} from './Component/DebugRenderSystem.js';
@@ -142,8 +142,8 @@ export class JSGame
     {
         console.log('JSGame: Creating component instances...');
 
-        // Core C++ bridge (priority: 0)
-        this.cppBridge = new CppBridgeSystem(this.engine);
+        // Core C++ bridge (priority: 0) - DISABLED: Deprecated system
+        // this.cppBridge = new CppBridgeSystem(this.engine);
 
         // Phase 2b: CameraSystem removed - camera management now via CameraAPI
         // this.cameraSystem = new CameraSystem();
@@ -175,27 +175,36 @@ export class JSGame
         this.screenCamera = null;  // Will be set in async callback
         this.cameraAPI = new CameraAPI();
 
-        console.log('JSGame: Creating screen camera (Phase 2b CameraAPI)...');
+        console.log('[ScreenCamera] ===== INITIATING SCREEN CAMERA CREATION =====');
+        console.log('[ScreenCamera] Initial screenCamera value: null (async callback will set it later)');
+
         this.cameraAPI.createCamera(
             [0, 0, 0],  // position (not used for screen cameras)
             [0, 0, 0],  // orientation (not used for screen cameras)
             'screen',   // type: orthographic 2D camera for UI
             (cameraId) =>
             {
+                console.log('[ScreenCamera] ===== ASYNC CALLBACK TRIGGERED =====');
+                console.log('[ScreenCamera] Received cameraId from C++:', cameraId);
+
                 if (cameraId === 0)
                 {
-                    console.log('JSGame: ERROR - Screen camera creation failed!');
+                    console.log('[ScreenCamera] ERROR - Screen camera creation FAILED! cameraId = 0');
                     return;
                 }
 
+                console.log('[ScreenCamera] Setting this.screenCamera =', cameraId);
                 this.screenCamera = cameraId;
-                console.log('JSGame: Screen camera created with ID:', cameraId);
+                console.log('[ScreenCamera] Screen camera NOW AVAILABLE - this.screenCamera =', this.screenCamera);
 
                 // Note: Phase 2b CameraAPI auto-configures orthographic view for 'screen' type
                 // No need for manual setOrthographicView/setNormalizedViewport calls
-                console.log('JSGame: Screen camera ready (auto-configured for UI rendering)');
+                console.log('[ScreenCamera] Screen camera fully configured and ready for rendering');
+                console.log('[ScreenCamera] ===== SCREEN CAMERA READY =====');
             }
         );
+
+        console.log('[ScreenCamera] createCamera() call completed (callback will fire later asynchronously)');
 
         // === Phase 4: Game entities (matching C++ architecture) ===
         // PlayerEntity (like C++ Player* m_player)
@@ -497,7 +506,8 @@ export class JSGame
         console.log('(JSGame::registerGameSystems)(start) - Phase 4 Entity Structure');
 
         // Register subsystems using Subsystem pattern (null, componentInstance)
-        this.engine.registerSystem(null, this.cppBridge);       // Priority: 0
+        // DISABLED: CppBridgeSystem is deprecated - rendering now handled by C++ engine directly
+        // this.engine.registerSystem(null, this.cppBridge);       // Priority: 0
         // Phase 2b: CameraSystem removed - camera management now via CameraAPI
         // this.engine.registerSystem(null, this.cameraSystem);    // Priority: 3
         this.engine.registerSystem(null, this.audioSystem);     // Priority: 5
@@ -597,10 +607,13 @@ export class JSGame
                     this.engine.setSystemEnabled('gameRender', true);
                 }
 
-                if (input.wasKeyJustPressed(KEYCODE_ESC))
-                {
-                    game.appRequestQuit();
-                }
+                // if (input.wasKeyJustPressed(KEYCODE_ESC))
+                // {
+                //     if (this.gameState === GameState.ATTRACT)
+                //     {
+                //         game.appRequestQuit();
+                //     }
+                // }
             },
             render: () =>
             {
@@ -620,24 +633,33 @@ export class JSGame
             {
                 renderFrameCount++;
 
+                // === DEBUG LOG: Render entry point ===
+                console.log(`[gameRender] Frame ${renderFrameCount}: ENTERED render() - gameState = ${this.gameState}, screenCamera = ${this.screenCamera}`);
+
                 // Add game mode-specific screen text FIRST (before any early returns)
                 // This ensures text is rendered in both ATTRACT and GAME modes
                 if (this.gameState === GameState.ATTRACT)
                 {
+                    console.log(`[gameRender] Frame ${renderFrameCount}: ATTRACT mode detected - Adding "Attract" text`);
+
                     // ATTRACT mode: Show "Attract" text
                     this.debugRenderSystem.addScreenText(
-                        "Attract",
+                        "AttractXXX",
                         10,             // x (10 pixels from left)
                         10,             // y (10 pixels from bottom)
                         30.0,           // size (larger for attract mode)
                         Vec2.ZERO.x,    // alignX
                         Vec2.ZERO.y,    // alignY
-                        0,             // duration (-1 = infinite, persists until cleared)
+                        0,             // duration (0 = this frame only, re-added every frame)
                         255, 255, 0, 255  // Yellow color
                     );
+
+                    console.log(`[gameRender] Frame ${renderFrameCount}: "Attract" text added to buffer`);
                 }
                 else if (this.gameState === GameState.GAME)
                 {
+                    console.log(`[gameRender] Frame ${renderFrameCount}: GAME mode detected - Game text code is COMMENTED OUT`);
+
                     // GAME mode: Show "Game" text
                     this.debugRenderSystem.addScreenText(
                         "Game",
@@ -653,17 +675,30 @@ export class JSGame
 
                 // Render screen text using screen camera (works in both modes)
                 // Check if screen camera is ready (async creation may not be complete yet)
+                console.log(`[gameRender] Frame ${renderFrameCount}: Checking screenCamera availability - screenCamera = ${this.screenCamera}`);
+
                 if (this.screenCamera !== null)
                 {
+                    console.log(`[gameRender] Frame ${renderFrameCount}: CALLING renderScreen(${this.screenCamera})`);
                     this.debugRenderSystem.renderScreen(this.screenCamera);
+                    console.log(`[gameRender] Frame ${renderFrameCount}: renderScreen() completed`);
+                }
+                else
+                {
+                    console.log(`[gameRender] Frame ${renderFrameCount}: SKIPPING renderScreen - screenCamera is NULL`);
                 }
 
                 // Only render JavaScript entities when in GAME mode
                 // (CppBridgeSystem handles ATTRACT mode rendering)
+                console.log(`[gameRender] Frame ${renderFrameCount}: Checking if should early return - gameState = ${this.gameState}`);
+
                 if (this.gameState !== GameState.GAME)
                 {
+                    console.log(`[gameRender] Frame ${renderFrameCount}: EARLY RETURN - Not in GAME mode (gameState = ${this.gameState})`);
                     return;
                 }
+
+                console.log(`[gameRender] Frame ${renderFrameCount}: Continuing to world rendering - in GAME mode`);
 
                 // Check global shouldRender flag (F1 toggle functionality)
                 let shouldRenderValue = true;
@@ -754,15 +789,26 @@ export class JSGame
      */
     setGameState(newState)
     {
+        console.log(`[setGameState] ===== STATE TRANSITION REQUESTED =====`);
+        console.log(`[setGameState] Old state: ${this.gameState}`);
+        console.log(`[setGameState] New state: ${newState}`);
+
         const validStates = Object.values(GameState);  // Change this line
         if (!validStates.includes(newState))
         {
-            console.log(`JSGame: Invalid game state '${newState}'`);
+            console.log(`[setGameState] ERROR: Invalid game state '${newState}'`);
             return;
         }
 
-        console.log(`JSGame: Game state changed from ${this.gameState} to ${newState}`);
+        console.log(`[setGameState] Changing gameState variable from ${this.gameState} to ${newState}`);
         this.gameState = newState;
+        console.log(`[setGameState] gameState variable updated: this.gameState = ${this.gameState}`);
+
+        // No need to clear debug render system - primitives with duration=0 auto-expire after one frame
+        // The auto-expiration logic in UpdateDebugPrimitiveExpiration() handles cleanup automatically
+        // This matches the original DebugRenderSystem behavior
+
+        console.log(`[setGameState] ===== STATE TRANSITION COMPLETE =====`);
     }
 
     /**
