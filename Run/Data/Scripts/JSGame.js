@@ -634,17 +634,17 @@ export class JSGame
                 renderFrameCount++;
 
                 // === DEBUG LOG: Render entry point ===
-                console.log(`[gameRender] Frame ${renderFrameCount}: ENTERED render() - gameState = ${this.gameState}, screenCamera = ${this.screenCamera}`);
+                // console.log(`[gameRender] Frame ${renderFrameCount}: ENTERED render() - gameState = ${this.gameState}, screenCamera = ${this.screenCamera}`);
 
                 // Add game mode-specific screen text FIRST (before any early returns)
                 // This ensures text is rendered in both ATTRACT and GAME modes
                 if (this.gameState === GameState.ATTRACT)
                 {
-                    console.log(`[gameRender] Frame ${renderFrameCount}: ATTRACT mode detected - Adding "Attract" text`);
+                    // console.log(`[gameRender] Frame ${renderFrameCount}: ATTRACT mode detected - Adding "Attract" text`);
 
                     // ATTRACT mode: Show "Attract" text
                     this.debugRenderSystem.addScreenText(
-                        "AttractXXX",
+                        "AttractXXXXX",
                         10,             // x (10 pixels from left)
                         10,             // y (10 pixels from bottom)
                         30.0,           // size (larger for attract mode)
@@ -654,11 +654,11 @@ export class JSGame
                         255, 255, 0, 255  // Yellow color
                     );
 
-                    console.log(`[gameRender] Frame ${renderFrameCount}: "Attract" text added to buffer`);
+                    // console.log(`[gameRender] Frame ${renderFrameCount}: "Attract" text added to buffer`);
                 }
                 else if (this.gameState === GameState.GAME)
                 {
-                    console.log(`[gameRender] Frame ${renderFrameCount}: GAME mode detected - Game text code is COMMENTED OUT`);
+                    // console.log(`[gameRender] Frame ${renderFrameCount}: GAME mode detected - Game text code is COMMENTED OUT`);
 
                     // GAME mode: Show "Game" text
                     this.debugRenderSystem.addScreenText(
@@ -675,30 +675,30 @@ export class JSGame
 
                 // Render screen text using screen camera (works in both modes)
                 // Check if screen camera is ready (async creation may not be complete yet)
-                console.log(`[gameRender] Frame ${renderFrameCount}: Checking screenCamera availability - screenCamera = ${this.screenCamera}`);
+                // console.log(`[gameRender] Frame ${renderFrameCount}: Checking screenCamera availability - screenCamera = ${this.screenCamera}`);
 
                 if (this.screenCamera !== null)
                 {
-                    console.log(`[gameRender] Frame ${renderFrameCount}: CALLING renderScreen(${this.screenCamera})`);
+                    // console.log(`[gameRender] Frame ${renderFrameCount}: CALLING renderScreen(${this.screenCamera})`);
                     this.debugRenderSystem.renderScreen(this.screenCamera);
-                    console.log(`[gameRender] Frame ${renderFrameCount}: renderScreen() completed`);
+                    // console.log(`[gameRender] Frame ${renderFrameCount}: renderScreen() completed`);
                 }
                 else
                 {
-                    console.log(`[gameRender] Frame ${renderFrameCount}: SKIPPING renderScreen - screenCamera is NULL`);
+                    // console.log(`[gameRender] Frame ${renderFrameCount}: SKIPPING renderScreen - screenCamera is NULL`);
                 }
 
                 // Only render JavaScript entities when in GAME mode
                 // (CppBridgeSystem handles ATTRACT mode rendering)
-                console.log(`[gameRender] Frame ${renderFrameCount}: Checking if should early return - gameState = ${this.gameState}`);
+                // console.log(`[gameRender] Frame ${renderFrameCount}: Checking if should early return - gameState = ${this.gameState}`);
 
                 if (this.gameState !== GameState.GAME)
                 {
-                    console.log(`[gameRender] Frame ${renderFrameCount}: EARLY RETURN - Not in GAME mode (gameState = ${this.gameState})`);
+                    // console.log(`[gameRender] Frame ${renderFrameCount}: EARLY RETURN - Not in GAME mode (gameState = ${this.gameState})`);
                     return;
                 }
 
-                console.log(`[gameRender] Frame ${renderFrameCount}: Continuing to world rendering - in GAME mode`);
+                // console.log(`[gameRender] Frame ${renderFrameCount}: Continuing to world rendering - in GAME mode`);
 
                 // Check global shouldRender flag (F1 toggle functionality)
                 let shouldRenderValue = true;
