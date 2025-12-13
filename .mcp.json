@@ -1,18 +1,18 @@
 {
   "mcpServers": {
-    "shrimp-ProtogameJS3D": {
+    "shrimp-DaemonAgent": {
       "command": "node",
       "args": [
         "C:\\GitHub\\mcp-shrimp-task-manager\\dist\\index.js"
       ],
       "env": {
-        "DATA_DIR": "C:\\p4\\Personal\\SD\\ProtogameJS3D\\.claude\\shrimp_data",
+        "DATA_DIR": "C:\\p4\\Personal\\SD\\DaemonAgent\\.claude\\shrimp_data",
         "TEMPLATES_USE": "en",
         "ENABLE_GUI": "true",
         "WEB_PORT": "3001"
       }
     },
-    "spec-workflow-ProtogameJS3D": {
+    "spec-workflow-DaemonAgent": {
       "command": "npx",
       "args": [
         "-y",

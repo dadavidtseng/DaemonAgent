@@ -33,7 +33,7 @@
     <ProjectGuid>{1c6046c0-acfa-4ab7-b8d2-670ad463b3ef}</ProjectGuid>
     <RootNamespace>Game</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>ProtogameJS3D</ProjectName>
+    <ProjectName>DaemonAgent</ProjectName>
   </PropertyGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
   <!-- Module Configuration -->
