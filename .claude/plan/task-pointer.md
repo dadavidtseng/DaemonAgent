@@ -169,6 +169,7 @@ Merged task combining template-based game creation system with comprehensive AI 
 **Timeline**: Oct 14 - Oct 27, 2025 (14 days, 1 day overdue)
 **Completion**: 9/11 tasks (81.8%), 62h/70h (88.6%)
 **Status**: ✅ **FUNCTIONALLY COMPLETE** (2 tasks deferred to M5)
+**Archive**: ✅ [M4-T8 Archive Complete](ARCHIVE/M4-T8-Command-Queue-Refactoring-Archive.md)
 
 ### Key Achievements
 ✅ **KĀDI Integration Complete**
@@ -190,8 +191,13 @@ Merged task combining template-based game creation system with comprehensive AI 
 - All tools tested and verified
 
 ✅ **Async Architecture Refactor Complete** (M4-T8 - 12h)
+- **[📚 View Full Archive](ARCHIVE/M4-T8-Command-Queue-Refactoring-Archive.md)**
 - Entity/Camera systems moved to Engine repository
 - StateBuffer template for async communication
+- Lock-free SPSC render command queue
+- Double-buffered entity state infrastructure
+- CameraStateBuffer for async camera management
+- Multi-threaded resource loading
 - HighLevelEntityAPI facade removed (SOLID: Dependency Inversion)
 - Cross-repository code reusability achieved
 
@@ -217,9 +223,11 @@ Merged task combining template-based game creation system with comprehensive AI 
 2. ✅ **JavaScript API well-designed** - Hot-reload and tool systems working smoothly
 3. ⚠️ **MCP integration underestimated** - Requires dedicated focus time
 4. ✅ **Task merging beneficial** - M4-T10 + M4-T11 → M5-T1 creates better flow
+5. ✅ **Documentation essential** - Archiving M4-T8 patterns for future reference
 
 ### M4 Documentation
 - **Full M4 Planning**: [M4/development.md](M4/development.md)
+- **M4-T8 Archive**: [Command Queue Refactoring Archive](ARCHIVE/M4-T8-Command-Queue-Refactoring-Archive.md)
 - **Notion Milestone**: https://www.notion.so/Thesis-Proposal-Plan-262a1234359080c1bce0caf15245b6fc
 
 ---
