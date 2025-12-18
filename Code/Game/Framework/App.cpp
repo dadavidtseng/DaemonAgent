@@ -161,8 +161,8 @@ void App::Startup()
     DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - Main camera initialized with 90° CCW Z-rotation camera-to-render transform");
 
     g_game = new Game();
-    SetupScriptingBindings();
     g_game->PostInit();
+    SetupScriptingBindings();
 
     // Phase 1: Submit JavaScript worker thread job AFTER game and script initialization
     m_jsGameLogicJob = new JSGameLogicJob(g_game, m_renderCommandQueue, m_entityStateBuffer, m_callbackQueue);

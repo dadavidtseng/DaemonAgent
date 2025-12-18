@@ -10,7 +10,6 @@
 #include "Engine/Script/IJSGameLogicContext.hpp"
 
 #include <atomic>
-#include <cstdint>
 
 //----------------------------------------------------------------------------------------------------
 class Game : public IJSGameLogicContext
@@ -37,11 +36,11 @@ public:
 
     // Execute JavaScript update logic on worker thread
     // Called by JSGameLogicJob from worker thread
-    void UpdateJSWorkerThread(float deltaTime, EntityStateBuffer* entityBuffer, RenderCommandQueue* commandQueue) override;
+    void UpdateJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue) override;
 
     // Execute JavaScript render logic on worker thread
     // Called by JSGameLogicJob from worker thread
-    void RenderJSWorkerThread(float deltaTime, CameraStateBuffer* cameraBuffer, RenderCommandQueue* commandQueue) override;
+    void RenderJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue) override;
 
     // Handle JavaScript exception from worker thread
     // Called by JSGameLogicJob when JavaScript errors occur

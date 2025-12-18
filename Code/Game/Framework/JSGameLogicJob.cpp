@@ -270,7 +270,7 @@ void JSGameLogicJob::ExecuteJavaScriptFrame()
         float const deltaTime = static_cast<float>(Clock::GetSystemClock().GetDeltaSeconds());
 
         // Execute JavaScript update on worker thread with proper parameters
-        m_context->UpdateJSWorkerThread(deltaTime, m_entityBuffer, m_commandQueue);
+        m_context->UpdateJSWorkerThread(deltaTime, m_commandQueue);
 
         // Phase 3.2: Check for JavaScript exceptions after update
         if (tryCatch.HasCaught())
@@ -281,7 +281,7 @@ void JSGameLogicJob::ExecuteJavaScriptFrame()
 
         // Execute JavaScript render logic on worker thread
         // This calls JSEngine.render() which submits render commands
-        m_context->RenderJSWorkerThread(deltaTime, nullptr, m_commandQueue);
+        m_context->RenderJSWorkerThread(deltaTime, m_commandQueue);
 
         // Phase 3.2: Check for JavaScript exceptions after render
         if (tryCatch.HasCaught())

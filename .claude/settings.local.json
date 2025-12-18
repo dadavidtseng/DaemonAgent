@@ -30,7 +30,7 @@
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
-    "shrimp-ProtogameJS3D",
-    "spec-workflow-ProtogameJS3D"
+    "shrimp-DaemonAgent",
+    "spec-workflow-DaemonAgent"
   ]
 }

@@ -11,23 +11,19 @@
 //----------------------------------------------------------------------------------------------------
 #include "Game/Gameplay/Game.hpp"
 //----------------------------------------------------------------------------------------------------
-#include "Game/Framework/App.hpp"
-//----------------------------------------------------------------------------------------------------
-#include <any>
-#include <typeinfo>
-//----------------------------------------------------------------------------------------------------
-#include "Engine/Audio/AudioSystem.hpp"
 #include "Engine/Core/Clock.hpp"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Core/ErrorWarningAssert.hpp"
 #include "Engine/Core/LogSubsystem.hpp"
 #include "Engine/Platform/Window.hpp"
-#include "Engine/Renderer/DebugRenderSystem.hpp"
-#include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Resource/ResourceSubsystem.hpp"
 #include "Engine/Script/ModuleLoader.hpp"
 #include "Engine/Script/ScriptSubsystem.hpp"
 #include "ThirdParty/imgui/imgui.h"
+//----------------------------------------------------------------------------------------------------
+#include <any>
+#include <typeinfo>
+
 //----------------------------------------------------------------------------------------------------
 Game::Game()
 {
@@ -580,7 +576,7 @@ void Game::InitializeJavaScriptFramework()
 //   - entityBuffer: Write to back buffer only (safe)
 //   - commandQueue: Lock-free SPSC queue (safe)
 //----------------------------------------------------------------------------------------------------
-void Game::UpdateJSWorkerThread(float deltaTime, EntityStateBuffer* entityBuffer, RenderCommandQueue* commandQueue)
+void Game::UpdateJSWorkerThread(float deltaTime , RenderCommandQueue* commandQueue)
 {
     // Phase 2.3: Execute JavaScript update logic on worker thread
     // This is called from JSGameLogicJob worker thread with v8::Locker already acquired
@@ -635,7 +631,7 @@ void Game::UpdateJSWorkerThread(float deltaTime, EntityStateBuffer* entityBuffer
 //   - cameraBuffer: Write to back buffer only (safe)
 //   - commandQueue: Lock-free SPSC queue (safe)
 //----------------------------------------------------------------------------------------------------
-void Game::RenderJSWorkerThread(float deltaTime, CameraStateBuffer* cameraBuffer, RenderCommandQueue* commandQueue)
+void Game::RenderJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue)
 {
     // Phase 2.3: Execute JavaScript render logic on worker thread
     // This is called from JSGameLogicJob worker thread with v8::Locker already acquired
