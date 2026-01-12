@@ -2,15 +2,139 @@
 
 ## Introduction
 
-The GenericCommand system provides a flexible, runtime-extensible command queue architecture for the ProtogameJS3D dual-language game engine. This feature enables AI agents to dynamically create and submit new command types from JavaScript without requiring C++ recompilation, supporting the vision of autonomous multi-agent game development.
+The GenericCommand system provides a flexible, runtime-extensible command queue architecture for the DaemonAgent dual-language game engine. This feature enables AI agents to dynamically create and submit new command types from JavaScript without requiring C++ recompilation, supporting the vision of autonomous multi-agent game development.
 
 The current typed command system (CallbackQueue, ResourceCommandQueue, RenderCommandQueue, AudioCommandQueue) requires C++ code changes for each new command type, limiting AI agent autonomy. The GenericCommand system removes this bottleneck while maintaining the engine's performance and thread-safety guarantees.
 
 This is a **two-phase migration**: Phase 1 introduces GenericCommand alongside existing typed commands; Phase 2 migrates existing systems to GenericCommand and removes typed command infrastructure if successful.
 
+## How the Generic Command System Works
+
+### High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     JavaScript Thread (AI Agent)                 │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │ CommandQueue.submit("SpawnEntity", {pos: {x: 5}}, "agent") │ │
+│  └──────────────────────┬─────────────────────────────────────┘ │
+└─────────────────────────┼───────────────────────────────────────┘
+                          │ (1) Submit with V8 object payload
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                GenericCommandQueue (Lock-Free SPSC)              │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │ GenericCommand {                                           │ │
+│  │   type: "SpawnEntity"                                      │ │
+│  │   payload: v8::Persistent<v8::Object> (ref to JS object)  │ │
+│  │   agentId: "agent"                                         │ │
+│  │   timestamp: 1234567890                                    │ │
+│  │ }                                                          │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │ (2) ConsumeAll() in C++ main thread
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              GenericCommandExecutor (Handler Registry)           │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │ std::unordered_map<string, HandlerFunc>                   │ │
+│  │   "SpawnEntity"    → [](v8::Local<v8::Object> payload) { │ │
+│  │                         auto pos = payload->Get("pos");   │ │
+│  │                         CreateEntity(pos);                │ │
+│  │                       }                                   │ │
+│  │   "UpdatePhysics"  → [](payload) { ... }                 │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │ (3) Execute handler with payload
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    C++ Game Systems (Engine)                     │
+│  EntitySystem, PhysicsSystem, AudioSystem, etc.                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Execution Flow
+
+**Step 1: JavaScript Submission**
+```javascript
+// AI agent submits command from JavaScript
+CommandQueue.submit(
+  "SpawnEntity",                    // Command type (string)
+  { position: { x: 5, y: 0, z: 3 }, // Payload (JavaScript object)
+    prefabName: "Enemy" },
+  "planner-agent"                   // Agent ID for tracking
+);
+```
+
+**Step 2: C++ Queue Storage**
+```cpp
+// GenericCommand stored in lock-free ring buffer
+struct GenericCommand {
+  String type;                       // "SpawnEntity"
+  v8::Persistent<v8::Object> payload; // Persistent handle to JS object
+  String agentId;                    // "planner-agent"
+  uint64_t timestamp;                // 1234567890
+};
+// V8 Persistent handle keeps JS object alive until command executes
+```
+
+**Step 3: C++ Handler Execution**
+```cpp
+// Main thread processes commands (App::Update)
+commandQueue->ConsumeAll([&](GenericCommand const& cmd) {
+  auto handler = handlerRegistry.GetHandler(cmd.type);
+  if (handler) {
+    v8::Local<v8::Object> payload = cmd.payload.Get(isolate);
+    handler(payload);  // Execute registered C++ handler
+  }
+});
+```
+
+### Key Benefits
+
+1. **Runtime Extensibility**: New command types added from JavaScript without C++ recompilation
+2. **AI Agent Autonomy**: Agents define custom commands for new game mechanics on-the-fly
+3. **Thread-Safe**: Lock-free SPSC queue + V8 Persistent handles prevent race conditions
+4. **Type Flexibility**: V8 object payloads support arbitrary JSON-like structures
+5. **Performance**: <10µs submission latency, 1000+ commands/frame throughput
+
+### Comparison: Typed vs Generic Commands
+
+| Aspect | Typed Commands (Current) | GenericCommand (New) |
+|--------|-------------------------|----------------------|
+| **Adding New Command** | Edit C++ enum + struct + recompile | JavaScript: `CommandQueue.submit("NewType", {...})` |
+| **Handler Registration** | Hardcoded in C++ switch statement | Runtime: `RegisterHandler("NewType", handler)` |
+| **Payload Type** | Fixed C++ struct per command | Flexible V8 object (JSON-like) |
+| **AI Agent Autonomy** | ❌ Requires C++ developer | ✅ Fully autonomous |
+| **Hot-Reload Support** | ❌ C++ recompilation breaks | ✅ Handlers re-register on reload |
+
+### Example Use Case: AI Agent Creating Custom Command
+
+```javascript
+// AI Planner Agent: "I need a command to spawn waves of enemies"
+// WITHOUT GenericCommand: Ask human to write C++, wait hours/days
+// WITH GenericCommand: Define and use immediately
+
+// Step 1: Register handler (in C++ or via script binding)
+GenericCommandExecutor.RegisterHandler("SpawnWave", (payload) => {
+  const { count, enemyType, formation } = payload;
+  for (let i = 0; i < count; i++) {
+    const pos = CalculateFormationPos(i, formation);
+    EntitySystem.CreateEntity(enemyType, pos);
+  }
+});
+
+// Step 2: AI agent immediately uses new command
+CommandQueue.submit("SpawnWave", {
+  count: 10,
+  enemyType: "Zombie",
+  formation: "Circle"
+}, "planner-agent");
+```
+
 ## Alignment with Product Vision
 
-This feature directly supports ProtogameJS3D's core vision as outlined in the project documentation:
+This feature directly supports DaemonAgent's core vision as outlined in the project documentation:
 
 - **Dual-Language Architecture**: Strengthens JavaScript's role as the "Agent API Surface" by enabling runtime command extensibility
 - **AI-Driven Development**: Empowers AI agents to autonomously extend game functionality through custom commands
