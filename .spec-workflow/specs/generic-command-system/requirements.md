@@ -96,7 +96,7 @@ commandQueue->ConsumeAll([&](GenericCommand const& cmd) {
 2. **AI Agent Autonomy**: Agents define custom commands for new game mechanics on-the-fly
 3. **Thread-Safe**: Lock-free SPSC queue + V8 Persistent handles prevent race conditions
 4. **Type Flexibility**: V8 object payloads support arbitrary JSON-like structures
-5. **Performance**: <10µs submission latency, 1000+ commands/frame throughput
+5. **Performance**: Less than 10µs submission latency, 1000+ commands/frame throughput
 
 ### Comparison: Typed vs Generic Commands
 
