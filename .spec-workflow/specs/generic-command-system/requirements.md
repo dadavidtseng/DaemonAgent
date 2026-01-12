@@ -132,6 +132,192 @@ CommandQueue.submit("SpawnWave", {
 }, "planner-agent");
 ```
 
+### Handler Implementation: C++ vs JavaScript
+
+The GenericCommand system supports **two handler implementation approaches**, each with different trade-offs:
+
+#### Approach A: Static C++ Handlers (Performance-Critical)
+
+**When to use**: Performance-critical operations, low-level engine systems
+
+```cpp
+// In App::Initialize() or GameSubsystem.cpp (C++ side)
+void InitializeGenericCommandHandlers() {
+    // Register C++ lambda as handler (compiled, not hot-reloadable)
+    GenericCommandExecutor::RegisterHandler("SpawnEntity",
+        [](v8::Local<v8::Object> payload, v8::Isolate* isolate) {
+            // Direct C++ implementation - maximum performance
+            auto pos = V8Helper::GetVector3(payload, "position", isolate);
+            auto prefab = V8Helper::GetString(payload, "prefabName", isolate);
+
+            // Call C++ subsystems directly (no ScriptInterface overhead)
+            EntityID id = EntitySystem::CreateEntity(prefab, pos);
+            PhysicsSystem::AddRigidBody(id);
+        }
+    );
+}
+```
+
+**Characteristics**:
+- ✅ **Performance**: Direct C++ execution, no JavaScript overhead
+- ✅ **Type Safety**: C++ compile-time type checking
+- ❌ **Not Hot-Reloadable**: Requires C++ recompilation
+- ❌ **No AI Agent Autonomy**: Needs C++ developer
+
+---
+
+#### Approach B: Dynamic JavaScript Handlers (AI Agent Autonomy)
+
+**When to use**: AI-generated commands, rapid prototyping, game logic
+
+```javascript
+// In JSGame.js (JavaScript side) - fully hot-reloadable!
+class CustomCommandHandlers {
+    static initialize() {
+        // Register JavaScript function as handler (runtime, hot-reloadable)
+        CommandQueue.registerHandler("SpawnEntity", (payload) => {
+            // JavaScript implementation - calls existing ScriptInterfaces
+            const { position, prefabName } = payload;
+
+            // Use existing C++/JS bridges (EntityScriptInterface, etc.)
+            const entityId = EntityAPI.createEntity(prefabName, position);
+            PhysicsAPI.addRigidBody(entityId);
+
+            // AI agents can add custom logic here
+            console.log(`AI spawned entity: ${prefabName} at`, position);
+        });
+
+        // AI agents can register new handlers at runtime
+        CommandQueue.registerHandler("CustomAICommand", (payload) => {
+            // Fully autonomous AI-defined behavior
+            // ...
+        });
+    }
+}
+```
+
+**Characteristics**:
+- ✅ **Hot-Reloadable**: Changes apply without C++ recompilation
+- ✅ **AI Agent Autonomy**: Agents define handlers at runtime
+- ✅ **Rapid Prototyping**: Iterate on game logic in seconds
+- ❌ **Slower**: JavaScript → C++ call overhead per subsystem call
+
+---
+
+### C++/JavaScript Connection Architecture
+
+**Question**: Is ScriptInterface the only connection between C++ and JavaScript?
+
+**Answer**: **No** - there are **multiple connection layers** that work together:
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                    JavaScript Layer (Hot-Reloadable)           │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │ // AI agent submits command                             │  │
+│  │ CommandQueue.submit("SpawnEntity", {...}, "agent-id")   │  │
+│  │                                                          │  │
+│  │ // AI agent registers handler                           │  │
+│  │ CommandQueue.registerHandler("SpawnEntity", (payload) => {│ │
+│  │   EntityAPI.createEntity(...);  // ← Calls existing API │  │
+│  │ });                                                      │  │
+│  └───────────────────┬─────────────────────────────────────┘  │
+└──────────────────────┼────────────────────────────────────────┘
+                       │ (1) V8 C++ Bindings
+                       ▼
+┌───────────────────────────────────────────────────────────────┐
+│        Layer 1: GenericCommandScriptInterface (C++)            │
+│  • Exposes CommandQueue.submit() to JavaScript                │
+│  • Exposes CommandQueue.registerHandler() to JavaScript       │
+│  • Converts V8::Object → GenericCommand struct                │
+└───────────────────┬───────────────────────────────────────────┘
+                    │ (2) Submits to queue
+                    ▼
+┌───────────────────────────────────────────────────────────────┐
+│           GenericCommandQueue (Lock-Free SPSC)                 │
+│  Ring buffer with V8::Persistent<V8::Object> payloads         │
+└───────────────────┬───────────────────────────────────────────┘
+                    │ (3) ConsumeAll in main thread
+                    ▼
+┌───────────────────────────────────────────────────────────────┐
+│              GenericCommandExecutor (C++)                      │
+│  • Handler registry (maps command type → handler function)    │
+│  • Executes registered handler (C++ or JavaScript)            │
+└───────────────────┬───────────────────────────────────────────┘
+                    │ (4) Handler execution
+                    ├─────────────────┬─────────────────────────┐
+                    ▼ (C++ Handler)   ▼ (JavaScript Handler)    │
+          ┌──────────────────┐  ┌─────────────────────────────┐│
+          │ C++ Subsystems   │  │ JavaScript Handler Calls    ││
+          │ (Direct)         │  │ Existing ScriptInterfaces   ││
+          │                  │  │                             ││
+          │ EntitySystem::   │  │ Layer 2: Existing APIs      ││
+          │ CreateEntity()   │  │ ┌─────────────────────────┐ ││
+          └──────────────────┘  │ │ EntityScriptInterface   │ ││
+                                │ │ CameraScriptInterface   │ ││
+                                │ │ AudioScriptInterface    │ ││
+                                │ │ PhysicsScriptInterface  │ ││
+                                │ └───────┬─────────────────┘ ││
+                                └─────────┼───────────────────┘│
+                                          ▼                     │
+                                ┌───────────────────────────┐  │
+                                │ C++ Game Subsystems       │  │
+                                │ • EntitySystem            │  │
+                                │ • PhysicsSystem           │  │
+                                │ • AudioSystem             │  │
+                                └───────────────────────────┘  │
+                                                                │
+                                                                │
+```
+
+### Connection Layers Summary
+
+| Layer | Component | Purpose | Hot-Reloadable? | Used By |
+|-------|-----------|---------|-----------------|---------|
+| **Layer 1** | GenericCommandScriptInterface | Exposes `CommandQueue.submit()` and `registerHandler()` | ❌ C++ recompile | JavaScript command submission |
+| **Layer 2** | EntityScriptInterface | Exposes entity operations (`createEntity`, `destroyEntity`) | ❌ C++ recompile | JavaScript handlers |
+| **Layer 2** | CameraScriptInterface | Exposes camera operations (`setPosition`, `lookAt`) | ❌ C++ recompile | JavaScript handlers |
+| **Layer 2** | AudioScriptInterface | Exposes audio operations (`playSound`, `stopSound`) | ❌ C++ recompile | JavaScript handlers |
+| **Layer 3** | JavaScript Handlers | Custom command handlers defined in JavaScript | ✅ Hot-reload | AI agents, game logic |
+
+### Key Architectural Insight
+
+**GenericCommand does NOT replace existing ScriptInterfaces** - it **builds on top of them**:
+
+```javascript
+// JavaScript handler leverages existing C++/JS bridges
+CommandQueue.registerHandler("ComplexGameplay", (payload) => {
+    // Handler can call ANY existing ScriptInterface API
+    EntityAPI.createEntity(payload.entity);      // EntityScriptInterface
+    CameraAPI.setPosition(payload.cameraPos);    // CameraScriptInterface
+    AudioAPI.playSound(payload.soundEffect);     // AudioScriptInterface
+    PhysicsAPI.setGravity(payload.gravity);      // PhysicsScriptInterface
+
+    // This is the power: compose existing APIs into new commands
+});
+```
+
+**ScriptInterfaces are the building blocks that JavaScript handlers compose into custom commands.**
+
+---
+
+### Recommended Pattern: Hybrid Approach
+
+**Best Practice**: Use C++ handlers for engine-critical operations, JavaScript handlers for gameplay:
+
+```cpp
+// C++ handlers (performance-critical engine operations)
+GenericCommandExecutor::RegisterHandler("UpdatePhysics", CppUpdatePhysicsHandler);
+GenericCommandExecutor::RegisterHandler("RenderDebugPrimitive", CppRenderDebugHandler);
+```
+
+```javascript
+// JavaScript handlers (gameplay, AI-driven features)
+CommandQueue.registerHandler("SpawnWave", JsSpawnWaveHandler);
+CommandQueue.registerHandler("TriggerCutscene", JsTriggerCutsceneHandler);
+CommandQueue.registerHandler("CustomAIBehavior", JsCustomAIHandler);  // AI-generated
+```
+
 ## Alignment with Product Vision
 
 This feature directly supports DaemonAgent's core vision as outlined in the project documentation:
