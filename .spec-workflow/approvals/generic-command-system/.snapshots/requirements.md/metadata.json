@@ -1,12 +1,20 @@
 {
   "filePath": ".spec-workflow/specs/generic-command-system/requirements.md",
-  "currentVersion": 1,
+  "currentVersion": 2,
   "snapshots": [
     {
       "version": 1,
       "filename": "snapshot-001.json",
       "timestamp": "2025-12-12T15:04:31.750Z",
       "trigger": "initial",
+      "approvalId": "approval_1765551871719_ofkhf6viz",
+      "approvalTitle": "GenericCommand System Requirements"
+    },
+    {
+      "version": 2,
+      "filename": "snapshot-002.json",
+      "timestamp": "2026-01-12T05:36:00.266Z",
+      "trigger": "revision_requested",
       "approvalId": "approval_1765551871719_ofkhf6viz",
       "approvalTitle": "GenericCommand System Requirements"
     }

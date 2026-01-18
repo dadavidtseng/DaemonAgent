@@ -19,6 +19,23 @@
         "@pimzino/spec-workflow-mcp@latest",
         "."
       ]
+    },
+    "serena-DaemonAgent": {
+      "command": "uvx",
+      "args": [
+        "--python",
+        "3.12",
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--project",
+        "DaemonAgent"
+      ],
+      "cwd": "C:\\p4\\Personal\\SD\\DaemonAgent",
+      "env": {
+        "SERENA_PROJECT_ROOT": "C:\\p4\\Personal\\SD\\DaemonAgent"
+      }
     }
   }
 }
