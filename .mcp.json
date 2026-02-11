@@ -3,10 +3,10 @@
     "shrimp-DaemonAgent": {
       "command": "node",
       "args": [
-        "C:\\GitHub\\mcp-shrimp-task-manager\\dist\\index.js"
+        "C:\\GitHub-Reference\\mcp-shrimp-task-manager\\dist\\index.js"
       ],
       "env": {
-        "DATA_DIR": "C:\\p4\\Personal\\SD\\DaemonAgent\\.claude\\shrimp_data",
+        "DATA_DIR": "C:\\GitHub\\DaemonAgent\\.claude\\shrimp_data",
         "TEMPLATES_USE": "en",
         "ENABLE_GUI": "true",
         "WEB_PORT": "3001"
@@ -19,23 +19,6 @@
         "@pimzino/spec-workflow-mcp@latest",
         "."
       ]
-    },
-    "serena-DaemonAgent": {
-      "command": "uvx",
-      "args": [
-        "--python",
-        "3.12",
-        "--from",
-        "git+https://github.com/oraios/serena",
-        "serena",
-        "start-mcp-server",
-        "--project",
-        "DaemonAgent"
-      ],
-      "cwd": "C:\\p4\\Personal\\SD\\DaemonAgent",
-      "env": {
-        "SERENA_PROJECT_ROOT": "C:\\p4\\Personal\\SD\\DaemonAgent"
-      }
     }
   }
 }

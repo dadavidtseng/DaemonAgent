@@ -23,7 +23,26 @@
       "mcp__jetbrains__list_directory_tree",
       "mcp__spec-workflow-DaemonAgent__spec-workflow-guide",
       "mcp__spec-workflow-DaemonAgent__spec-status",
-      "mcp__spec-workflow-DaemonAgent__approvals"
+      "mcp__spec-workflow-DaemonAgent__approvals",
+      "mcp__serena-DaemonAgent__search_for_pattern",
+      "mcp__serena-DaemonAgent__activate_project",
+      "mcp__serena-DaemonAgent__read_file",
+      "mcp__serena-DaemonAgent__find_symbol",
+      "mcp__serena-DaemonAgent__replace_content",
+      "mcp__shrimp-DaemonAgent__list_tasks",
+      "mcp__shrimp-DaemonAgent__clear_all_tasks",
+      "mcp__plugin_serena_serena__activate_project",
+      "mcp__plugin_serena_serena__get_symbols_overview",
+      "mcp__plugin_serena_serena__list_dir",
+      "mcp__plugin_serena_serena__read_file",
+      "mcp__plugin_serena_serena__find_symbol",
+      "mcp__plugin_serena_serena__search_for_pattern",
+      "mcp__plugin_serena_serena__find_file",
+      "mcp__plugin_serena_serena__think_about_collected_information",
+      "mcp__plugin_serena_serena__create_text_file",
+      "mcp__spec-workflow-DaemonAgent__log-implementation",
+      "mcp__plugin_serena_serena__replace_symbol_body",
+      "mcp__plugin_serena_serena__replace_content"
     ],
     "deny": [],
     "ask": []
@@ -32,5 +51,9 @@
   "enabledMcpjsonServers": [
     "shrimp-DaemonAgent",
     "spec-workflow-DaemonAgent"
-  ]
+  ],
+  "enabledPlugins": {
+    "code-simplifier@claude-plugins-official": true,
+    "serena@claude-plugins-official": true
+  }
 }
