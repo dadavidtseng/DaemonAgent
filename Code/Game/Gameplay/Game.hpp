@@ -1,10 +1,8 @@
 //----------------------------------------------------------------------------------------------------
 // Game.hpp
 //----------------------------------------------------------------------------------------------------
-
-//----------------------------------------------------------------------------------------------------
 #pragma once
-//----------------------------------------------------------------------------------------------------
+
 #include "Engine/Core/StringUtils.hpp"
 #include "Engine/Entity/EntityStateBuffer.hpp"
 #include "Engine/Script/IJSGameLogicContext.hpp"
@@ -22,50 +20,29 @@ public:
     void UpdateJS();
     void RenderJS();
     void ShowSimpleDemoWindow();
-    // Game state queries
+
     bool IsAttractMode() const;
 
-    // JavaScript callback functions
+    // JavaScript execution
     void ExecuteJavaScriptCommand(String const& command);
     void ExecuteJavaScriptFile(String const& filename);
     void ExecuteModuleFile(String const& modulePath);
 
-    //------------------------------------------------------------------------------------------------
-    // IJSGameLogicContext Interface Implementation (Worker Thread)
-    //------------------------------------------------------------------------------------------------
-
-    // Execute JavaScript update logic on worker thread
-    // Called by JSGameLogicJob from worker thread
+    // IJSGameLogicContext interface (worker thread)
     void UpdateJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue) override;
-
-    // Execute JavaScript render logic on worker thread
-    // Called by JSGameLogicJob from worker thread
     void RenderJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue) override;
-
-    // Handle JavaScript exception from worker thread
-    // Called by JSGameLogicJob when JavaScript errors occur
     void HandleJSException(char const* errorMessage, char const* stackTrace) override;
 
-    //------------------------------------------------------------------------------------------------
-    // Phase 3.2: JavaScript Error Monitoring API
-    //------------------------------------------------------------------------------------------------
-
-    // Get total JavaScript exceptions encountered
+    // JavaScript error monitoring
     uint64_t GetJSExceptionCount() const { return m_jsExceptionCount.load(std::memory_order_relaxed); }
-
-    // Check if any JavaScript exceptions have occurred
-    bool HasJSExceptions() const { return m_jsExceptionCount.load(std::memory_order_relaxed) > 0; }
-
-    // Reset JavaScript exception counter (e.g., after hot-reload recovery)
-    void ResetJSExceptionCount() { m_jsExceptionCount.store(0, std::memory_order_relaxed); }
+    bool     HasJSExceptions() const { return m_jsExceptionCount.load(std::memory_order_relaxed) > 0; }
+    void     ResetJSExceptionCount() { m_jsExceptionCount.store(0, std::memory_order_relaxed); }
 
 private:
     void InitializeJavaScriptFramework();
+    bool IsScriptSubsystemReady() const;
+    bool IsJSEngineReady(char const* methodName) const;
 
-    bool m_showDemoWindow = true;
-
-    //------------------------------------------------------------------------------------------------
-    // Phase 3.2: JavaScript Error Tracking
-    //------------------------------------------------------------------------------------------------
-    std::atomic<uint64_t> m_jsExceptionCount{0};  // Total JavaScript exceptions encountered
+    bool                    m_showDemoWindow = true;
+    std::atomic<uint64_t>   m_jsExceptionCount{0};
 };

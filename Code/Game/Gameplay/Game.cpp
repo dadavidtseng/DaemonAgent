@@ -2,15 +2,13 @@
 // Game.cpp
 //----------------------------------------------------------------------------------------------------
 
-//----------------------------------------------------------------------------------------------------
 // Prevent Windows.h min/max macros from conflicting with V8 and standard library
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 
-//----------------------------------------------------------------------------------------------------
 #include "Game/Gameplay/Game.hpp"
-//----------------------------------------------------------------------------------------------------
+
 #include "Engine/Core/Clock.hpp"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Core/ErrorWarningAssert.hpp"
@@ -20,38 +18,20 @@
 #include "Engine/Script/ModuleLoader.hpp"
 #include "Engine/Script/ScriptSubsystem.hpp"
 #include "ThirdParty/imgui/imgui.h"
-//----------------------------------------------------------------------------------------------------
+
 #include <any>
 #include <typeinfo>
 
 //----------------------------------------------------------------------------------------------------
 Game::Game()
 {
-    DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::Game)(start)"));
-
-    // DebugAddWorldBasis(Mat44(), -1.f);
-    //
-    // Mat44 transform;
-    //
-    // transform.SetIJKT3D(-Vec3::Y_BASIS, Vec3::X_BASIS, Vec3::Z_BASIS, Vec3(0.25f, 0.f, 0.25f));
-    // DebugAddWorldText("X-Forward", transform, 0.25f, Vec2::ONE, -1.f, Rgba8::RED);
-    //
-    // transform.SetIJKT3D(-Vec3::X_BASIS, -Vec3::Y_BASIS, Vec3::Z_BASIS, Vec3(0.f, 0.25f, 0.5f));
-    // DebugAddWorldText("Y-Left", transform, 0.25f, Vec2::ZERO, -1.f, Rgba8::GREEN);
-    //
-    // transform.SetIJKT3D(-Vec3::X_BASIS, Vec3::Z_BASIS, Vec3::Y_BASIS, Vec3(0.f, -0.25f, 0.25f));
-    // DebugAddWorldText("Z-Up", transform, 0.25f, Vec2(1.f, 0.f), -1.f, Rgba8::BLUE);
-    //
-    // DebugAddScreenText("TEST", Vec2(0, 100), 20.f, Vec2::ZERO, 10.f);
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Log, "(Game::Game)(end)");
+    DAEMON_LOG(LogGame, eLogVerbosity::Log, "(Game::Game)");
 }
 
 //----------------------------------------------------------------------------------------------------
 Game::~Game()
 {
-    DAEMON_LOG(LogGame, eLogVerbosity::Log, "(Game::~Game)(start)");
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "(Game::~Game)(end)");
+    DAEMON_LOG(LogGame, eLogVerbosity::Log, "(Game::~Game)");
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -63,17 +43,13 @@ void Game::PostInit()
 //----------------------------------------------------------------------------------------------------
 void Game::UpdateJS()
 {
-    if (g_scriptSubsystem && g_scriptSubsystem->IsInitialized())
+    if (IsScriptSubsystemReady())
     {
-        float const systemDeltaSeconds = static_cast<float>(Clock::GetSystemClock().GetDeltaSeconds());
-        ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.update({});", std::to_string(systemDeltaSeconds)));
+        float const deltaSeconds = static_cast<float>(Clock::GetSystemClock().GetDeltaSeconds());
+        ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.update({});", std::to_string(deltaSeconds)));
     }
 
-    // Phase 2.3: ImGui CANNOT be called from worker thread!
-    // ImGui requires main thread context (g.WithinFrameScope assertion)
-    // Restored ImGui rendering to main thread UpdateJS() method
-
-    // ImGui Debug Window (Phase 0, Task 0.1: IMGUI Integration Test) - Direct Integration
+    // ImGui Debug Window
     ImGui::Begin("SimpleMiner Debug", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
 
     ImGui::Text("IMGUI Integration Successful!");
@@ -88,7 +64,6 @@ void Game::UpdateJS()
     ImGui::BulletText("Task 0.3: Chunk Regen Controls - Pending");
     ImGui::BulletText("Task 0.4: Noise Visualization - Pending");
 
-    // Demo Window Button
     ImGui::Separator();
     ImGui::Text("ImGui Windows:");
 
@@ -97,7 +72,6 @@ void Game::UpdateJS()
         m_showDemoWindow = !m_showDemoWindow;
     }
 
-    // Show windows based on toggles
     if (m_showDemoWindow)
     {
         ShowSimpleDemoWindow();
@@ -109,9 +83,9 @@ void Game::UpdateJS()
 //----------------------------------------------------------------------------------------------------
 void Game::RenderJS()
 {
-    if (g_scriptSubsystem && g_scriptSubsystem->IsInitialized())
+    if (IsScriptSubsystemReady())
     {
-        ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.render();"));
+        ExecuteJavaScriptCommand("globalThis.JSEngine.render();");
     }
 }
 
@@ -395,326 +369,238 @@ void Game::ShowSimpleDemoWindow()
 //----------------------------------------------------------------------------------------------------
 bool Game::IsAttractMode() const
 {
-    if (g_scriptSubsystem && g_scriptSubsystem->IsInitialized())
+    if (!IsScriptSubsystemReady())
     {
-        try
-        {
-            // Query JavaScript game state
-            // globalThis.jsGameInstance.gameState returns 'ATTRACT' or 'GAME'
-            std::any result = g_scriptSubsystem->ExecuteScriptWithResult("globalThis.jsGameInstance ? globalThis.jsGameInstance.gameState : 'GAME'");
+        return false;
+    }
 
-            // Try to cast result to string
-            if (result.type() == typeid(std::string))
-            {
-                std::string gameState = std::any_cast<std::string>(result);
-                return gameState == "ATTRACT";
-            }
-        }
-        catch (...)
+    try
+    {
+        std::any result = g_scriptSubsystem->ExecuteScriptWithResult(
+            "globalThis.jsGameInstance ? globalThis.jsGameInstance.gameState : 'GAME'");
+
+        if (result.type() == typeid(std::string))
         {
-            // If there's any error, default to non-attract mode
+            return std::any_cast<std::string>(result) == "ATTRACT";
         }
     }
-    return false;  // Default to not attract mode if JavaScript not initialized
+    catch (...)
+    {
+        // Default to non-attract mode on error
+    }
+
+    return false;
 }
 
 //----------------------------------------------------------------------------------------------------
 void Game::ExecuteJavaScriptCommand(String const& command)
 {
-    // DAEMON_LOG(LogGame, eLogVerbosity::Log, Stringf("Game::ExecuteJavaScriptCommand() start | %s", command.c_str()));
-
     if (g_scriptSubsystem == nullptr)
     {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, Stringf("(Game::ExecuteJavaScriptCommand)(failed)(g_scriptSubsystem is nullptr!)"));
+        DAEMON_LOG(LogGame, eLogVerbosity::Error, "(Game::ExecuteJavaScriptCommand) g_scriptSubsystem is nullptr");
         return;
     }
 
     if (!g_scriptSubsystem->IsInitialized())
     {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, Stringf("(Game::ExecuteJavaScriptCommand) failed| %s | ScriptSubsystem is not initialized", command.c_str()));
+        DAEMON_LOG(LogGame, eLogVerbosity::Error,
+            StringFormat("(Game::ExecuteJavaScriptCommand) ScriptSubsystem not initialized | {}", command));
         return;
     }
 
-    bool const success = g_scriptSubsystem->ExecuteScript(command);
-
-    if (success)
+    if (!g_scriptSubsystem->ExecuteScript(command))
     {
-        String const result = g_scriptSubsystem->GetLastResult();
-
-        if (!result.empty())
-        {
-            DAEMON_LOG(LogGame, eLogVerbosity::Log, Stringf("Game::ExecuteJavaScriptCommand() result | %s", result.c_str()));
-        }
-    }
-    else
-    {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, Stringf("Game::ExecuteJavaScriptCommand() failed"));
+        DAEMON_LOG(LogGame, eLogVerbosity::Error, "(Game::ExecuteJavaScriptCommand) execution failed");
 
         if (g_scriptSubsystem->HasError())
         {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, Stringf("Game::ExecuteJavaScriptCommand() error | %s", g_scriptSubsystem->GetLastError().c_str()));
+            DAEMON_LOG(LogGame, eLogVerbosity::Error,
+                StringFormat("(Game::ExecuteJavaScriptCommand) error: {}", g_scriptSubsystem->GetLastError()));
         }
     }
-
-    // DAEMON_LOG(LogGame, eLogVerbosity::Log, Stringf("Game::ExecuteJavaScriptCommand() end | %s", command.c_str()));
 }
 
 //----------------------------------------------------------------------------------------------------
 void Game::ExecuteJavaScriptFile(String const& filename)
 {
-    if (g_scriptSubsystem == nullptr)ERROR_AND_DIE(StringFormat("(Game::ExecuteJavaScriptFile)(g_scriptSubsystem is nullptr!)"))
-    if (!g_scriptSubsystem->IsInitialized())ERROR_AND_DIE(StringFormat("(Game::ExecuteJavaScriptFile)(g_scriptSubsystem is not initialized!)"))
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::ExecuteJavaScriptFile)(start)({})", filename));
-
-    bool const success = g_scriptSubsystem->ExecuteScriptFile(filename);
-
-    if (!success)
+    if (g_scriptSubsystem == nullptr)
     {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, StringFormat("(Game::ExecuteJavaScriptFile)(fail)({})", filename));
+        ERROR_AND_DIE("(Game::ExecuteJavaScriptFile) g_scriptSubsystem is nullptr");
+    }
+    if (!g_scriptSubsystem->IsInitialized())
+    {
+        ERROR_AND_DIE("(Game::ExecuteJavaScriptFile) g_scriptSubsystem is not initialized");
+    }
+
+    DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::ExecuteJavaScriptFile)(start) {}", filename));
+
+    if (!g_scriptSubsystem->ExecuteScriptFile(filename))
+    {
+        DAEMON_LOG(LogGame, eLogVerbosity::Error, StringFormat("(Game::ExecuteJavaScriptFile)(fail) {}", filename));
 
         if (g_scriptSubsystem->HasError())
         {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, StringFormat("(Game::ExecuteJavaScriptFile)(fail)(error: {})", g_scriptSubsystem->GetLastError()));
+            DAEMON_LOG(LogGame, eLogVerbosity::Error,
+                StringFormat("(Game::ExecuteJavaScriptFile)(error) {}", g_scriptSubsystem->GetLastError()));
         }
-
         return;
     }
 
-    DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::ExecuteJavaScriptFile)(end)({})", filename.c_str()));
+    DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::ExecuteJavaScriptFile)(end) {}", filename));
 }
 
 //----------------------------------------------------------------------------------------------------
 void Game::ExecuteModuleFile(String const& modulePath)
 {
-    if (g_scriptSubsystem == nullptr)ERROR_AND_DIE(StringFormat("(Game::ExecuteModuleFile)(g_scriptSubsystem is nullptr!)"))
-    if (!g_scriptSubsystem->IsInitialized())ERROR_AND_DIE(StringFormat("(Game::ExecuteModuleFile)(g_scriptSubsystem is not initialized!)"))
-
-    DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::ExecuteModuleFile)(start)({})", modulePath));
-
-    bool const success = g_scriptSubsystem->ExecuteModule(modulePath);
-
-    if (!success)
+    if (g_scriptSubsystem == nullptr)
     {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, StringFormat("(Game::ExecuteModuleFile)(fail)({})", modulePath));
+        ERROR_AND_DIE("(Game::ExecuteModuleFile) g_scriptSubsystem is nullptr");
+    }
+    if (!g_scriptSubsystem->IsInitialized())
+    {
+        ERROR_AND_DIE("(Game::ExecuteModuleFile) g_scriptSubsystem is not initialized");
+    }
+
+    DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::ExecuteModuleFile)(start) {}", modulePath));
+
+    if (!g_scriptSubsystem->ExecuteModule(modulePath))
+    {
+        DAEMON_LOG(LogGame, eLogVerbosity::Error, StringFormat("(Game::ExecuteModuleFile)(fail) {}", modulePath));
 
         if (g_scriptSubsystem->HasError())
         {
-            DAEMON_LOG(LogGame, eLogVerbosity::Error, StringFormat("(Game::ExecuteModuleFile)(fail)(error: {})", g_scriptSubsystem->GetLastError()));
+            DAEMON_LOG(LogGame, eLogVerbosity::Error,
+                StringFormat("(Game::ExecuteModuleFile)(error) {}", g_scriptSubsystem->GetLastError()));
         }
-
         return;
     }
 
-    DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::ExecuteModuleFile)(end)({})", modulePath.c_str()));
+    DAEMON_LOG(LogGame, eLogVerbosity::Log, StringFormat("(Game::ExecuteModuleFile)(end) {}", modulePath));
 }
 
 //----------------------------------------------------------------------------------------------------
 void Game::InitializeJavaScriptFramework()
 {
-    DAEMON_LOG(LogGame, eLogVerbosity::Display, "Game::InitializeJavaScriptFramework() start");
+    DAEMON_LOG(LogGame, eLogVerbosity::Display, "(Game::InitializeJavaScriptFramework) start");
 
-    if (!g_scriptSubsystem || !g_scriptSubsystem->IsInitialized())
+    if (!IsScriptSubsystemReady())
     {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "Game::InitializeJavaScriptFramework() failed - ScriptSubsystem not available");
+        DAEMON_LOG(LogGame, eLogVerbosity::Error, "(Game::InitializeJavaScriptFramework) ScriptSubsystem not available");
         return;
     }
 
     try
     {
-        // Load ES6 module entry point (imports all other modules via import statements)
         DAEMON_LOG(LogGame, eLogVerbosity::Display, "Loading main.js (ES6 module entry point)...");
         ExecuteModuleFile("Data/Scripts/main.js");
 
-        // CRITICAL: Verify that main.js successfully initialized globalThis.JSEngine
-        // This diagnostic check helps identify if module loading failed silently
-        String checkCode = "typeof globalThis.JSEngine !== 'undefined' && typeof globalThis.JSEngine.update === 'function'";
-        bool jsEngineCreated = false;
-
-        if (g_scriptSubsystem->ExecuteScript(checkCode))
-        {
-            String result = g_scriptSubsystem->GetLastResult();
-            jsEngineCreated = (result == "true");
-        }
-
-        if (jsEngineCreated)
+        if (IsJSEngineReady("update"))
         {
             DAEMON_LOG(LogGame, eLogVerbosity::Display,
-                       "Game::InitializeJavaScriptFramework() SUCCESS - globalThis.JSEngine verified");
+                "(Game::InitializeJavaScriptFramework) SUCCESS - globalThis.JSEngine verified");
         }
         else
         {
             DAEMON_LOG(LogGame, eLogVerbosity::Error,
-                       "Game::InitializeJavaScriptFramework() FAILED - globalThis.JSEngine not found after loading main.js");
-            DAEMON_LOG(LogGame, eLogVerbosity::Error,
-                       "  This means main.js either failed to load or failed to create JSEngine instance");
-            DAEMON_LOG(LogGame, eLogVerbosity::Error,
-                       "  Check for module loading errors in the log above");
+                "(Game::InitializeJavaScriptFramework) FAILED - globalThis.JSEngine not found after loading main.js");
         }
 
-        DAEMON_LOG(LogGame, eLogVerbosity::Display, "Game::InitializeJavaScriptFramework() complete - Pure ES6 Module architecture initialized");
+        DAEMON_LOG(LogGame, eLogVerbosity::Display, "(Game::InitializeJavaScriptFramework) complete");
     }
     catch (...)
     {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error, "Game::InitializeJavaScriptFramework() exception occurred");
+        DAEMON_LOG(LogGame, eLogVerbosity::Error, "(Game::InitializeJavaScriptFramework) exception occurred");
     }
 }
 
 //----------------------------------------------------------------------------------------------------
-// IJSGameLogicContext Interface Implementation (Worker Thread)
+// IJSGameLogicContext Interface (Worker Thread)
 //----------------------------------------------------------------------------------------------------
 
-//----------------------------------------------------------------------------------------------------
-// UpdateJSWorkerThread (Worker Thread)
-//
-// Execute JavaScript update logic on worker thread.
-// Called by JSGameLogicJob from worker thread context.
-//
-// Thread Safety:
-//   - Called from worker thread
-//   - Must acquire v8::Locker before V8 API calls
-//   - entityBuffer: Write to back buffer only (safe)
-//   - commandQueue: Lock-free SPSC queue (safe)
-//----------------------------------------------------------------------------------------------------
-void Game::UpdateJSWorkerThread(float deltaTime , RenderCommandQueue* commandQueue)
+void Game::UpdateJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue)
 {
-    // Phase 2.3: Execute JavaScript update logic on worker thread
-    // This is called from JSGameLogicJob worker thread with v8::Locker already acquired
-    if (g_scriptSubsystem && g_scriptSubsystem->IsInitialized())
+    if (!IsScriptSubsystemReady())
     {
-        // Phase 2.3 FIX: Check if JSEngine is initialized before calling it
-        // First verify globalThis.JSEngine exists (defensive programming)
-        String checkCode = "typeof globalThis.JSEngine !== 'undefined' && typeof globalThis.JSEngine.update === 'function'";
-        bool jsEngineReady = false;
-
-        if (g_scriptSubsystem->ExecuteScript(checkCode))
-        {
-            String result = g_scriptSubsystem->GetLastResult();
-            jsEngineReady = (result == "true");
-        }
-
-        if (jsEngineReady)
-        {
-            // JSEngine is ready - execute update
-            ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.update({});", std::to_string(deltaTime)));
-        }
-        else
-        {
-            // JSEngine not ready - log warning (only once per second to avoid spam)
-            static float lastWarningTime = 0.0f;
-            float currentTime = static_cast<float>(Clock::GetSystemClock().GetTotalSeconds());
-
-            if (currentTime - lastWarningTime >= 1.0f)
-            {
-                DAEMON_LOG(LogScript, eLogVerbosity::Warning,
-                           "UpdateJSWorkerThread: globalThis.JSEngine not initialized - skipping JavaScript update");
-                lastWarningTime = currentTime;
-            }
-        }
+        return;
     }
 
-    // Phase 2.3: ImGui CANNOT be called from worker thread!
-    // ImGui requires main thread context (g.WithinFrameScope assertion)
-    // Moved ImGui rendering back to main thread UpdateJS() method
+    if (IsJSEngineReady("update"))
+    {
+        ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.update({});", std::to_string(deltaTime)));
+    }
+    else
+    {
+        // Throttled warning (once per second)
+        static float lastWarningTime = 0.0f;
+        float currentTime = static_cast<float>(Clock::GetSystemClock().GetTotalSeconds());
 
+        if (currentTime - lastWarningTime >= 1.0f)
+        {
+            DAEMON_LOG(LogScript, eLogVerbosity::Warning,
+                "UpdateJSWorkerThread: globalThis.JSEngine not initialized - skipping JavaScript update");
+            lastWarningTime = currentTime;
+        }
+    }
 }
 
-//----------------------------------------------------------------------------------------------------
-// RenderJSWorkerThread (Worker Thread)
-//
-// Execute JavaScript render logic on worker thread.
-// Called by JSGameLogicJob from worker thread context.
-//
-// Thread Safety:
-//   - Called from worker thread
-//   - Must acquire v8::Locker before V8 API calls
-//   - cameraBuffer: Write to back buffer only (safe)
-//   - commandQueue: Lock-free SPSC queue (safe)
 //----------------------------------------------------------------------------------------------------
 void Game::RenderJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue)
 {
-    // Phase 2.3: Execute JavaScript render logic on worker thread
-    // This is called from JSGameLogicJob worker thread with v8::Locker already acquired
-    if (g_scriptSubsystem && g_scriptSubsystem->IsInitialized())
+    if (!IsScriptSubsystemReady())
     {
-        // Phase 2.3 FIX: Check if JSEngine is initialized before calling it
-        // First verify globalThis.JSEngine exists (defensive programming)
-        String checkCode = "typeof globalThis.JSEngine !== 'undefined' && typeof globalThis.JSEngine.render === 'function'";
-        bool jsEngineReady = false;
+        return;
+    }
 
-        if (g_scriptSubsystem->ExecuteScript(checkCode))
-        {
-            String result = g_scriptSubsystem->GetLastResult();
-            jsEngineReady = (result == "true");
-        }
-
-        if (jsEngineReady)
-        {
-            // JSEngine is ready - execute render
-            ExecuteJavaScriptCommand(StringFormat("globalThis.JSEngine.render();"));
-        }
-        else
-        {
-            // JSEngine not ready - silently skip (already logged in UpdateJSWorkerThread)
-        }
+    if (IsJSEngineReady("render"))
+    {
+        ExecuteJavaScriptCommand("globalThis.JSEngine.render();");
     }
 }
 //----------------------------------------------------------------------------------------------------
-// HandleJSException (Worker Thread - Phase 3.2 Implementation)
-//
-// Handle JavaScript exception from worker thread.
-// Called by JSGameLogicJob when JavaScript errors occur.
-//
-// Thread Safety:
-//   - Called from worker thread
-//   - m_jsExceptionCount: Atomic, thread-safe increment
-//   - DAEMON_LOG: Thread-safe logging
-//
-// Recovery Behavior:
-//   - Logs error with full details (message + stack trace)
-//   - Increments exception counter for monitoring
-//   - Does NOT crash worker thread (fault isolation)
-//   - Worker thread continues to next frame (graceful degradation)
-//   - Main thread continues rendering with last valid state
-//
-// Future Extensions (Phase 3.3+):
-//   - Hot-reload recovery: Attempt to reload last known good script
-//   - Visual indicator: Signal main thread to display error overlay
-//   - Error throttling: Rate-limit repeated identical errors
-//----------------------------------------------------------------------------------------------------
 void Game::HandleJSException(char const* errorMessage, char const* stackTrace)
 {
-    // Phase 3.2: Increment exception counter for monitoring
     uint64_t exceptionNumber = m_jsExceptionCount.fetch_add(1, std::memory_order_relaxed) + 1;
 
-    // Phase 3.2: Log error with full details
-    DAEMON_LOG(LogGame, eLogVerbosity::Error,
-               StringFormat("=== JavaScript Exception #{} ===", exceptionNumber));
+    DAEMON_LOG(LogGame, eLogVerbosity::Error, StringFormat("=== JavaScript Exception #{} ===", exceptionNumber));
 
-    // Log error message (with file:line:col from JSGameLogicJob)
     if (errorMessage && errorMessage[0] != '\0')
     {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error,
-                   StringFormat("Error: {}", errorMessage));
+        DAEMON_LOG(LogGame, eLogVerbosity::Error, StringFormat("Error: {}", errorMessage));
     }
 
-    // Log stack trace if available
     if (stackTrace && stackTrace[0] != '\0')
     {
-        DAEMON_LOG(LogGame, eLogVerbosity::Error,
-                   StringFormat("Stack Trace:\n{}", stackTrace));
+        DAEMON_LOG(LogGame, eLogVerbosity::Error, StringFormat("Stack Trace:\n{}", stackTrace));
     }
 
-    DAEMON_LOG(LogGame, eLogVerbosity::Error,
-               "=== End JavaScript Exception ===");
+    DAEMON_LOG(LogGame, eLogVerbosity::Error, "=== End JavaScript Exception ===");
+}
 
-    // Phase 3.2: Recovery behavior
-    // - Worker thread continues execution (fault isolation)
-    // - Main thread continues rendering with last valid state
-    // - Next frame will retry JavaScript execution
-    //
-    // Future Phase 3.3: Hot-reload recovery
-    // - Detect if error is due to recent script change
-    // - Attempt to reload previous version
-    // - Signal main thread if recovery successful
+//----------------------------------------------------------------------------------------------------
+// Helper Methods
+//----------------------------------------------------------------------------------------------------
+
+bool Game::IsScriptSubsystemReady() const
+{
+    return g_scriptSubsystem != nullptr && g_scriptSubsystem->IsInitialized();
+}
+
+//----------------------------------------------------------------------------------------------------
+bool Game::IsJSEngineReady(char const* methodName) const
+{
+    if (!IsScriptSubsystemReady())
+    {
+        return false;
+    }
+
+    String checkCode = StringFormat(
+        "typeof globalThis.JSEngine !== 'undefined' && typeof globalThis.JSEngine.{} === 'function'",
+        methodName);
+
+    if (g_scriptSubsystem->ExecuteScript(checkCode))
+    {
+        return g_scriptSubsystem->GetLastResult() == "true";
+    }
+
+    return false;
 }

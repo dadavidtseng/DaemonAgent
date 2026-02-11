@@ -2,7 +2,6 @@
 // App.cpp
 //----------------------------------------------------------------------------------------------------
 
-//----------------------------------------------------------------------------------------------------
 // IMPORTANT: Define NOMINMAX before any Windows headers to prevent min/max macro conflicts with V8
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -11,64 +10,53 @@
 #include "Game/Framework/App.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Game/Framework/GameCommon.hpp"
-#include "Game/Framework/RenderResourceManager.hpp"
 #include "Game/Framework/GameScriptInterface.hpp"
+#include "Game/Framework/JSGameLogicJob.hpp"
+#include "Game/Framework/RenderResourceManager.hpp"
 #include "Game/Gameplay/Game.hpp"
 //----------------------------------------------------------------------------------------------------
-#include "Engine/Core/CallbackQueue.hpp"
+#include "Engine/Audio/AudioAPI.hpp"
+#include "Engine/Audio/AudioCommand.hpp"
+#include "Engine/Audio/AudioCommandQueue.hpp"
 #include "Engine/Audio/AudioScriptInterface.hpp"
+#include "Engine/Audio/AudioStateBuffer.hpp"
 #include "Engine/Audio/AudioSystem.hpp"
+#include "Engine/Core/CallbackQueue.hpp"
+#include "Engine/Core/CallbackQueueScriptInterface.hpp"
 #include "Engine/Core/Clock.hpp"
+#include "Engine/Core/ClockScriptInterface.hpp"
 #include "Engine/Core/DevConsole.hpp"
 #include "Engine/Core/Engine.hpp"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Core/ErrorWarningAssert.hpp"
+#include "Engine/Core/GenericCommandExecutor.hpp"
+#include "Engine/Core/GenericCommandQueue.hpp"
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/Core/LogSubsystem.hpp"
-#include "Engine/Input/InputSystem.hpp"
-#include "Engine/Platform/Window.hpp"
-#include "Engine/Renderer/Camera.hpp"
-#include "Engine/Renderer/DebugRenderSystem.hpp"
-#include "Engine/Renderer/Renderer.hpp"
-#include "Engine/Resource/ResourceSubsystem.hpp"
-#include "Engine/Script/ScriptSubsystem.hpp"
-//----------------------------------------------------------------------------------------------------
-#include "Engine/Core/ClockScriptInterface.hpp"
-#include "Engine/Input/InputScriptInterface.hpp"
-#include "Engine/Network/KADIScriptInterface.hpp"
-#include "Engine/Renderer/DebugRenderSystemScriptInterface.hpp"
-// Phase 1: Async Architecture Includes
-#include "Engine/Entity/EntityStateBuffer.hpp"
-#include "Engine/Renderer/CameraStateBuffer.hpp"
-#include "Engine/Renderer/RenderCommandQueue.hpp"
-#include "Engine/Audio/AudioCommandQueue.hpp"
-#include "Game/Framework/JSGameLogicJob.hpp"
-
-// Phase 2: High-Level Entity API Includes
-// M4-T8: Direct API Usage (removed HighLevelEntityAPI facade)
 #include "Engine/Entity/EntityAPI.hpp"
 #include "Engine/Entity/EntityScriptInterface.hpp"
+#include "Engine/Entity/EntityStateBuffer.hpp"
+#include "Engine/Input/InputScriptInterface.hpp"
+#include "Engine/Input/InputSystem.hpp"
+#include "Engine/Network/KADIScriptInterface.hpp"
+#include "Engine/Platform/Window.hpp"
+#include "Engine/Renderer/Camera.hpp"
 #include "Engine/Renderer/CameraAPI.hpp"
-
-// M4-T8: Camera API Script Interface
 #include "Engine/Renderer/CameraScriptInterface.hpp"
-
-// Phase 2.4: CallbackQueue Script Interface (moved to Engine)
-#include "Engine/Core/CallbackQueueScriptInterface.hpp"
-
-// Phase 4: Debug Render Async Architecture
-#include "Engine/Renderer/DebugRenderStateBuffer.hpp"
+#include "Engine/Renderer/CameraStateBuffer.hpp"
 #include "Engine/Renderer/DebugRenderAPI.hpp"
-
-// Phase 5: Audio Async Architecture
-#include "Engine/Audio/AudioStateBuffer.hpp"
-#include "Engine/Audio/AudioAPI.hpp"
-#include "Engine/Audio/AudioCommand.hpp"
-
-// Phase 2: Geometry Creation Utilities
+#include "Engine/Renderer/DebugRenderStateBuffer.hpp"
+#include "Engine/Renderer/DebugRenderSystem.hpp"
+#include "Engine/Renderer/DebugRenderSystemScriptInterface.hpp"
+#include "Engine/Renderer/RenderCommandQueue.hpp"
+#include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Renderer/VertexUtils.hpp"
+#include "Engine/Resource/ResourceSubsystem.hpp"
+#include "Engine/Script/ScriptSubsystem.hpp"
+#include "Engine/Script/GenericCommandScriptInterface.hpp"
 #include "Engine/UI/ImGuiSubsystem.hpp"
 #include "ThirdParty/json/json.hpp"
+#include <fstream>
 
 
 //----------------------------------------------------------------------------------------------------
@@ -95,99 +83,180 @@ void App::Startup()
     g_eventSystem->SubscribeEventCallbackFunction("OnCloseButtonClicked", OnCloseButtonClicked);
     g_eventSystem->SubscribeEventCallbackFunction("quit", OnCloseButtonClicked);
 
-    // Phase 1: Initialize async architecture infrastructure BEFORE game initialization
+    // Initialize async architecture infrastructure
     m_callbackQueue      = new CallbackQueue();
     m_renderCommandQueue = new RenderCommandQueue();
-    m_audioCommandQueue  = new AudioCommandQueue();  // Phase 2: Audio command queue for async JavaScript audio
-    m_entityStateBuffer  = new EntityStateBuffer();
-    m_cameraStateBuffer  = new CameraStateBuffer();
+    m_audioCommandQueue  = new AudioCommandQueue();
+    // Load GenericCommand configuration from JSON (optional — uses defaults if file missing)
+    size_t   gcQueueCapacity   = 500;    // GenericCommandQueue::DEFAULT_CAPACITY
+    uint32_t gcRateLimitPerAgent = 100;  // Default: 100 commands/sec per agent
+    bool     gcAuditLogging    = false;
+    try
+    {
+        std::ifstream configFile("Data/Config/GenericCommand.json");
+        if (configFile.is_open())
+        {
+            nlohmann::json jsonConfig;
+            configFile >> jsonConfig;
 
-    // Phase 5: Initialize render resource manager
-    m_renderResourceManager = new RenderResourceManager();
-    DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - RenderResourceManager initialized (Phase 5)");
+            gcQueueCapacity    = jsonConfig.value("queueCapacity", 500);
+            gcRateLimitPerAgent = jsonConfig.value("rateLimitPerAgent", 100u);
+            gcAuditLogging     = jsonConfig.value("enableAuditLogging", false);
 
-    // Phase 4.2: Enable per-key dirty tracking optimization for both buffers
-    // This reduces SwapBuffers() cost from O(n) to O(d) where d = dirty entity count
-    // Expected performance gain: 10-1000x speedup for sparse updates (typical gameplay)
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand config loaded: capacity=%zu, rateLimit=%u/s, audit=%s",
+                           gcQueueCapacity, gcRateLimitPerAgent, gcAuditLogging ? "ON" : "OFF"));
+        }
+        else
+        {
+            DAEMON_LOG(LogApp, eLogVerbosity::Log, "GenericCommand.json not found, using defaults");
+        }
+    }
+    catch (nlohmann::json::exception const& e)
+    {
+        DAEMON_LOG(LogApp, eLogVerbosity::Warning,
+                   Stringf("GenericCommand config parse error: %s - using defaults", e.what()));
+    }
+
+    m_genericCommandQueue    = new GenericCommandQueue(gcQueueCapacity);
+    m_genericCommandExecutor = new GenericCommandExecutor();
+    m_genericCommandExecutor->SetRateLimitPerAgent(gcRateLimitPerAgent);
+    m_genericCommandExecutor->SetAuditLoggingEnabled(gcAuditLogging);
+
+    // === Smoke-test handler: "ping" → returns {pong: "hello"} ===
+    m_genericCommandExecutor->RegisterHandler("ping", [](std::any const& /*payload*/) -> HandlerResult
+    {
+        DAEMON_LOG(LogApp, eLogVerbosity::Log, "GenericCommand [ping] handler: received ping, returning pong");
+        return HandlerResult::Success({{"pong", std::any(String("hello"))}});
+    });
+
+    // Initialize state buffers with dirty tracking for O(d) swap optimization
+    m_entityStateBuffer = new EntityStateBuffer();
     m_entityStateBuffer->EnableDirtyTracking(true);
+
+    m_cameraStateBuffer = new CameraStateBuffer();
     m_cameraStateBuffer->EnableDirtyTracking(true);
-    DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - Per-key dirty tracking enabled (Phase 4.2)");
 
-    // Phase 4: Initialize debug render infrastructure
     m_debugRenderStateBuffer = new DebugRenderStateBuffer();
-    m_debugRenderStateBuffer->EnableDirtyTracking(true);  // O(d) swap optimization for debug primitives
-    DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - DebugRenderStateBuffer initialized (Phase 4)");
+    m_debugRenderStateBuffer->EnableDirtyTracking(true);
 
-    // M4-T8: Initialize EntityAPI and CameraAPI directly (removed HighLevelEntityAPI facade)
-    m_entityAPI = new EntityAPI(m_renderCommandQueue, g_scriptSubsystem);
-    m_cameraAPI = new CameraAPI(m_renderCommandQueue, g_scriptSubsystem, m_cameraStateBuffer);
-    DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - EntityAPI and CameraAPI initialized (M4-T8)");
-
-    // Phase 4: Initialize DebugRenderAPI
-    m_debugRenderAPI = new DebugRenderAPI(m_renderCommandQueue, g_scriptSubsystem, m_debugRenderStateBuffer, m_callbackQueue);
-    DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - DebugRenderAPI initialized with callback support (Phase 4)");
-
-    // Phase 5: Initialize audio async infrastructure
     m_audioStateBuffer = new AudioStateBuffer();
-    m_audioStateBuffer->EnableDirtyTracking(true);  // O(d) swap optimization
-    m_audioAPI = new AudioAPI(m_audioCommandQueue, g_scriptSubsystem, m_callbackQueue);
-    DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - AudioAPI and AudioStateBuffer initialized (Phase 5)");
+    m_audioStateBuffer->EnableDirtyTracking(true);
 
-    // Phase 3 FIX: Set camera-to-render transform to correct coordinate system rotation
-    // The engine uses I-Forward/J-Left/K-Up (X-Forward/Y-Left/Z-Up)
-    // But rendering expects a 90° CCW rotation around Z-axis to match screen orientation
-    // This 90° CCW rotation swaps: X→Y, Y→-X (keeps Z unchanged)
-    Mat44 cameraToRender;
-    cameraToRender.m_values[Mat44::Ix] = 0.0f;  // New I-basis X component (was pointing X, now points Y)
-    cameraToRender.m_values[Mat44::Iy] = 1.0f;  // New I-basis Y component
-    cameraToRender.m_values[Mat44::Iz] = 0.0f;  // New I-basis Z component
-    cameraToRender.m_values[Mat44::Iw] = 0.0f;
+    // Initialize render resource manager
+    m_renderResourceManager = new RenderResourceManager();
 
-    cameraToRender.m_values[Mat44::Jx] = -1.0f;  // New J-basis X component (was pointing Y, now points -X)
-    cameraToRender.m_values[Mat44::Jy] = 0.0f;  // New J-basis Y component
-    cameraToRender.m_values[Mat44::Jz] = 0.0f;  // New J-basis Z component
-    cameraToRender.m_values[Mat44::Jw] = 0.0f;
+    // Initialize APIs
+    m_entityAPI      = new EntityAPI(m_renderCommandQueue, g_scriptSubsystem);
+    m_cameraAPI      = new CameraAPI(m_renderCommandQueue, g_scriptSubsystem, m_cameraStateBuffer);
+    m_debugRenderAPI = new DebugRenderAPI(m_renderCommandQueue, g_scriptSubsystem, m_debugRenderStateBuffer, m_callbackQueue);
+    m_audioAPI       = new AudioAPI(m_audioCommandQueue, g_scriptSubsystem, m_callbackQueue);
 
-    cameraToRender.m_values[Mat44::Kx] = 0.0f;  // New K-basis X component (Z stays Z)
-    cameraToRender.m_values[Mat44::Ky] = 0.0f;  // New K-basis Y component
-    cameraToRender.m_values[Mat44::Kz] = 1.0f;  // New K-basis Z component
-    cameraToRender.m_values[Mat44::Kw] = 0.0f;
+    // === GenericCommand handler: "create_mesh" (Task 8.3 — EntityScriptInterface migration) ===
+    // Replaces EntityScriptInterface::ExecuteCreateMesh with GenericCommand pipeline.
+    // Handler runs on main thread; entity ID is generated immediately, render command queued.
+    // Flow: JS submit("create_mesh", payload) → handler → HandlerResult::Success({resultId}) → JS callback
+    m_genericCommandExecutor->RegisterHandler("create_mesh",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            // Parse JSON payload from JavaScript
+            String payloadStr;
+            try
+            {
+                payloadStr = std::any_cast<String>(payload);
+            }
+            catch (std::bad_any_cast const&)
+            {
+                return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
+            }
 
-    cameraToRender.m_values[Mat44::Tx] = 0.0f;  // No translation
-    cameraToRender.m_values[Mat44::Ty] = 0.0f;
-    cameraToRender.m_values[Mat44::Tz] = 0.0f;
-    cameraToRender.m_values[Mat44::Tw] = 1.0f;
+            nlohmann::json json;
+            try
+            {
+                json = nlohmann::json::parse(payloadStr);
+            }
+            catch (nlohmann::json::exception const& e)
+            {
+                return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
+            }
 
-    DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - Main camera initialized with 90° CCW Z-rotation camera-to-render transform");
+            // Extract fields with defaults matching EntityAPI.js validation
+            String meshType = json.value("meshType", "cube");
+
+            auto posArr = json.value("position", std::vector<double>{0.0, 0.0, 0.0});
+            Vec3 position(
+                static_cast<float>(posArr.size() > 0 ? posArr[0] : 0.0),
+                static_cast<float>(posArr.size() > 1 ? posArr[1] : 0.0),
+                static_cast<float>(posArr.size() > 2 ? posArr[2] : 0.0)
+            );
+
+            float scale = json.value("scale", 1.0f);
+
+            auto colorArr = json.value("color", std::vector<int>{255, 255, 255, 255});
+            Rgba8 color(
+                static_cast<unsigned char>(colorArr.size() > 0 ? colorArr[0] : 255),
+                static_cast<unsigned char>(colorArr.size() > 1 ? colorArr[1] : 255),
+                static_cast<unsigned char>(colorArr.size() > 2 ? colorArr[2] : 255),
+                static_cast<unsigned char>(colorArr.size() > 3 ? colorArr[3] : 255)
+            );
+
+            // Generate entity ID (same as EntityAPI::CreateMesh)
+            EntityID entityId = m_entityAPI->GenerateEntityID();
+
+            // Build render command (same as EntityAPI::CreateMesh)
+            MeshCreationData meshData;
+            meshData.meshType = meshType;
+            meshData.position = position;
+            meshData.radius   = scale;
+            meshData.color    = color;
+
+            RenderCommand command(RenderCommandType::CREATE_MESH, entityId, meshData);
+            bool submitted = m_renderCommandQueue->Submit(command);
+
+            if (!submitted)
+            {
+                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
+                           Stringf("GenericCommand [create_mesh]: RenderCommandQueue full, entity %llu dropped", entityId));
+                return HandlerResult::Error("ERR_QUEUE_FULL: render command queue is full");
+            }
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [create_mesh]: entityId=%llu, mesh=%s, pos=(%.1f,%.1f,%.1f), scale=%.1f",
+                           entityId, meshType.c_str(), position.x, position.y, position.z, scale));
+
+            // Return entityId via resultId field — GenericCommand pipeline delivers to JS callback
+            return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(entityId))}});
+        });
+
+    DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - Async architecture initialized");
 
     g_game = new Game();
-    g_game->PostInit();
     SetupScriptingBindings();
+    g_game->PostInit();
 
-    // Phase 1: Submit JavaScript worker thread job AFTER game and script initialization
+    // Submit JavaScript worker thread job after game and script initialization
     m_jsGameLogicJob = new JSGameLogicJob(g_game, m_renderCommandQueue, m_entityStateBuffer, m_callbackQueue);
     g_jobSystem->SubmitJob(m_jsGameLogicJob);
-
-    DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - Async architecture initialized (Phase 1)");
 }
 
 //----------------------------------------------------------------------------------------------------
-// All Destroy and ShutDown process should be reverse order of the StartUp
-//
+// Shutdown - reverse order of Startup
+//----------------------------------------------------------------------------------------------------
 void App::Shutdown()
 {
-    // Phase 1: Shutdown async architecture BEFORE game destruction
-    // Order: Request shutdown → Wait for worker → Retrieve from JobSystem → Cleanup resources
+    // Shutdown async job first
     if (m_jsGameLogicJob)
     {
         DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Shutdown - Requesting worker thread shutdown...");
         m_jsGameLogicJob->RequestShutdown();
 
         // Wait for worker thread to complete (max 5 seconds timeout)
+        constexpr int kMaxWaitIterations = 500;
+        constexpr int kWaitMilliseconds  = 10;
         int waitCount = 0;
-        while (!m_jsGameLogicJob->IsShutdownComplete() && waitCount < 500)
+        while (!m_jsGameLogicJob->IsShutdownComplete() && waitCount < kMaxWaitIterations)
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            std::this_thread::sleep_for(std::chrono::milliseconds(kWaitMilliseconds));
             ++waitCount;
         }
 
@@ -200,23 +269,19 @@ void App::Shutdown()
             DAEMON_LOG(LogApp, eLogVerbosity::Warning, "App::Shutdown - Worker thread shutdown timeout!");
         }
 
-        // CRITICAL: Retrieve job from JobSystem before manual deletion
-        // This prevents double-delete when JobSystem::Shutdown() tries to clean up
-        // The job is in m_completedJobs queue, so retrieve it first
+        // Retrieve job from JobSystem before deletion to prevent double-delete
         Job* retrievedJob = g_jobSystem->RetrieveCompletedJob();
         while (retrievedJob != nullptr && retrievedJob != m_jsGameLogicJob)
         {
-            // If there are other completed jobs, delete them first
             delete retrievedJob;
             retrievedJob = g_jobSystem->RetrieveCompletedJob();
         }
 
-        // Now safe to delete our job (it's no longer tracked by JobSystem)
         delete m_jsGameLogicJob;
         m_jsGameLogicJob = nullptr;
     }
 
-    // Phase 2: Clear V8::Persistent callbacks BEFORE V8 isolate destruction
+    // Clear V8::Persistent callbacks before V8 isolate destruction
     if (m_kadiScriptInterface)
     {
         m_kadiScriptInterface->ClearCallbacks();
@@ -224,88 +289,50 @@ void App::Shutdown()
 
     GAME_SAFE_RELEASE(g_game);
 
-    // M4-T8: Cleanup EntityAPI and CameraAPI BEFORE async infrastructure
-    if (m_entityAPI)
-    {
-        delete m_entityAPI;
-        m_entityAPI = nullptr;
-        DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Shutdown - EntityAPI destroyed (M4-T8)");
-    }
+    // Cleanup APIs (before state buffers)
+    delete m_entityAPI;
+    m_entityAPI = nullptr;
 
-    if (m_cameraAPI)
-    {
-        delete m_cameraAPI;
-        m_cameraAPI = nullptr;
-        DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Shutdown - CameraAPI destroyed (M4-T8)");
-    }
+    delete m_cameraAPI;
+    m_cameraAPI = nullptr;
 
-    // Phase 4: Cleanup DebugRenderAPI BEFORE state buffers
-    if (m_debugRenderAPI)
-    {
-        delete m_debugRenderAPI;
-        m_debugRenderAPI = nullptr;
-        DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Shutdown - DebugRenderAPI destroyed (Phase 4)");
-    }
+    delete m_debugRenderAPI;
+    m_debugRenderAPI = nullptr;
 
-    // Phase 5: Cleanup AudioAPI BEFORE state buffers
-    if (m_audioAPI)
-    {
-        delete m_audioAPI;
-        m_audioAPI = nullptr;
-        DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Shutdown - AudioAPI destroyed (Phase 5)");
-    }
+    delete m_audioAPI;
+    m_audioAPI = nullptr;
 
-    // Phase 5: Cleanup RenderResourceManager BEFORE state buffers
-    if (m_renderResourceManager)
-    {
-        delete m_renderResourceManager;
-        m_renderResourceManager = nullptr;
-        DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Shutdown - RenderResourceManager destroyed (Phase 5)");
-    }
+    delete m_renderResourceManager;
+    m_renderResourceManager = nullptr;
 
-    if (m_entityStateBuffer)
-    {
-        delete m_entityStateBuffer;
-        m_entityStateBuffer = nullptr;
-    }
+    // Cleanup state buffers
+    delete m_entityStateBuffer;
+    m_entityStateBuffer = nullptr;
 
-    if (m_cameraStateBuffer)
-    {
-        delete m_cameraStateBuffer;
-        m_cameraStateBuffer = nullptr;
-    }
+    delete m_cameraStateBuffer;
+    m_cameraStateBuffer = nullptr;
 
-    if (m_debugRenderStateBuffer)
-    {
-        delete m_debugRenderStateBuffer;
-        m_debugRenderStateBuffer = nullptr;
-        DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Shutdown - DebugRenderStateBuffer destroyed (Phase 4)");
-    }
+    delete m_debugRenderStateBuffer;
+    m_debugRenderStateBuffer = nullptr;
 
-    if (m_audioStateBuffer)
-    {
-        delete m_audioStateBuffer;
-        m_audioStateBuffer = nullptr;
-    }
+    delete m_audioStateBuffer;
+    m_audioStateBuffer = nullptr;
 
-    if (m_renderCommandQueue)
-    {
-        delete m_renderCommandQueue;
-        m_renderCommandQueue = nullptr;
-    }
+    // Cleanup command queues
+    delete m_renderCommandQueue;
+    m_renderCommandQueue = nullptr;
 
-    if (m_audioCommandQueue)
-    {
-        delete m_audioCommandQueue;
-        m_audioCommandQueue = nullptr;
-        DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Shutdown - AudioCommandQueue destroyed (Phase 2)");
-    }
+    delete m_audioCommandQueue;
+    m_audioCommandQueue = nullptr;
 
-	if (m_callbackQueue)
-	{
-		delete m_callbackQueue;
-		m_callbackQueue = nullptr;
-	}
+    delete m_genericCommandExecutor;
+    m_genericCommandExecutor = nullptr;
+
+    delete m_genericCommandQueue;
+    m_genericCommandQueue = nullptr;
+
+    delete m_callbackQueue;
+    m_callbackQueue = nullptr;
 
     GEngine::Get().Shutdown();
 }
@@ -370,142 +397,69 @@ void App::Update()
     UpdateCursorMode();
 
     g_imgui->Update();
-
-    // Process pending hot-reload events on main thread (V8-safe)
     g_scriptSubsystem->Update();
 
-    // Phase 1: Process render commands from queue (placeholder implementation)
-    // Phase 2 will implement actual command processing
     ProcessRenderCommands();
-
-    // Phase 5: Process audio commands from queue
     ProcessAudioCommands();
+    ProcessGenericCommands();
 
-    // Phase 1: Async Frame Synchronization
-    // Check if worker thread completed previous JavaScript frame
+    // Async Frame Synchronization: Check if worker thread completed previous JavaScript frame
     if (m_jsGameLogicJob && m_jsGameLogicJob->IsFrameComplete())
     {
-        // Swap entity state buffers (copy back buffer → front buffer)
-        if (m_entityStateBuffer != nullptr) m_entityStateBuffer->SwapBuffers();
+        // Swap state buffers (copy back buffer to front buffer)
+        if (m_entityStateBuffer) m_entityStateBuffer->SwapBuffers();
+        if (m_cameraStateBuffer) m_cameraStateBuffer->SwapBuffers();
+        if (m_audioStateBuffer) m_audioStateBuffer->SwapBuffers();
 
-        // Swap camera state buffers (copy back buffer → front buffer)
-        if (m_cameraStateBuffer != nullptr) m_cameraStateBuffer->SwapBuffers();
-
-        // Phase 4: Swap debug render state buffers (copy back buffer → front buffer)
-        if (m_debugRenderStateBuffer != nullptr)
+        if (m_debugRenderStateBuffer)
         {
             m_debugRenderStateBuffer->SwapBuffers();
-
-            // Update debug primitive expiration (remove expired primitives from back buffer)
-            // Called AFTER SwapBuffers so primitives are rendered at least once before expiring
+            // Update debug primitive expiration after swap so primitives render at least once
             float const systemDeltaSeconds = static_cast<float>(Clock::GetSystemClock().GetDeltaSeconds());
             UpdateDebugPrimitiveExpiration(systemDeltaSeconds);
         }
 
-        // Phase 5: Swap audio state buffers (copy back buffer → front buffer)
-        if (m_audioStateBuffer != nullptr) m_audioStateBuffer->SwapBuffers();
-
-        // Trigger next JavaScript frame on worker thread
         m_jsGameLogicJob->TriggerNextFrame();
     }
     else if (m_jsGameLogicJob)
     {
-        // Frame skip: Worker still executing, continue with last state
-        // This maintains stable 60 FPS rendering regardless of JavaScript performance
+        // Frame skip: Worker still executing, continue with last state (maintains stable 60 FPS)
         static uint64_t frameSkipCount = 0;
-        if (frameSkipCount % 60 == 0)  // Log every 60 frame skips
+        if (frameSkipCount % 60 == 0)
         {
             DAEMON_LOG(LogApp, eLogVerbosity::Warning,
                        Stringf("App::Update - JavaScript frame skip (worker still executing) - Total skips: %llu",
-                           frameSkipCount));
+                               frameSkipCount));
         }
         ++frameSkipCount;
     }
 
-
-
-    // // Phase 2.3: Async JavaScript execution on worker thread
-    // // Main thread triggers worker, continues rendering independently (stable 60 FPS)
-    // if (m_jsGameLogicJob)
-    // {
-    //     if (m_jsGameLogicJob->IsFrameComplete())
-    //     {
-    //         // Worker finished previous frame - safe to swap buffers and trigger next frame
-    //         if (m_entityStateBuffer)
-    //         {
-    //             m_entityStateBuffer->SwapBuffers();  // Swap entity state (main reads front, worker writes back)
-    //         }
-    //
-    //         // Trigger next JavaScript frame on worker thread (non-blocking)
-    //         m_jsGameLogicJob->TriggerNextFrame();
-    //     }
-    //     else
-    //     {
-    //         // Worker still executing previous frame - frame skip tolerance
-    //         // Continue rendering with last known state (maintains stable 60 FPS)
-    //         static uint64_t skipCount = 0;
-    //         if ((skipCount % 60) == 0)  // Log every 60 skips (~1 second at 60 FPS)
-    //         {
-    //             DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-    //                        Stringf("App::Update - Worker frame skip detected (total: %llu)", skipCount));
-    //         }
-    //         skipCount++;
-    //     }
-    // }
-
-    // Phase 2.4: Callbacks now processed on JavaScript worker thread via CallbackQueue.dequeueAll()
-    // C++ enqueues callbacks to CallbackQueue, JavaScript dequeues and executes them
-    // This achieves true async bidirectional communication between C++ and JavaScript
-    if (m_entityAPI)
-    {
-        m_entityAPI->ExecutePendingCallbacks(m_callbackQueue);
-    }
-    if (m_cameraAPI)
-    {
-        m_cameraAPI->ExecutePendingCallbacks(m_callbackQueue);
-    }
-    if (m_audioAPI)
-    {
-        m_audioAPI->ExecutePendingCallbacks(m_callbackQueue);
-    }
-    if (m_debugRenderAPI)
-    {
-        m_debugRenderAPI->ExecutePendingCallbacks(m_callbackQueue);
-    }
+    // Execute pending callbacks from APIs
+    if (m_entityAPI) m_entityAPI->ExecutePendingCallbacks(m_callbackQueue);
+    if (m_cameraAPI) m_cameraAPI->ExecutePendingCallbacks(m_callbackQueue);
+    if (m_audioAPI) m_audioAPI->ExecutePendingCallbacks(m_callbackQueue);
+    if (m_debugRenderAPI) m_debugRenderAPI->ExecutePendingCallbacks(m_callbackQueue);
+    if (m_genericCommandExecutor) m_genericCommandExecutor->ExecutePendingCallbacks(m_callbackQueue);
 }
 
 //----------------------------------------------------------------------------------------------------
-// Some simple OpenGL example drawing code.
-// This is the graphical equivalent of printing "Hello, world."
-//
-// Ultimately this function (App::Render) will only call methods on Renderer (like Renderer::DrawVertexArray)
-//	to draw things, never calling OpenGL (nor DirectX) functions directly.
-//
 void App::Render() const
 {
-    Rgba8 const clearColor = Rgba8::GREY;
+    g_renderer->ClearScreen(Rgba8::GREY, Rgba8::BLACK);
 
-    g_renderer->ClearScreen(clearColor, Rgba8::BLACK);
-
-    // Phase 2: Render all entities from EntityStateBuffer
-    // Only render entities in GAME mode, not in ATTRACT mode
+    // Render entities only in GAME mode
     if (g_game && !g_game->IsAttractMode())
     {
         RenderEntities();
     }
 
-    //========================================
-    // Debug Rendering (World + Screen)
-    //========================================
-    // Phase 4: Populate debug primitive queue from DebugRenderStateBuffer
-    // This must be called BEFORE DebugRenderWorld/Screen to ensure primitives are available
-    // NOTE: Render debug primitives in ALL modes (ATTRACT and GAME) to support screen text UI
+    // Populate debug primitive queue from state buffer (renders in all modes for UI support)
     if (m_debugRenderStateBuffer)
     {
         RenderDebugPrimitives();
     }
 
-    // Get world camera (active camera - typically the player camera)
+    // Get world camera for 3D debug rendering
     Camera const* worldCamera = nullptr;
     if (m_cameraStateBuffer)
     {
@@ -516,21 +470,16 @@ void App::Render() const
         }
     }
 
-    // Render 3D debug visualization (world space)
-    // Only render world debug objects in GAME mode, not in ATTRACT mode
+    // Render 3D debug visualization (world space) - only in GAME mode
     if (worldCamera && g_game && !g_game->IsAttractMode())
     {
         DebugRenderWorld(*worldCamera);
     }
 
-    // Get screen camera (orthographic 2D camera for UI text)
-    // Note: Screen camera is created by JSGame.js but not set as active
-    // We need to find it by iterating through cameras or store its ID separately
+    // Find and use screen camera for 2D debug rendering
     Camera const* screenCamera = nullptr;
     if (m_cameraStateBuffer)
     {
-        // TEMPORARY: Find screen camera by checking all cameras for orthographic mode
-        // TODO: Store screen camera ID separately for direct lookup
         CameraStateMap const* frontBuffer = m_cameraStateBuffer->GetFrontBuffer();
         if (frontBuffer)
         {
@@ -539,21 +488,19 @@ void App::Render() const
                 if (cameraState.type == "screen")
                 {
                     screenCamera = m_cameraStateBuffer->GetCameraById(cameraId);
-                    break;  // Found the screen camera
+                    break;
                 }
             }
         }
     }
 
-    // Render 2D debug visualization (screen space text/UI)
     if (screenCamera)
     {
         DebugRenderScreen(*screenCamera);
     }
 
-    AABB2 const box = AABB2(Vec2::ZERO, Vec2(1600.f, 30.f));
-
-    g_devConsole->Render(box);
+    AABB2 const consoleBox = AABB2(Vec2::ZERO, Vec2(1600.f, 30.f));
+    g_devConsole->Render(consoleBox);
     g_imgui->Render();
 }
 
@@ -624,40 +571,35 @@ std::any App::OnGarbageCollection(std::vector<std::any> const& args)
 //----------------------------------------------------------------------------------------------------
 void App::UpdateCursorMode()
 {
-    bool const doesWindowHasFocus = GetActiveWindow() == g_window->GetWindowHandle();
-    // bool const shouldUsePointerMode = !doesWindowHasFocus || g_devConsole->IsOpen() || g_game->IsAttractMode();
-    bool const shouldUsePointerMode = !doesWindowHasFocus || g_devConsole->IsOpen();
+    bool const windowHasFocus      = GetActiveWindow() == g_window->GetWindowHandle();
+    bool const shouldUsePointerMode = !windowHasFocus || g_devConsole->IsOpen();
 
-    if (shouldUsePointerMode == true)
-    {
-        g_input->SetCursorMode(eCursorMode::POINTER);
-    }
-    else
-    {
-        g_input->SetCursorMode(eCursorMode::FPS);
-    }
+    g_input->SetCursorMode(shouldUsePointerMode ? eCursorMode::POINTER : eCursorMode::FPS);
 }
 
+//----------------------------------------------------------------------------------------------------
 void App::SetupScriptingBindings()
 {
-    if (g_scriptSubsystem == nullptr)ERROR_AND_DIE(StringFormat("(App::SetupScriptingBindings)(g_scriptSubsystem is nullptr!"))
-    if (!g_scriptSubsystem->IsInitialized())ERROR_AND_DIE(StringFormat("(App::SetupScriptingBindings)(g_scriptSubsystem is not initialized!"))
-    if (g_game == nullptr)ERROR_AND_DIE(StringFormat("(App::SetupScriptingBindings)(g_game is nullptr"))
+    if (g_scriptSubsystem == nullptr)
+        ERROR_AND_DIE("App::SetupScriptingBindings - g_scriptSubsystem is nullptr!")
+    if (!g_scriptSubsystem->IsInitialized())
+        ERROR_AND_DIE("App::SetupScriptingBindings - g_scriptSubsystem is not initialized!")
+    if (g_game == nullptr)
+        ERROR_AND_DIE("App::SetupScriptingBindings - g_game is nullptr")
 
-    DAEMON_LOG(LogApp, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings)(start)"));
+    DAEMON_LOG(LogApp, eLogVerbosity::Log, "App::SetupScriptingBindings - start");
 
-    // Initialize hot-reload system (now integrated into ScriptSubsystem)
-    std::string projectRoot = "../";
-
-    if (g_scriptSubsystem->InitializeHotReload(projectRoot))
+    // Initialize hot-reload system
+    if (g_scriptSubsystem->InitializeHotReload("../"))
     {
-        DAEMON_LOG(LogApp, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings) Hot-reload system initialized successfully"));
+        DAEMON_LOG(LogApp, eLogVerbosity::Log, "App::SetupScriptingBindings - Hot-reload system initialized successfully");
     }
     else
     {
-        DAEMON_LOG(LogApp, eLogVerbosity::Warning, StringFormat("(App::SetupScriptingBindings) Hot-reload system initialization failed"));
+        DAEMON_LOG(LogApp, eLogVerbosity::Warning, "App::SetupScriptingBindings - Hot-reload system initialization failed");
     }
 
+    // Register core script interfaces
     m_gameScriptInterface = std::make_shared<GameScriptInterface>(g_game);
     g_scriptSubsystem->RegisterScriptableObject("game", m_gameScriptInterface);
 
@@ -667,79 +609,69 @@ void App::SetupScriptingBindings()
     m_audioScriptInterface = std::make_shared<AudioScriptInterface>(g_audio);
     g_scriptSubsystem->RegisterScriptableObject("audio", m_audioScriptInterface);
 
+    m_clockScriptInterface = std::make_shared<ClockScriptInterface>();
+    g_scriptSubsystem->RegisterScriptableObject("clock", m_clockScriptInterface);
+
 #ifdef ENGINE_SCRIPTING_ENABLED
-    // Phase 2: Configure AudioCommandQueue for async JavaScript audio operations
+    // Configure AudioCommandQueue for async JavaScript audio operations
     if (m_audioCommandQueue && m_callbackQueue && g_audio)
     {
         g_audio->SetCommandQueue(m_audioCommandQueue, m_callbackQueue);
         m_audioScriptInterface->SetCommandQueue(m_audioCommandQueue, m_callbackQueue);
-        DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::SetupScriptingBindings - AudioCommandQueue configured (Phase 2)");
     }
 #endif
 
-    // Phase 4: Register debug render script interface with DebugRenderAPI
+    // Register debug render script interface
     if (m_debugRenderAPI)
     {
         m_debugRenderSystemScriptInterface = std::make_shared<DebugRenderSystemScriptInterface>(m_debugRenderAPI);
         g_scriptSubsystem->RegisterScriptableObject("debugRenderInterface", m_debugRenderSystemScriptInterface);
-        DAEMON_LOG(LogApp, eLogVerbosity::Log, "App::SetupScriptingBindings - DebugRenderSystemScriptInterface registered with DebugRenderAPI (Phase 4)");
     }
 
-    m_clockScriptInterface = std::make_shared<ClockScriptInterface>();
-    g_scriptSubsystem->RegisterScriptableObject("clock", m_clockScriptInterface);
-
-    // M4-T8: Register entity and camera script interfaces (API splitting)
+    // Register entity and camera script interfaces
     if (m_entityAPI && m_cameraAPI)
     {
-        // M4-T8: Register EntityScriptInterface as "entity" global (direct API usage)
         m_entityScriptInterface = std::make_shared<EntityScriptInterface>(m_entityAPI);
         g_scriptSubsystem->RegisterScriptableObject("entity", m_entityScriptInterface);
 
-        // M4-T8: Register CameraScriptInterface as "camera" global (direct API usage)
         m_cameraScriptInterface = std::make_shared<CameraScriptInterface>(m_cameraAPI);
         g_scriptSubsystem->RegisterScriptableObject("camera", m_cameraScriptInterface);
-
-        DAEMON_LOG(LogApp, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings) Entity and Camera script interfaces registered (M4-T8)"));
     }
 
-    // Register KADI broker integration for distributed agent communication
+    // Register KADI broker integration
     if (g_kadiSubsystem)
     {
         m_kadiScriptInterface = std::make_shared<KADIScriptInterface>(g_kadiSubsystem);
-
-        // Phase 2: Pass V8 isolate to KADI interface for callback invocation
         m_kadiScriptInterface->SetV8Isolate(g_scriptSubsystem->GetIsolate());
-
         g_scriptSubsystem->RegisterScriptableObject("kadi", m_kadiScriptInterface);
-        DAEMON_LOG(LogApp, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings) KADI script interface registered with V8 isolate"));
     }
     else
     {
-        DAEMON_LOG(LogApp, eLogVerbosity::Warning, StringFormat("(App::SetupScriptingBindings) KADI subsystem not available, skipping registration"));
+        DAEMON_LOG(LogApp, eLogVerbosity::Warning, "App::SetupScriptingBindings - KADI subsystem not available");
     }
 
-    // Phase 2.4: Register CallbackQueue script interface for JavaScript callback dequeuing
+    // Register callback queue script interface
     if (m_callbackQueue)
     {
         m_callbackQueueScriptInterface = std::make_shared<CallbackQueueScriptInterface>(m_callbackQueue);
         g_scriptSubsystem->RegisterScriptableObject("callbackQueue", m_callbackQueueScriptInterface);
-        DAEMON_LOG(LogApp, eLogVerbosity::Log, "App::SetupScriptingBindings - CallbackQueue script interface registered (Phase 2.4)");
     }
 
+    // Register generic command script interface
+    if (m_genericCommandQueue && m_genericCommandExecutor)
+    {
+        m_genericCommandScriptInterface = std::make_shared<GenericCommandScriptInterface>(m_genericCommandQueue, m_genericCommandExecutor);
+        g_scriptSubsystem->RegisterScriptableObject("commandQueue", m_genericCommandScriptInterface);
+    }
+
+    // Register global functions
     g_scriptSubsystem->RegisterGlobalFunction("print", OnPrint);
     g_scriptSubsystem->RegisterGlobalFunction("debug", OnDebug);
     g_scriptSubsystem->RegisterGlobalFunction("gc", OnGarbageCollection);
 
-    DAEMON_LOG(LogApp, eLogVerbosity::Log, StringFormat("(App::SetupScriptingBindings)(end)"));
+    DAEMON_LOG(LogApp, eLogVerbosity::Log, "App::SetupScriptingBindings - end");
 }
 
-//----------------------------------------------------------------------------------------------------
-// ProcessRenderCommands (Phase 1: Placeholder Implementation)
-//
-// Consumes render commands from lock-free queue and processes them.
-//
-// Phase 1: Placeholder - only logs commands, no actual processing
-// Phase 2: Implement actual command processing (CREATE_MESH, UPDATE_ENTITY, etc.)
 //----------------------------------------------------------------------------------------------------
 void App::ProcessRenderCommands()
 {
@@ -748,47 +680,29 @@ void App::ProcessRenderCommands()
         return;
     }
 
-    static int s_commandCount = 0;
-
-    // Process all commands from queue
     m_renderCommandQueue->ConsumeAll([this](RenderCommand const& cmd)
     {
-        s_commandCount++;
-        // DebuggerPrintf("[TRACE] ProcessRenderCommands - Processing command #%d, type=%d, entityId=%llu\n",
-        //                s_commandCount, static_cast<int>(cmd.type), cmd.entityId);
-
         switch (cmd.type)
         {
         case RenderCommandType::CREATE_MESH:
             {
                 MeshCreationData const& meshData = std::get<MeshCreationData>(cmd.data);
-                // DebuggerPrintf("[TRACE] ProcessRenderCommands - CREATE_MESH: meshType=%s, pos=(%.1f,%.1f,%.1f), radius=%.1f\n",
-                //                meshData.meshType.c_str(), meshData.position.x, meshData.position.y, meshData.position.z, meshData.radius);
-
-                // Phase 5: Use RenderResourceManager instead of CreateGeometryForMeshType
                 int vbHandle = m_renderResourceManager->RegisterEntity(cmd.entityId, meshData.meshType, meshData.radius, meshData.color);
 
                 if (vbHandle != 0)
                 {
                     EntityState state;
-                    state.position           = meshData.position;
-                    state.orientation        = EulerAngles::ZERO;
-                    state.color              = meshData.color;
-                    state.radius             = meshData.radius;
-                    state.meshType           = meshData.meshType;
-                    state.isActive           = true;
-                    // Phase 5: Removed vertexBufferHandle from EntityState (moved to RenderResourceManager)
-                    state.cameraType         = "world";  // Phase 2: All mesh entities use world camera by default
+                    state.position    = meshData.position;
+                    state.orientation = EulerAngles::ZERO;
+                    state.color       = meshData.color;
+                    state.radius      = meshData.radius;
+                    state.meshType    = meshData.meshType;
+                    state.isActive    = true;
+                    state.cameraType  = "world";
 
-                    auto* backBuffer            = m_entityStateBuffer->GetBackBuffer();
+                    auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
                     (*backBuffer)[cmd.entityId] = state;
-
-                    // Phase 4.2: Mark entity as dirty for per-key copy optimization
                     m_entityStateBuffer->MarkDirty(cmd.entityId);
-                }
-                else
-                {
-                    // DebuggerPrintf("[TRACE] ProcessRenderCommands - ERROR: CreateGeometryForMeshType returned 0 (failed)!\n");
                 }
                 break;
             }
@@ -796,16 +710,14 @@ void App::ProcessRenderCommands()
         case RenderCommandType::UPDATE_ENTITY:
             {
                 EntityUpdateData const& updateData = std::get<EntityUpdateData>(cmd.data);
-                auto*                   backBuffer = m_entityStateBuffer->GetBackBuffer();
-                auto                    it         = backBuffer->find(cmd.entityId);
+                auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+                auto  it = backBuffer->find(cmd.entityId);
 
                 if (it != backBuffer->end())
                 {
                     if (updateData.position.has_value()) it->second.position = updateData.position.value();
                     if (updateData.orientation.has_value()) it->second.orientation = updateData.orientation.value();
                     if (updateData.color.has_value()) it->second.color = updateData.color.value();
-
-                    // Phase 4.2: Mark entity as dirty for per-key copy optimization
                     m_entityStateBuffer->MarkDirty(cmd.entityId);
                 }
                 break;
@@ -813,8 +725,8 @@ void App::ProcessRenderCommands()
 
         case RenderCommandType::DESTROY_ENTITY:
             {
-                std::unordered_map<unsigned long long, EntityState>* backBuffer = m_entityStateBuffer->GetBackBuffer();
-                auto                                                 it         = backBuffer->find(cmd.entityId);
+                auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+                auto  it = backBuffer->find(cmd.entityId);
                 if (it != backBuffer->end()) it->second.isActive = false;
                 break;
             }
@@ -829,7 +741,7 @@ void App::ProcessRenderCommands()
                 state.type        = cameraData.type;
                 state.isActive    = true;
 
-                // Auto-configure camera mode based on type
+                // Configure camera based on type
                 if (cameraData.type == "world")
                 {
                     state.mode              = Camera::eMode_Perspective;
@@ -840,9 +752,7 @@ void App::ProcessRenderCommands()
                 }
                 else if (cameraData.type == "screen")
                 {
-                    // Get viewport dimensions for screen camera orthographic bounds
-                    // Use viewport dimensions (not client dimensions) to match actual rendering area
-                    Vec2 viewportDimensions = Vec2(1600.f, 800.f);  // Default fallback
+                    Vec2 viewportDimensions = Vec2(1600.f, 800.f);
                     if (Window::s_mainWindow)
                     {
                         viewportDimensions = Window::s_mainWindow->GetViewportDimensions();
@@ -851,83 +761,58 @@ void App::ProcessRenderCommands()
                     state.mode        = Camera::eMode_Orthographic;
                     state.orthoLeft   = 0.0f;
                     state.orthoBottom = 0.0f;
-                    state.orthoRight  = viewportDimensions.x;  // Match viewport width
-                    state.orthoTop    = viewportDimensions.y;    // Match viewport height
+                    state.orthoRight  = viewportDimensions.x;
+                    state.orthoTop    = viewportDimensions.y;
                     state.orthoNear   = 0.0f;
                     state.orthoFar    = 1.0f;
-                    state.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
-
-                    // DIAGNOSTIC: Log screen camera orthographic bounds
-                    DAEMON_LOG(LogApp, eLogVerbosity::Display,
-                               StringFormat("[DIAGNOSTIC] CREATE_CAMERA screen: ortho bounds = ({:.2f}, {:.2f}) to ({:.2f}, {:.2f}), viewport dims = ({:.2f}, {:.2f})",
-                                   state.orthoLeft, state.orthoBottom, state.orthoRight, state.orthoTop,
-                                   viewportDimensions.x, viewportDimensions.y));
+                    state.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);
                 }
 
-                auto* backBuffer            = m_cameraStateBuffer->GetBackBuffer();
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
                 (*backBuffer)[cmd.entityId] = state;
-
-                // Phase 4.2: Mark camera as dirty for per-key copy optimization
                 m_cameraStateBuffer->MarkDirty(cmd.entityId);
 
-                // Phase 2.3 FIX: Notify CameraAPI that camera creation is complete
-                // This marks the callback as ready so it can be enqueued and executed
                 if (m_cameraAPI && cameraData.callbackId != 0)
                 {
                     m_cameraAPI->NotifyCallbackReady(cameraData.callbackId, cmd.entityId);
                 }
-
-                // DebuggerPrintf("[TRACE] ProcessRenderCommands - Camera %llu added to back buffer\n", cmd.entityId);
                 break;
             }
 
         case RenderCommandType::UPDATE_CAMERA:
             {
                 auto const& updateData = std::get<CameraUpdateData>(cmd.data);
-                auto*       backBuffer = m_cameraStateBuffer->GetBackBuffer();
-                auto        it         = backBuffer->find(cmd.entityId);
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto  it = backBuffer->find(cmd.entityId);
 
                 if (it != backBuffer->end())
                 {
-                    // OPTION A FIX: Always apply both position and orientation
-                    // HighLevelEntityAPI now reads the current state and sends complete updates
-                    // So we can safely apply both fields without zeroing anything out
-
                     it->second.position    = updateData.position;
                     it->second.orientation = updateData.orientation;
-
-                    // Phase 4.2: Mark camera as dirty for per-key copy optimization
                     m_cameraStateBuffer->MarkDirty(cmd.entityId);
-
-                    // DebuggerPrintf("[TRACE] ProcessRenderCommands - UPDATE_CAMERA: cameraId=%llu updated\n", cmd.entityId);
                 }
                 else
                 {
-                    // Camera not found in back buffer!
                     DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               StringFormat("ProcessRenderCommands UPDATE_CAMERA: Camera {} NOT FOUND in back buffer!", cmd.entityId));
+                               StringFormat("ProcessRenderCommands UPDATE_CAMERA: Camera {} NOT FOUND", cmd.entityId));
                 }
                 break;
             }
 
         case RenderCommandType::SET_ACTIVE_CAMERA:
-            {
-                m_cameraStateBuffer->SetActiveCameraID(cmd.entityId);
-                // DebuggerPrintf("[TRACE] ProcessRenderCommands - SET_ACTIVE_CAMERA: cameraId=%llu\n", cmd.entityId);
-                break;
-            }
+            m_cameraStateBuffer->SetActiveCameraID(cmd.entityId);
+            break;
 
         case RenderCommandType::UPDATE_CAMERA_TYPE:
             {
-                auto const& typeData   = std::get<CameraTypeUpdateData>(cmd.data);
-                auto*       backBuffer = m_cameraStateBuffer->GetBackBuffer();
-                auto        it         = backBuffer->find(cmd.entityId);
+                auto const& typeData = std::get<CameraTypeUpdateData>(cmd.data);
+                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+                auto  it = backBuffer->find(cmd.entityId);
 
                 if (it != backBuffer->end())
                 {
                     it->second.type = typeData.type;
 
-                    // Reconfigure camera based on new type
                     if (typeData.type == "world")
                     {
                         it->second.mode              = Camera::eMode_Perspective;
@@ -938,8 +823,7 @@ void App::ProcessRenderCommands()
                     }
                     else if (typeData.type == "screen")
                     {
-                        // Get actual client dimensions for screen camera orthographic bounds
-                        Vec2 clientDimensions = Vec2(1600.f, 800.f);  // Default fallback
+                        Vec2 clientDimensions = Vec2(1600.f, 800.f);
                         if (Window::s_mainWindow)
                         {
                             clientDimensions = Window::s_mainWindow->GetClientDimensions();
@@ -948,11 +832,11 @@ void App::ProcessRenderCommands()
                         it->second.mode        = Camera::eMode_Orthographic;
                         it->second.orthoLeft   = 0.0f;
                         it->second.orthoBottom = 0.0f;
-                        it->second.orthoRight  = clientDimensions.x;  // Match window width
-                        it->second.orthoTop    = clientDimensions.y;    // Match window height
+                        it->second.orthoRight  = clientDimensions.x;
+                        it->second.orthoTop    = clientDimensions.y;
                         it->second.orthoNear   = 0.0f;
                         it->second.orthoFar    = 1.0f;
-                        it->second.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);  // Full screen viewport for UI overlay
+                        it->second.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);
                     }
                 }
                 break;
@@ -961,127 +845,110 @@ void App::ProcessRenderCommands()
         case RenderCommandType::DESTROY_CAMERA:
             {
                 auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
-                auto  it         = backBuffer->find(cmd.entityId);
-                if (it != backBuffer->end())
-                {
-                    it->second.isActive = false;
-                    // DebuggerPrintf("[TRACE] ProcessRenderCommands - DESTROY_CAMERA: cameraId=%llu\n", cmd.entityId);
-                }
+                auto  it = backBuffer->find(cmd.entityId);
+                if (it != backBuffer->end()) it->second.isActive = false;
                 break;
             }
 
-        // Phase 4: Debug Render Command Processing
         case RenderCommandType::DEBUG_ADD_LINE:
             {
-                auto const&        lineData   = std::get<DebugLineData>(cmd.data);
-                DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
-
+                auto const& lineData = std::get<DebugLineData>(cmd.data);
                 DebugPrimitive primitive;
-                primitive.primitiveId  = cmd.entityId;
-                primitive.type         = DebugPrimitiveType::LINE;
-                primitive.startPos     = lineData.start;
-                primitive.endPos       = lineData.end;
-                primitive.startColor   = lineData.startColor;
-                primitive.endColor     = lineData.endColor;
-                primitive.radius       = lineData.radius;
-                primitive.duration     = lineData.duration;
+                primitive.primitiveId   = cmd.entityId;
+                primitive.type          = DebugPrimitiveType::LINE;
+                primitive.startPos      = lineData.start;
+                primitive.endPos        = lineData.end;
+                primitive.startColor    = lineData.startColor;
+                primitive.endColor      = lineData.endColor;
+                primitive.radius        = lineData.radius;
+                primitive.duration      = lineData.duration;
                 primitive.timeRemaining = lineData.duration;
-                primitive.isActive     = true;
+                primitive.isActive      = true;
 
-                (*backBuffer)[cmd.entityId] = primitive;
+                (*m_debugRenderStateBuffer->GetBackBuffer())[cmd.entityId] = primitive;
                 m_debugRenderStateBuffer->MarkDirty(cmd.entityId);
                 break;
             }
 
         case RenderCommandType::DEBUG_ADD_POINT:
             {
-                auto const&        pointData  = std::get<DebugPointData>(cmd.data);
-                DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
-
+                auto const& pointData = std::get<DebugPointData>(cmd.data);
                 DebugPrimitive primitive;
-                primitive.primitiveId  = cmd.entityId;
-                primitive.type         = DebugPrimitiveType::POINT;
-                primitive.startPos     = pointData.position;
-                primitive.startColor   = pointData.color;
-                primitive.radius       = pointData.radius;
-                primitive.duration     = pointData.duration;
+                primitive.primitiveId   = cmd.entityId;
+                primitive.type          = DebugPrimitiveType::POINT;
+                primitive.startPos      = pointData.position;
+                primitive.startColor    = pointData.color;
+                primitive.radius        = pointData.radius;
+                primitive.duration      = pointData.duration;
                 primitive.timeRemaining = pointData.duration;
-                primitive.isBillboard  = pointData.isBillboard;
-                primitive.isActive     = true;
+                primitive.isBillboard   = pointData.isBillboard;
+                primitive.isActive      = true;
 
-                (*backBuffer)[cmd.entityId] = primitive;
+                (*m_debugRenderStateBuffer->GetBackBuffer())[cmd.entityId] = primitive;
                 m_debugRenderStateBuffer->MarkDirty(cmd.entityId);
                 break;
             }
 
         case RenderCommandType::DEBUG_ADD_SPHERE:
             {
-                auto const&        sphereData = std::get<DebugSphereData>(cmd.data);
-                DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
-
+                auto const& sphereData = std::get<DebugSphereData>(cmd.data);
                 DebugPrimitive primitive;
-                primitive.primitiveId  = cmd.entityId;
-                primitive.type         = DebugPrimitiveType::SPHERE;
-                primitive.startPos     = sphereData.center;
-                primitive.startColor   = sphereData.color;
-                primitive.radius       = sphereData.radius;
-                primitive.duration     = sphereData.duration;
+                primitive.primitiveId   = cmd.entityId;
+                primitive.type          = DebugPrimitiveType::SPHERE;
+                primitive.startPos      = sphereData.center;
+                primitive.startColor    = sphereData.color;
+                primitive.radius        = sphereData.radius;
+                primitive.duration      = sphereData.duration;
                 primitive.timeRemaining = sphereData.duration;
-                primitive.isSolid      = sphereData.isSolid;
-                primitive.isActive     = true;
+                primitive.isSolid       = sphereData.isSolid;
+                primitive.isActive      = true;
 
-                (*backBuffer)[cmd.entityId] = primitive;
+                (*m_debugRenderStateBuffer->GetBackBuffer())[cmd.entityId] = primitive;
                 m_debugRenderStateBuffer->MarkDirty(cmd.entityId);
                 break;
             }
 
         case RenderCommandType::DEBUG_ADD_AABB:
             {
-                auto const&        aabbData   = std::get<DebugAABBData>(cmd.data);
-                DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
-
+                auto const& aabbData = std::get<DebugAABBData>(cmd.data);
                 DebugPrimitive primitive;
-                primitive.primitiveId  = cmd.entityId;
-                primitive.type         = DebugPrimitiveType::AABB;
-                primitive.startPos     = aabbData.minBounds;
-                primitive.endPos       = aabbData.maxBounds;
-                primitive.startColor   = aabbData.color;
-                primitive.duration     = aabbData.duration;
+                primitive.primitiveId   = cmd.entityId;
+                primitive.type          = DebugPrimitiveType::AABB;
+                primitive.startPos      = aabbData.minBounds;
+                primitive.endPos        = aabbData.maxBounds;
+                primitive.startColor    = aabbData.color;
+                primitive.duration      = aabbData.duration;
                 primitive.timeRemaining = aabbData.duration;
-                primitive.isActive     = true;
+                primitive.isActive      = true;
 
-                (*backBuffer)[cmd.entityId] = primitive;
+                (*m_debugRenderStateBuffer->GetBackBuffer())[cmd.entityId] = primitive;
                 m_debugRenderStateBuffer->MarkDirty(cmd.entityId);
                 break;
             }
 
         case RenderCommandType::DEBUG_ADD_BASIS:
             {
-                auto const&        basisData  = std::get<DebugBasisData>(cmd.data);
-                DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
-
+                auto const& basisData = std::get<DebugBasisData>(cmd.data);
                 DebugPrimitive primitive;
-                primitive.primitiveId  = cmd.entityId;
-                primitive.type         = DebugPrimitiveType::BASIS;
-                primitive.startPos     = basisData.position;
-                primitive.basisI       = basisData.iBasis;
-                primitive.basisJ       = basisData.jBasis;
-                primitive.basisK       = basisData.kBasis;
-                primitive.duration     = basisData.duration;
+                primitive.primitiveId   = cmd.entityId;
+                primitive.type          = DebugPrimitiveType::BASIS;
+                primitive.startPos      = basisData.position;
+                primitive.basisI        = basisData.iBasis;
+                primitive.basisJ        = basisData.jBasis;
+                primitive.basisK        = basisData.kBasis;
+                primitive.duration      = basisData.duration;
                 primitive.timeRemaining = basisData.duration;
-                primitive.radius       = basisData.axisLength;  // Store axis length in radius field
-                primitive.isActive     = true;
+                primitive.radius        = basisData.axisLength;
+                primitive.isActive      = true;
 
-                (*backBuffer)[cmd.entityId] = primitive;
+                (*m_debugRenderStateBuffer->GetBackBuffer())[cmd.entityId] = primitive;
                 m_debugRenderStateBuffer->MarkDirty(cmd.entityId);
                 break;
             }
 
         case RenderCommandType::DEBUG_ADD_WORLD_TEXT:
             {
-                auto const&        textData   = std::get<DebugWorldTextData>(cmd.data);
-                DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
-
+                auto const& textData = std::get<DebugWorldTextData>(cmd.data);
                 DebugPrimitive primitive;
                 primitive.primitiveId   = cmd.entityId;
                 primitive.type          = DebugPrimitiveType::TEXT_3D;
@@ -1094,21 +961,19 @@ void App::ProcessRenderCommands()
                 primitive.timeRemaining = textData.duration;
                 primitive.isActive      = true;
 
-                (*backBuffer)[cmd.entityId] = primitive;
+                (*m_debugRenderStateBuffer->GetBackBuffer())[cmd.entityId] = primitive;
                 m_debugRenderStateBuffer->MarkDirty(cmd.entityId);
                 break;
             }
 
         case RenderCommandType::DEBUG_ADD_SCREEN_TEXT:
             {
-                auto const&        textData   = std::get<DebugScreenTextData>(cmd.data);
-                DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
-
+                auto const& textData = std::get<DebugScreenTextData>(cmd.data);
                 DebugPrimitive primitive;
                 primitive.primitiveId   = cmd.entityId;
                 primitive.type          = DebugPrimitiveType::TEXT_2D;
                 primitive.text          = textData.text;
-                primitive.startPos      = Vec3(textData.position.x, textData.position.y, 0.0f);  // Convert Vec2 to Vec3
+                primitive.startPos      = Vec3(textData.position.x, textData.position.y, 0.0f);
                 primitive.fontSize      = textData.fontSize;
                 primitive.textAlignment = textData.alignment;
                 primitive.startColor    = textData.color;
@@ -1116,16 +981,16 @@ void App::ProcessRenderCommands()
                 primitive.timeRemaining = textData.duration;
                 primitive.isActive      = true;
 
-                (*backBuffer)[cmd.entityId] = primitive;
+                (*m_debugRenderStateBuffer->GetBackBuffer())[cmd.entityId] = primitive;
                 m_debugRenderStateBuffer->MarkDirty(cmd.entityId);
                 break;
             }
 
         case RenderCommandType::DEBUG_UPDATE_COLOR:
             {
-                auto const&        colorData  = std::get<DebugColorUpdateData>(cmd.data);
-                DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
-                auto               it         = backBuffer->find(cmd.entityId);
+                auto const& colorData = std::get<DebugColorUpdateData>(cmd.data);
+                auto* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
+                auto  it = backBuffer->find(cmd.entityId);
 
                 if (it != backBuffer->end())
                 {
@@ -1138,8 +1003,8 @@ void App::ProcessRenderCommands()
 
         case RenderCommandType::DEBUG_REMOVE:
             {
-                DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
-                auto               it         = backBuffer->find(cmd.entityId);
+                auto* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
+                auto  it = backBuffer->find(cmd.entityId);
 
                 if (it != backBuffer->end())
                 {
@@ -1150,37 +1015,17 @@ void App::ProcessRenderCommands()
             }
 
         case RenderCommandType::DEBUG_CLEAR_ALL:
-            {
-                DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
-                backBuffer->clear();
-                // Note: No MarkDirty needed, clearing entire buffer
-                break;
-            }
+            m_debugRenderStateBuffer->GetBackBuffer()->clear();
+            break;
 
         case RenderCommandType::CREATE_LIGHT:
-            break;
         case RenderCommandType::UPDATE_LIGHT:
-            break;
         default:
             break;
         }
     });
 }
 
-//----------------------------------------------------------------------------------------------------
-// ProcessAudioCommands (Phase 5: Audio Async Pattern)
-//
-// Consumes audio commands from AudioCommandQueue and processes them.
-// Updates AudioStateBuffer back buffer based on command type.
-//
-// Command Processing:
-//   LOAD_SOUND:        Load audio file via AudioSystem, create AudioState, notify callback
-//   PLAY_SOUND:        Update state (isPlaying, volume, position), call AudioSystem
-//   STOP_SOUND:        Update state (isPlaying=false), call AudioSystem
-//   SET_VOLUME:        Update volume field, call AudioSystem
-//   UPDATE_3D_POSITION: Update position field, call AudioSystem
-//
-// Performance: O(c) where c = number of commands (typically 1-10 per frame)
 //----------------------------------------------------------------------------------------------------
 void App::ProcessAudioCommands()
 {
@@ -1189,7 +1034,6 @@ void App::ProcessAudioCommands()
         return;
     }
 
-    // Process all commands from queue
     m_audioCommandQueue->ConsumeAll([this](AudioCommand const& cmd)
     {
         switch (cmd.type)
@@ -1197,13 +1041,10 @@ void App::ProcessAudioCommands()
         case AudioCommandType::LOAD_SOUND:
             {
                 SoundLoadData const& loadData = std::get<SoundLoadData>(cmd.data);
-
-                // Load sound via AudioSystem
                 SoundID soundId = g_audio->CreateOrGetSound(loadData.soundPath, eAudioSystemSoundDimension::Sound3D);
 
                 if (soundId != MISSING_SOUND_ID)
                 {
-                    // Create AudioState for loaded sound
                     AudioState state;
                     state.soundId   = soundId;
                     state.soundPath = loadData.soundPath;
@@ -1214,27 +1055,14 @@ void App::ProcessAudioCommands()
                     state.isLoaded  = true;
                     state.isActive  = true;
 
-                    // Insert into back buffer
-                    auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
-                    (*backBuffer)[soundId] = state;
-
-                    // Mark dirty for O(d) swap optimization
+                    (*m_audioStateBuffer->GetBackBuffer())[soundId] = state;
                     m_audioStateBuffer->MarkDirty(soundId);
-
-                    // Notify callback ready (async operation complete)
                     m_audioAPI->NotifyCallbackReady(loadData.callbackId, soundId);
-
-                    DAEMON_LOG(LogApp, eLogVerbosity::Verbose,
-                               Stringf("ProcessAudioCommands - LOAD_SOUND: soundId=%llu, path=%s",
-                                       soundId, loadData.soundPath.c_str()));
                 }
                 else
                 {
                     DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               Stringf("ProcessAudioCommands - LOAD_SOUND failed: path=%s",
-                                       loadData.soundPath.c_str()));
-
-                    // Notify callback with failure (soundId=0)
+                               Stringf("ProcessAudioCommands - LOAD_SOUND failed: path=%s", loadData.soundPath.c_str()));
                     m_audioAPI->NotifyCallbackReady(loadData.callbackId, 0);
                 }
                 break;
@@ -1243,33 +1071,23 @@ void App::ProcessAudioCommands()
         case AudioCommandType::PLAY_SOUND:
             {
                 SoundPlayData const& playData = std::get<SoundPlayData>(cmd.data);
-                auto*                backBuffer = m_audioStateBuffer->GetBackBuffer();
-                auto                 it         = backBuffer->find(cmd.soundId);
+                auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
+                auto  it = backBuffer->find(cmd.soundId);
 
                 if (it != backBuffer->end())
                 {
-                    // Update AudioState
                     it->second.isPlaying = true;
                     it->second.volume    = playData.volume;
                     it->second.position  = playData.position;
                     it->second.isLooped  = playData.looped;
 
-                    // Mark dirty for O(d) swap optimization
                     m_audioStateBuffer->MarkDirty(cmd.soundId);
-
-                    // Start sound playback via AudioSystem
-                    SoundPlaybackID playbackId = g_audio->StartSoundAt(cmd.soundId, playData.position,
-                                                                        playData.looped, playData.volume);
-
-                    DAEMON_LOG(LogApp, eLogVerbosity::Verbose,
-                               Stringf("ProcessAudioCommands - PLAY_SOUND: soundId=%llu, playbackId=%llu, volume=%.2f",
-                                       cmd.soundId, playbackId, playData.volume));
+                    g_audio->StartSoundAt(cmd.soundId, playData.position, playData.looped, playData.volume);
                 }
                 else
                 {
                     DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               Stringf("ProcessAudioCommands - PLAY_SOUND: soundId=%llu not found in buffer",
-                                       cmd.soundId));
+                               Stringf("ProcessAudioCommands - PLAY_SOUND: soundId=%llu not found", cmd.soundId));
                 }
                 break;
             }
@@ -1277,27 +1095,18 @@ void App::ProcessAudioCommands()
         case AudioCommandType::STOP_SOUND:
             {
                 auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
-                auto  it         = backBuffer->find(cmd.soundId);
+                auto  it = backBuffer->find(cmd.soundId);
 
                 if (it != backBuffer->end())
                 {
-                    // Update AudioState
                     it->second.isPlaying = false;
-
-                    // Mark dirty for O(d) swap optimization
                     m_audioStateBuffer->MarkDirty(cmd.soundId);
-
-                    // Stop sound playback via AudioSystem
                     g_audio->StopSound(cmd.soundId);
-
-                    DAEMON_LOG(LogApp, eLogVerbosity::Verbose,
-                               Stringf("ProcessAudioCommands - STOP_SOUND: soundId=%llu", cmd.soundId));
                 }
                 else
                 {
                     DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               Stringf("ProcessAudioCommands - STOP_SOUND: soundId=%llu not found in buffer",
-                                       cmd.soundId));
+                               Stringf("ProcessAudioCommands - STOP_SOUND: soundId=%llu not found", cmd.soundId));
                 }
                 break;
             }
@@ -1305,29 +1114,19 @@ void App::ProcessAudioCommands()
         case AudioCommandType::SET_VOLUME:
             {
                 VolumeUpdateData const& volumeData = std::get<VolumeUpdateData>(cmd.data);
-                auto*                   backBuffer = m_audioStateBuffer->GetBackBuffer();
-                auto                    it         = backBuffer->find(cmd.soundId);
+                auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
+                auto  it = backBuffer->find(cmd.soundId);
 
                 if (it != backBuffer->end())
                 {
-                    // Update AudioState
                     it->second.volume = volumeData.volume;
-
-                    // Mark dirty for O(d) swap optimization
                     m_audioStateBuffer->MarkDirty(cmd.soundId);
-
-                    // Set volume via AudioSystem
                     g_audio->SetSoundPlaybackVolume(cmd.soundId, volumeData.volume);
-
-                    DAEMON_LOG(LogApp, eLogVerbosity::Verbose,
-                               Stringf("ProcessAudioCommands - SET_VOLUME: soundId=%llu, volume=%.2f",
-                                       cmd.soundId, volumeData.volume));
                 }
                 else
                 {
                     DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               Stringf("ProcessAudioCommands - SET_VOLUME: soundId=%llu not found in buffer",
-                                       cmd.soundId));
+                               Stringf("ProcessAudioCommands - SET_VOLUME: soundId=%llu not found", cmd.soundId));
                 }
                 break;
             }
@@ -1335,75 +1134,66 @@ void App::ProcessAudioCommands()
         case AudioCommandType::UPDATE_3D_POSITION:
             {
                 Position3DUpdateData const& positionData = std::get<Position3DUpdateData>(cmd.data);
-                auto*                       backBuffer   = m_audioStateBuffer->GetBackBuffer();
-                auto                        it           = backBuffer->find(cmd.soundId);
+                auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
+                auto  it = backBuffer->find(cmd.soundId);
 
                 if (it != backBuffer->end())
                 {
-                    // Update AudioState
                     it->second.position = positionData.position;
-
-                    // Mark dirty for O(d) swap optimization
                     m_audioStateBuffer->MarkDirty(cmd.soundId);
-
-                    // Update 3D position via AudioSystem
                     g_audio->SetSoundPosition(cmd.soundId, positionData.position);
-
-                    DAEMON_LOG(LogApp, eLogVerbosity::Verbose,
-                               Stringf("ProcessAudioCommands - UPDATE_3D_POSITION: soundId=%llu, pos=(%.1f,%.1f,%.1f)",
-                                       cmd.soundId, positionData.position.x, positionData.position.y, positionData.position.z));
                 }
                 else
                 {
                     DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               Stringf("ProcessAudioCommands - UPDATE_3D_POSITION: soundId=%llu not found in buffer",
-                                       cmd.soundId));
+                               Stringf("ProcessAudioCommands - UPDATE_3D_POSITION: soundId=%llu not found", cmd.soundId));
                 }
                 break;
             }
 
         default:
             DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                       Stringf("ProcessAudioCommands - Unknown audio command type: %d",
-                               static_cast<int>(cmd.type)));
+                       Stringf("ProcessAudioCommands - Unknown command type: %d", static_cast<int>(cmd.type)));
             break;
         }
     });
 }
 
 //----------------------------------------------------------------------------------------------------
-// RenderEntities (Phase 2 Entity Rendering)
+// ProcessGenericCommands
 //
-// Renders all active entities from EntityStateBuffer.
-// Reads front buffer (thread-safe, no locking) and draws each entity using stored vertex buffers.
+// Consumes all pending GenericCommands from the queue and dispatches them to registered handlers
+// via GenericCommandExecutor. Follows the same ConsumeAll pattern as ProcessRenderCommands and
+// ProcessAudioCommands.
+//
+// Called from Update() on the main render thread, after ProcessAudioCommands().
+//----------------------------------------------------------------------------------------------------
+void App::ProcessGenericCommands()
+{
+    if (!m_genericCommandQueue || !m_genericCommandExecutor)
+    {
+        return;
+    }
+
+    m_genericCommandQueue->ConsumeAll([this](GenericCommand const& cmd)
+    {
+        m_genericCommandExecutor->ExecuteCommand(cmd);
+    });
+}
+
 //----------------------------------------------------------------------------------------------------
 void App::RenderEntities() const
 {
-    // if (!m_entityStateBuffer || !m_mainCamera)
-    // {
-    //     return;
-    // }
-
-    // Get front buffer for reading (thread-safe, no locking)
     EntityStateMap const* frontBuffer = m_entityStateBuffer->GetFrontBuffer();
     if (!frontBuffer)
     {
         return;
     }
 
-    static int s_frameCount = 0;
-    s_frameCount++;
-
-
-    //========================================
-    // BLOCK 1: World Camera (3D Entities)
-    //========================================
-    // Phase 2b: NEW Camera System - Use CameraStateBuffer for active camera lookup
-
+    // Get active camera from camera state buffer
     Camera const* worldCamera = nullptr;
     if (m_cameraStateBuffer)
     {
-        // Get active camera from NEW camera system
         EntityID activeCameraId = m_cameraStateBuffer->GetActiveCameraID();
         if (activeCameraId != 0)
         {
@@ -1411,148 +1201,52 @@ void App::RenderEntities() const
         }
     }
 
-
-    // Phase 2.3 Fix: Check if worldCamera is valid before rendering
-    // Camera creation is async, so it may not be ready on first few frames
+    // Camera creation is async, skip rendering until camera is ready
     if (!worldCamera)
     {
-        // Skip world entity rendering until camera is ready
-        // This is normal during startup - camera creation happens asynchronously
         return;
     }
-    
+
     g_renderer->BeginCamera(*worldCamera);
 
-    int worldRenderedCount = 0;
-
-    // Render all entities with cameraType == "world" (3D entities)
     for (auto const& [entityId, state] : *frontBuffer)
     {
-        // Skip inactive entities
         if (!state.isActive) continue;
-
-        // Skip entities not tagged for world camera
         if (state.cameraType != "world") continue;
 
-        // Phase 5: Query vertex data from RenderResourceManager instead of EntityState
         VertexList_PCU const* verts = m_renderResourceManager->GetVerticesForEntity(entityId);
         if (!verts || verts->empty()) continue;
 
-        // Set model transformation matrix
-        // Coordinate System: X-forward, Y-left, Z-up
-        // FIXED: Use same pattern as Entity::GetModelToWorldTransform()
-        // SetTranslation + Append(orientation matrix) instead of separate axis rotations
         Mat44 modelMatrix;
         modelMatrix.SetTranslation3D(state.position);
         modelMatrix.Append(state.orientation.GetAsMatrix_IFwd_JLeft_KUp());
 
         g_renderer->SetModelConstants(modelMatrix, state.color);
-        g_renderer->BindTexture(nullptr);  // Phase 2.5: Will be replaced with per-entity texture binding
-
-        // Draw entity geometry
+        g_renderer->BindTexture(nullptr);
         g_renderer->DrawVertexArray(static_cast<int>(verts->size()), verts->data());
-        worldRenderedCount++;
     }
 
     g_renderer->EndCamera(*worldCamera);
-
-    //========================================
-    // BLOCK 2: Screen Camera (2D UI/Attract Mode)
-    //========================================
-    // Phase 2b: Screen camera rendering temporarily disabled during NEW camera system migration
-    // TODO: Implement multi-camera support or separate screen camera ID in CameraStateBuffer
-
-    /*
-    // OLD camera system code - commented out during Phase 2b migration
-    Camera* screenCamera = m_cameraScriptInterface->GetCameraByRole("screen");
-    if (screenCamera)
-    {
-        g_renderer->BeginCamera(*screenCamera);
-
-        int screenRenderedCount = 0;
-
-        // Render all entities with cameraType == "screen" (2D UI entities)
-        for (auto const& [entityId, state] : *frontBuffer)
-        {
-            // Skip inactive entities
-            if (!state.isActive) continue;
-
-            // Skip entities not tagged for screen camera
-            if (state.cameraType != "screen") continue;
-
-            // Skip entities without valid vertex buffer handles
-            if (state.vertexBufferHandle == 0) continue;
-
-            // Find vertex data in global vertex buffer storage
-            auto it = g_vertexBuffers.find(state.vertexBufferHandle);
-            if (it == g_vertexBuffers.end()) continue;
-
-            VertexList_PCU const& verts = it->second;
-            if (verts.empty()) continue;
-
-            // Set model transformation matrix (2D UI typically has simpler transforms)
-            Mat44 modelMatrix = Mat44::MakeTranslation3D(state.position);
-            modelMatrix.Append(Mat44::MakeZRotationDegrees(state.orientation.m_yawDegrees));
-
-            g_renderer->SetModelConstants(modelMatrix, state.color);
-            g_renderer->BindTexture(nullptr);  // Phase 2.5: Will be replaced with per-entity texture binding
-
-            // Draw UI geometry
-            g_renderer->DrawVertexArray(static_cast<int>(verts.size()), verts.data());
-            screenRenderedCount++;
-        }
-
-        g_renderer->EndCamera(*screenCamera);
-
-        // Log screen render count periodically
-        if (s_frameCount % 60 == 0 && screenRenderedCount > 0)
-        {
-            DebuggerPrintf("[TRACE] RenderEntities - Rendered %d screen entities this frame\n", screenRenderedCount);
-        }
-    }
-    */
 }
 
 //----------------------------------------------------------------------------------------------------
-// RenderDebugPrimitives (Phase 4: Debug Render System)
-//
-// Renders all active debug primitives from DebugRenderStateBuffer.
-// Reads front buffer (thread-safe, no locking) and calls DebugRenderSystem global functions.
-//
-// Architecture:
-// - App orchestrates high-level rendering (matches RenderEntities pattern)
-// - Reads DebugRenderStateBuffer front buffer for state
-// - Calls DebugRenderSystem global functions with duration=0 (single frame rendering)
-// - DebugRenderSystem handles low-level primitive rendering
-//----------------------------------------------------------------------------------------------------
 void App::RenderDebugPrimitives() const
 {
-    if (!m_debugRenderStateBuffer)
-    {
-        return;
-    }
-
-    // Get front buffer for reading (thread-safe, no locking)
     DebugPrimitiveMap const* frontBuffer = m_debugRenderStateBuffer->GetFrontBuffer();
     if (!frontBuffer)
     {
         return;
     }
 
-    // Render all active debug primitives
     for (auto const& [primitiveId, primitive] : *frontBuffer)
     {
-        // Skip inactive primitives
         if (!primitive.isActive) continue;
 
-        // Render primitive based on type
-        // duration=0 means render once (this frame only)
-        // DebugRenderSystem will handle actual rendering in DebugRenderWorld/DebugRenderScreen
+        // Render primitive based on type (duration=0 for single-frame rendering)
         switch (primitive.type)
         {
         case DebugPrimitiveType::LINE:
-            DebugAddWorldLine(primitive.startPos, primitive.endPos,
-                             primitive.radius, 0.0f,  // duration=0 (render once)
+            DebugAddWorldLine(primitive.startPos, primitive.endPos, primitive.radius, 0.0f,
                              primitive.startColor, primitive.endColor);
             break;
 
@@ -1562,51 +1256,40 @@ void App::RenderDebugPrimitives() const
             break;
 
         case DebugPrimitiveType::SPHERE:
-            // Phase 4: Only wireframe sphere available in DebugRenderSystem
-            // TODO: Add solid sphere support when DebugAddWorldSphere is implemented
             DebugAddWorldWireSphere(primitive.startPos, primitive.radius, 0.0f,
                                    primitive.startColor, primitive.startColor);
             break;
 
         case DebugPrimitiveType::AABB:
-            // Phase 4: No AABB rendering function yet in DebugRenderSystem
-            // TODO: Add DebugAddWorldWireBox when implemented
-            // For now, render as 12 lines forming the wireframe box
             {
-                Vec3 min = primitive.startPos;
-                Vec3 max = primitive.endPos;
+                Vec3 const& min = primitive.startPos;
+                Vec3 const& max = primitive.endPos;
                 Vec3 corners[8] = {
-                    Vec3(min.x, min.y, min.z),  // 0: min corner
-                    Vec3(max.x, min.y, min.z),  // 1
-                    Vec3(max.x, max.y, min.z),  // 2
-                    Vec3(min.x, max.y, min.z),  // 3
-                    Vec3(min.x, min.y, max.z),  // 4
-                    Vec3(max.x, min.y, max.z),  // 5
-                    Vec3(max.x, max.y, max.z),  // 6: max corner
-                    Vec3(min.x, max.y, max.z)   // 7
+                    Vec3(min.x, min.y, min.z), Vec3(max.x, min.y, min.z),
+                    Vec3(max.x, max.y, min.z), Vec3(min.x, max.y, min.z),
+                    Vec3(min.x, min.y, max.z), Vec3(max.x, min.y, max.z),
+                    Vec3(max.x, max.y, max.z), Vec3(min.x, max.y, max.z)
                 };
-                float lineRadius = 0.01f;
-                // Bottom face (Z = min.z)
-                DebugAddWorldLine(corners[0], corners[1], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
-                DebugAddWorldLine(corners[1], corners[2], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
-                DebugAddWorldLine(corners[2], corners[3], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
-                DebugAddWorldLine(corners[3], corners[0], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
-                // Top face (Z = max.z)
-                DebugAddWorldLine(corners[4], corners[5], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
-                DebugAddWorldLine(corners[5], corners[6], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
-                DebugAddWorldLine(corners[6], corners[7], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
-                DebugAddWorldLine(corners[7], corners[4], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                constexpr float kLineRadius = 0.01f;
+                // Bottom face
+                DebugAddWorldLine(corners[0], corners[1], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                DebugAddWorldLine(corners[1], corners[2], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                DebugAddWorldLine(corners[2], corners[3], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                DebugAddWorldLine(corners[3], corners[0], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                // Top face
+                DebugAddWorldLine(corners[4], corners[5], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                DebugAddWorldLine(corners[5], corners[6], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                DebugAddWorldLine(corners[6], corners[7], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                DebugAddWorldLine(corners[7], corners[4], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
                 // Vertical edges
-                DebugAddWorldLine(corners[0], corners[4], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
-                DebugAddWorldLine(corners[1], corners[5], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
-                DebugAddWorldLine(corners[2], corners[6], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
-                DebugAddWorldLine(corners[3], corners[7], lineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                DebugAddWorldLine(corners[0], corners[4], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                DebugAddWorldLine(corners[1], corners[5], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                DebugAddWorldLine(corners[2], corners[6], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
+                DebugAddWorldLine(corners[3], corners[7], kLineRadius, 0.0f, primitive.startColor, primitive.startColor);
             }
             break;
 
         case DebugPrimitiveType::BASIS:
-            // Phase 4: Reconstruct Mat44 from basis vectors
-            // Note: DebugAddWorldBasis doesn't support custom axis length yet
             {
                 Mat44 basisTransform;
                 basisTransform.SetIJKT3D(primitive.basisI, primitive.basisJ, primitive.basisK, primitive.startPos);
@@ -1615,35 +1298,15 @@ void App::RenderDebugPrimitives() const
             break;
 
         case DebugPrimitiveType::TEXT_2D:
-            // Phase 5: Render 2D screen-space text from StateBuffer
-            {
-                Vec2 screenPos(primitive.startPos.x, primitive.startPos.y);
-                DebugAddScreenText(
-                    primitive.text,
-                    screenPos,
-                    primitive.fontSize,
-                    primitive.textAlignment,
-                    0.0f,  // duration=0 (render once per frame from StateBuffer)
-                    primitive.startColor,
-                    primitive.startColor
-                );
-            }
+            DebugAddScreenText(primitive.text, Vec2(primitive.startPos.x, primitive.startPos.y),
+                              primitive.fontSize, primitive.textAlignment, 0.0f,
+                              primitive.startColor, primitive.startColor);
             break;
 
         case DebugPrimitiveType::TEXT_3D:
-            // Phase 5: Render 3D world-space text from StateBuffer
-            {
-                DebugAddWorldText(
-                    primitive.text,
-                    primitive.textTransform,
-                    primitive.fontSize,
-                    primitive.textAlignment,
-                    0.0f,  // duration=0 (render once per frame from StateBuffer)
-                    primitive.startColor,
-                    primitive.startColor,
-                    eDebugRenderMode::USE_DEPTH
-                );
-            }
+            DebugAddWorldText(primitive.text, primitive.textTransform, primitive.fontSize,
+                             primitive.textAlignment, 0.0f, primitive.startColor,
+                             primitive.startColor, eDebugRenderMode::USE_DEPTH);
             break;
 
         default:
@@ -1653,77 +1316,40 @@ void App::RenderDebugPrimitives() const
 }
 
 //----------------------------------------------------------------------------------------------------
-// UpdateDebugPrimitiveExpiration (Phase 4: Debug Render System)
-//
-// Updates time remaining for all debug primitives and removes expired ones.
-// Matches original DebugRenderSystem behavior where primitives with duration >= 0 auto-expire.
-//
-// Duration semantics (matching original DebugRenderSystem):
-// - duration = 0.0f: Render for one frame only (expires after being rendered once)
-// - duration > 0.0f: Render for specified seconds (e.g., 2.0f = 2 seconds)
-// - duration < 0.0f: Render permanently (never expires, like -1.0f)
-//
-// CRITICAL TIMING: Called AFTER SwapBuffers() in Update():
-// 1. JavaScript submits primitives to back buffer (duration=0 for single frame)
-// 2. SwapBuffers() copies back → front (primitives now in front buffer for rendering)
-// 3. UpdateDebugPrimitiveExpiration() updates back buffer (removes expired primitives)
-// 4. Render() reads front buffer (primitives rendered at least once)
-// 5. Next frame: SwapBuffers() copies updated back → front (expired primitives gone)
-//
-// This ensures primitives with duration=0 are rendered exactly once before expiration.
+// Duration semantics:
+//   duration = 0.0f: Render for one frame (expires after rendered once)
+//   duration > 0.0f: Render for specified seconds
+//   duration < 0.0f: Render permanently (never expires)
 //----------------------------------------------------------------------------------------------------
 void App::UpdateDebugPrimitiveExpiration(float deltaSeconds)
 {
-    if (!m_debugRenderStateBuffer)
-    {
-        return;
-    }
-
-    // Get BACK buffer for updating (after SwapBuffers, so we update the buffer that will be copied next frame)
-    // This ensures primitives are rendered at least once before expiring
     DebugPrimitiveMap* backBuffer = m_debugRenderStateBuffer->GetBackBuffer();
     if (!backBuffer)
     {
         return;
     }
 
-    // Use erase-remove idiom to remove expired primitives
-    // We can't use std::remove_if with unordered_map, so use manual iteration
     for (auto it = backBuffer->begin(); it != backBuffer->end();)
     {
         DebugPrimitive& primitive = it->second;
 
-        // Skip inactive primitives (already marked for removal)
         if (!primitive.isActive)
         {
             ++it;
             continue;
         }
 
-        // Update time remaining (decrease by deltaSeconds)
         primitive.timeRemaining -= deltaSeconds;
 
-        // Check expiration conditions (matching original DebugRenderSystem logic)
-        bool shouldRemove = false;
-
-        if (primitive.duration >= 0.0f)  // Not permanent (duration >= 0)
-        {
-            // Remove if time expired
-            if (primitive.timeRemaining <= 0.0f)
-            {
-                shouldRemove = true;
-            }
-        }
-        // else: duration < 0 means permanent, never remove
+        // Remove expired primitives (duration >= 0 and time expired)
+        bool const shouldRemove = (primitive.duration >= 0.0f) && (primitive.timeRemaining <= 0.0f);
 
         if (shouldRemove)
         {
-            // Erase and get next iterator
             it = backBuffer->erase(it);
         }
         else
         {
-            // Keep and move to next
             ++it;
         }
     }
