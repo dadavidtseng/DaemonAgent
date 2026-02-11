@@ -375,6 +375,66 @@ export class EntityAPI
     }
 
     //----------------------------------------------------------------------------------------------------
+    // GenericCommand-based Entity Creation (Task 8.3 Migration)
+    //----------------------------------------------------------------------------------------------------
+
+    /**
+     * Create a mesh entity via GenericCommand pipeline (Task 8.3)
+     *
+     * Uses CommandQueue.submit("create_mesh", ...) instead of direct C++ ScriptInterface call.
+     * Same parameters and callback signature as createMesh() for drop-in replacement.
+     *
+     * @param {string} meshType - Type of mesh: 'cube', 'sphere', 'grid', 'plane'
+     * @param {Object} properties - Mesh properties
+     * @param {Array<number>} properties.position - [x, y, z] position
+     * @param {number} properties.scale - Uniform scale factor
+     * @param {Array<number>} properties.color - [r, g, b, a] color (0-255)
+     * @param {Function} callback - Callback function(entityId) called when mesh is created
+     * @returns {number} callbackId (0 if submission failed)
+     */
+    createMeshViaCommand(meshType, properties, callback)
+    {
+        // Get CommandQueue singleton
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
+        {
+            console.log('EntityAPI: ERROR - createMeshViaCommand requires CommandQueue');
+            if (callback) callback(0);
+            return 0;
+        }
+
+        if (!meshType || typeof meshType !== 'string')
+        {
+            console.log('EntityAPI: ERROR - createMeshViaCommand requires valid meshType string');
+            if (callback) callback(0);
+            return 0;
+        }
+
+        const position = (properties && properties.position) || [0, 0, 0];
+        const scale    = (properties && properties.scale) || 1.0;
+        const color    = (properties && properties.color) || [255, 255, 255, 255];
+
+        // Submit via GenericCommand pipeline
+        const callbackId = commandQueue.submit(
+            'create_mesh',
+            { meshType, position, scale, color },
+            'entity-api',
+            (result) =>
+            {
+                if (callback)
+                {
+                    // Adapt GenericCommand result format to EntityAPI callback format
+                    // GenericCommand: { success, resultId, error }
+                    // EntityAPI callback: (entityId) where 0 = failure
+                    callback(result.success ? result.resultId : 0);
+                }
+            }
+        );
+
+        return callbackId;
+    }
+
+    //----------------------------------------------------------------------------------------------------
     // Utility Methods
     //----------------------------------------------------------------------------------------------------
 

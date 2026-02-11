@@ -23,6 +23,7 @@
 import './InputSystemCommon.js'; // Global key code constants
 import { JSEngine } from './JSEngine.js';
 import { JSGame } from './JSGame.js';
+import { CommandQueue } from './Interface/CommandQueue.js';  // GenericCommand facade
 
 console.log('(main.js)(start) - JavaScript Framework Entry Point');
 
@@ -48,6 +49,56 @@ globalThis.jsGameInstance = jsGameInstance;
 // REQUIRED: F1 toggle functionality (rendering control)
 if (typeof globalThis.shouldRender === 'undefined') {
     globalThis.shouldRender = true;
+}
+
+// ============================================================================
+// GENERIC COMMAND SYSTEM (CommandQueue instantiation)
+// ============================================================================
+
+const commandQueueInstance = new CommandQueue();
+globalThis.CommandQueueAPI = commandQueueInstance;  // Global reference for EntityAPI.createMeshViaCommand
+console.log('CommandQueue: Instance created, available:', commandQueueInstance.isAvailable());
+
+// === Smoke Test: Round-trip verification (Task 7.0) ===
+// Submit a "ping" command to verify JS → C++ → JS callback pipeline
+if (commandQueueInstance.isAvailable()) {
+    // Test 1: Valid "ping" command — expects {pong: "hello"} callback
+    commandQueueInstance.submit('ping', {message: 'hello'}, 'smoke-test', (result) => {
+        console.log('=== GenericCommand SMOKE TEST: ping callback received ===');
+        console.log('  success:', result.success);
+        console.log('  resultId:', result.resultId);
+        console.log('  error:', result.error);
+        console.log('=== SMOKE TEST COMPLETE ===');
+    });
+    console.log('CommandQueue: Smoke test "ping" submitted');
+
+    // Test 2: Unregistered command — expects ERR_NO_HANDLER callback
+    commandQueueInstance.submit('unknown_cmd', {}, 'smoke-test', (result) => {
+        console.log('=== GenericCommand ERROR PATH TEST: unknown_cmd callback ===');
+        console.log('  success:', result.success, '(expected: false)');
+        console.log('  error:', result.error, '(expected: ERR_NO_HANDLER or similar)');
+        console.log('=== ERROR PATH TEST COMPLETE ===');
+    });
+    console.log('CommandQueue: Smoke test "unknown_cmd" submitted');
+} else {
+    console.log('CommandQueue: C++ interface not available, skipping smoke test');
+}
+
+// === Smoke Test: create_mesh via GenericCommand (Task 8.3) ===
+if (commandQueueInstance.isAvailable()) {
+    commandQueueInstance.submit('create_mesh', {
+        meshType: 'cube',
+        position: [0, 0, 5],
+        scale: 0.5,
+        color: [0, 255, 0, 255]
+    }, 'smoke-test', (result) => {
+        console.log('=== GenericCommand CREATE_MESH TEST ===');
+        console.log('  success:', result.success);
+        console.log('  entityId (resultId):', result.resultId);
+        console.log('  error:', result.error);
+        console.log('=== CREATE_MESH TEST COMPLETE ===');
+    });
+    console.log('CommandQueue: Smoke test "create_mesh" submitted');
 }
 
 // ============================================================================

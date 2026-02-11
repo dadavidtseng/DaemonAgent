@@ -393,6 +393,14 @@ export class JSEngine {
                     break;
 
                 case 'GENERIC':
+                    // Forward to CommandQueue callback handler (GenericCommand system)
+                    if (globalThis.CommandQueueAPI && globalThis.CommandQueueAPI.handleCallback) {
+                        globalThis.CommandQueueAPI.handleCallback(callbackId, resultId, errorMessage);
+                    } else {
+                        console.log(`JSEngine: CommandQueueAPI callback handler not available for callback ${callbackId}`);
+                    }
+                    break;
+
                 default:
                     console.log(`JSEngine: Unhandled callback type '${type}' for callback ${callbackId}`);
                     break;
