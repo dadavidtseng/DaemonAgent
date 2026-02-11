@@ -1,6 +1,6 @@
 {
   "filePath": ".spec-workflow/specs/generic-command-system/requirements.md",
-  "currentVersion": 2,
+  "currentVersion": 4,
   "snapshots": [
     {
       "version": 1,
@@ -17,6 +17,22 @@
       "trigger": "revision_requested",
       "approvalId": "approval_1765551871719_ofkhf6viz",
       "approvalTitle": "GenericCommand System Requirements"
+    },
+    {
+      "version": 3,
+      "filename": "snapshot-003.json",
+      "timestamp": "2026-01-18T14:46:24.806Z",
+      "trigger": "revision_requested",
+      "approvalId": "approval_1768747366524_yh9kevnse",
+      "approvalTitle": "Revised Requirements Document for GenericCommand System"
+    },
+    {
+      "version": 4,
+      "filename": "snapshot-004.json",
+      "timestamp": "2026-01-18T15:27:10.839Z",
+      "trigger": "approved",
+      "approvalId": "approval_1768749727694_hskytylfg",
+      "approvalTitle": "Fixed Markdown Parsing Errors - Replaced Angle Brackets in ASCII Diagrams"
     }
   ]
 }
