@@ -265,7 +265,7 @@ export class CameraAPI
     }
 
     //----------------------------------------------------------------------------------------------------
-    // Camera Update Methods (GenericCommand pipeline, fire-and-forget)
+    // Camera Update Methods (GenericCommand pipeline, async with callback)
     //----------------------------------------------------------------------------------------------------
 
     /**
@@ -278,8 +278,9 @@ export class CameraAPI
      * @param {number} yaw - Yaw rotation in degrees
      * @param {number} pitch - Pitch rotation in degrees
      * @param {number} roll - Roll rotation in degrees
+     * @returns {Promise<void>} Resolves on success, rejects on failure
      */
-    update(cameraId, posX, posY, posZ, yaw, pitch, roll)
+    async update(cameraId, posX, posY, posZ, yaw, pitch, roll)
     {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
@@ -288,7 +289,19 @@ export class CameraAPI
             return;
         }
 
-        commandQueue.submit('camera.update', { cameraId, posX, posY, posZ, yaw, pitch, roll }, 'camera-api');
+        return new Promise((resolve, reject) =>
+        {
+            commandQueue.submit(
+                'camera.update',
+                { cameraId, posX, posY, posZ, yaw, pitch, roll },
+                'camera-api',
+                (result) =>
+                {
+                    if (result && result.success) { resolve(); }
+                    else { reject(new Error(result?.error || 'camera.update failed')); }
+                }
+            );
+        });
     }
 
     /**
@@ -296,8 +309,9 @@ export class CameraAPI
      * Uses CommandQueue.submit("camera.update_position") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to update
      * @param {Array<number>} position - [x, y, z] new position (X-forward, Y-left, Z-up)
+     * @returns {Promise<void>} Resolves on success, rejects on failure
      */
-    updatePosition(cameraId, position)
+    async updatePosition(cameraId, position)
     {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
@@ -312,7 +326,19 @@ export class CameraAPI
             return;
         }
 
-        commandQueue.submit('camera.update_position', { cameraId, x: position[0], y: position[1], z: position[2] }, 'camera-api');
+        return new Promise((resolve, reject) =>
+        {
+            commandQueue.submit(
+                'camera.update_position',
+                { cameraId, x: position[0], y: position[1], z: position[2] },
+                'camera-api',
+                (result) =>
+                {
+                    if (result && result.success) { resolve(); }
+                    else { reject(new Error(result?.error || 'camera.update_position failed')); }
+                }
+            );
+        });
     }
 
     /**
@@ -320,8 +346,9 @@ export class CameraAPI
      * Uses CommandQueue.submit("camera.update_orientation") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to update
      * @param {Array<number>} orientation - [yaw, pitch, roll] rotation in degrees
+     * @returns {Promise<void>} Resolves on success, rejects on failure
      */
-    updateOrientation(cameraId, orientation)
+    async updateOrientation(cameraId, orientation)
     {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
@@ -336,7 +363,19 @@ export class CameraAPI
             return;
         }
 
-        commandQueue.submit('camera.update_orientation', { cameraId, yaw: orientation[0], pitch: orientation[1], roll: orientation[2] }, 'camera-api');
+        return new Promise((resolve, reject) =>
+        {
+            commandQueue.submit(
+                'camera.update_orientation',
+                { cameraId, yaw: orientation[0], pitch: orientation[1], roll: orientation[2] },
+                'camera-api',
+                (result) =>
+                {
+                    if (result && result.success) { resolve(); }
+                    else { reject(new Error(result?.error || 'camera.update_orientation failed')); }
+                }
+            );
+        });
     }
 
     /**
@@ -344,8 +383,9 @@ export class CameraAPI
      * Uses CommandQueue.submit("camera.move_by") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to move
      * @param {Array<number>} delta - [dx, dy, dz] movement delta (X-forward, Y-left, Z-up)
+     * @returns {Promise<void>} Resolves on success, rejects on failure
      */
-    moveBy(cameraId, delta)
+    async moveBy(cameraId, delta)
     {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
@@ -360,7 +400,19 @@ export class CameraAPI
             return;
         }
 
-        commandQueue.submit('camera.move_by', { cameraId, dx: delta[0], dy: delta[1], dz: delta[2] }, 'camera-api');
+        return new Promise((resolve, reject) =>
+        {
+            commandQueue.submit(
+                'camera.move_by',
+                { cameraId, dx: delta[0], dy: delta[1], dz: delta[2] },
+                'camera-api',
+                (result) =>
+                {
+                    if (result && result.success) { resolve(); }
+                    else { reject(new Error(result?.error || 'camera.move_by failed')); }
+                }
+            );
+        });
     }
 
     /**
@@ -368,8 +420,9 @@ export class CameraAPI
      * Uses CommandQueue.submit("camera.look_at") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to update
      * @param {Array<number>} target - [x, y, z] target position to look at (X-forward, Y-left, Z-up)
+     * @returns {Promise<void>} Resolves on success, rejects on failure
      */
-    lookAt(cameraId, target)
+    async lookAt(cameraId, target)
     {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
@@ -384,7 +437,19 @@ export class CameraAPI
             return;
         }
 
-        commandQueue.submit('camera.look_at', { cameraId, targetX: target[0], targetY: target[1], targetZ: target[2] }, 'camera-api');
+        return new Promise((resolve, reject) =>
+        {
+            commandQueue.submit(
+                'camera.look_at',
+                { cameraId, targetX: target[0], targetY: target[1], targetZ: target[2] },
+                'camera-api',
+                (result) =>
+                {
+                    if (result && result.success) { resolve(); }
+                    else { reject(new Error(result?.error || 'camera.look_at failed')); }
+                }
+            );
+        });
     }
 
     //----------------------------------------------------------------------------------------------------

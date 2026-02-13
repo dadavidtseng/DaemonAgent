@@ -15,7 +15,7 @@
  * - Safe Fallbacks: Returns sensible defaults if CommandQueue unavailable
  * - Type Safety: Clear return types and parameter documentation
  * - Async Callbacks: Creation methods use callbacks for async results
- * - Fire-and-Forget: Per-frame updates submit commands with no callback
+ * - Async Everywhere: All methods return Promises for error detection and ordering
  * - Error Resilience: JavaScript errors should never crash C++ rendering
  *
  * Coordinate System: X-forward, Y-left, Z-up (right-handed)
@@ -25,10 +25,10 @@
  *
  * GenericCommand Operations:
  * - create_mesh(meshType, properties) → callback(entityId)
- * - entity.update_position(entityId, x, y, z) → fire-and-forget
- * - entity.move_by(entityId, dx, dy, dz) → fire-and-forget
- * - entity.update_orientation(entityId, yaw, pitch, roll) → fire-and-forget
- * - entity.update_color(entityId, r, g, b, a) → fire-and-forget
+ * - entity.update_position(entityId, x, y, z) → callback(success)
+ * - entity.move_by(entityId, dx, dy, dz) → callback(success)
+ * - entity.update_orientation(entityId, yaw, pitch, roll) → callback(success)
+ * - entity.update_color(entityId, r, g, b, a) → callback(success)
  * - entity.destroy(entityId) → callback(success)
  *
  * Usage Example:
@@ -133,12 +133,12 @@ export class EntityAPI
     /**
      * Update entity position (absolute)
      * Uses CommandQueue.submit("entity.update_position") via GenericCommand pipeline.
-     * Fire-and-forget: no callback, position applied on next main-thread frame.
      *
      * @param {number} entityId - Entity ID to update
      * @param {Array<number>} position - [x, y, z] new position (X-forward, Y-left, Z-up)
+     * @returns {Promise<void>} Resolves on success, rejects on failure
      */
-    updatePosition(entityId, position)
+    async updatePosition(entityId, position)
     {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
@@ -153,22 +153,30 @@ export class EntityAPI
             return;
         }
 
-        commandQueue.submit(
-            'entity.update_position',
-            { entityId, x: position[0], y: position[1], z: position[2] },
-            'entity-api'
-        );
+        return new Promise((resolve, reject) =>
+        {
+            commandQueue.submit(
+                'entity.update_position',
+                { entityId, x: position[0], y: position[1], z: position[2] },
+                'entity-api',
+                (result) =>
+                {
+                    if (result && result.success) { resolve(); }
+                    else { reject(new Error(result?.error || 'updatePosition failed')); }
+                }
+            );
+        });
     }
 
     /**
      * Move entity by relative delta
      * Uses CommandQueue.submit("entity.move_by") via GenericCommand pipeline.
-     * Fire-and-forget: no callback, delta applied on next main-thread frame.
      *
      * @param {number} entityId - Entity ID to move
      * @param {Array<number>} delta - [dx, dy, dz] movement delta (X-forward, Y-left, Z-up)
+     * @returns {Promise<void>} Resolves on success, rejects on failure
      */
-    moveBy(entityId, delta)
+    async moveBy(entityId, delta)
     {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
@@ -183,22 +191,30 @@ export class EntityAPI
             return;
         }
 
-        commandQueue.submit(
-            'entity.move_by',
-            { entityId, dx: delta[0], dy: delta[1], dz: delta[2] },
-            'entity-api'
-        );
+        return new Promise((resolve, reject) =>
+        {
+            commandQueue.submit(
+                'entity.move_by',
+                { entityId, dx: delta[0], dy: delta[1], dz: delta[2] },
+                'entity-api',
+                (result) =>
+                {
+                    if (result && result.success) { resolve(); }
+                    else { reject(new Error(result?.error || 'moveBy failed')); }
+                }
+            );
+        });
     }
 
     /**
      * Update entity orientation
      * Uses CommandQueue.submit("entity.update_orientation") via GenericCommand pipeline.
-     * Fire-and-forget: no callback, orientation applied on next main-thread frame.
      *
      * @param {number} entityId - Entity ID to update
      * @param {Array<number>} orientation - [yaw, pitch, roll] in degrees
+     * @returns {Promise<void>} Resolves on success, rejects on failure
      */
-    updateOrientation(entityId, orientation)
+    async updateOrientation(entityId, orientation)
     {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
@@ -213,22 +229,30 @@ export class EntityAPI
             return;
         }
 
-        commandQueue.submit(
-            'entity.update_orientation',
-            { entityId, yaw: orientation[0], pitch: orientation[1], roll: orientation[2] },
-            'entity-api'
-        );
+        return new Promise((resolve, reject) =>
+        {
+            commandQueue.submit(
+                'entity.update_orientation',
+                { entityId, yaw: orientation[0], pitch: orientation[1], roll: orientation[2] },
+                'entity-api',
+                (result) =>
+                {
+                    if (result && result.success) { resolve(); }
+                    else { reject(new Error(result?.error || 'updateOrientation failed')); }
+                }
+            );
+        });
     }
 
     /**
      * Update entity color
      * Uses CommandQueue.submit("entity.update_color") via GenericCommand pipeline.
-     * Fire-and-forget: no callback, color applied on next main-thread frame.
      *
      * @param {number} entityId - Entity ID to update
      * @param {Array<number>} color - [r, g, b, a] color (0-255)
+     * @returns {Promise<void>} Resolves on success, rejects on failure
      */
-    updateColor(entityId, color)
+    async updateColor(entityId, color)
     {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
@@ -243,22 +267,29 @@ export class EntityAPI
             return;
         }
 
-        commandQueue.submit(
-            'entity.update_color',
-            { entityId, r: color[0], g: color[1], b: color[2], a: color[3] },
-            'entity-api'
-        );
+        return new Promise((resolve, reject) =>
+        {
+            commandQueue.submit(
+                'entity.update_color',
+                { entityId, r: color[0], g: color[1], b: color[2], a: color[3] },
+                'entity-api',
+                (result) =>
+                {
+                    if (result && result.success) { resolve(); }
+                    else { reject(new Error(result?.error || 'updateColor failed')); }
+                }
+            );
+        });
     }
 
     /**
      * Destroy an entity
      * Uses CommandQueue.submit("entity.destroy") via GenericCommand pipeline.
-     * Optional callback for destruction confirmation.
      *
      * @param {number} entityId - Entity ID to destroy
-     * @param {Function} [callback] - Optional callback(entityId) when destroyed
+     * @returns {Promise<number>} Resolves with entityId on success, rejects on failure
      */
-    destroyEntity(entityId, callback)
+    async destroyEntity(entityId)
     {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
@@ -267,12 +298,19 @@ export class EntityAPI
             return;
         }
 
-        commandQueue.submit(
-            'entity.destroy',
-            { entityId },
-            'entity-api',
-            callback ? (result) => { callback(result.success ? result.resultId : 0); } : undefined
-        );
+        return new Promise((resolve, reject) =>
+        {
+            commandQueue.submit(
+                'entity.destroy',
+                { entityId },
+                'entity-api',
+                (result) =>
+                {
+                    if (result && result.success) { resolve(result.resultId); }
+                    else { reject(new Error(result?.error || 'destroyEntity failed')); }
+                }
+            );
+        });
     }
 
     //----------------------------------------------------------------------------------------------------
