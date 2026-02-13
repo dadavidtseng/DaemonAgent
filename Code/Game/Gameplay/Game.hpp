@@ -29,8 +29,8 @@ public:
     void ExecuteModuleFile(String const& modulePath);
 
     // IJSGameLogicContext interface (worker thread)
-    void UpdateJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue) override;
-    void RenderJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue) override;
+    void UpdateJSWorkerThread(float deltaTime) override;
+    void RenderJSWorkerThread(float deltaTime) override;
     void HandleJSException(char const* errorMessage, char const* stackTrace) override;
 
     // JavaScript error monitoring

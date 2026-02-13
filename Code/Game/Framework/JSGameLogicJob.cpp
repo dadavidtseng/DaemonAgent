@@ -29,11 +29,9 @@
 // Initializes synchronization primitives and dependencies.
 //----------------------------------------------------------------------------------------------------
 JSGameLogicJob::JSGameLogicJob(IJSGameLogicContext* context,
-                               RenderCommandQueue*  commandQueue,
                                EntityStateBuffer*   entityBuffer,
                                CallbackQueue*       callbackQueue)
     : m_context(context),
-      m_commandQueue(commandQueue),
       m_entityBuffer(entityBuffer),
       m_callbackQueue(callbackQueue),
       m_frameRequested(false),
@@ -47,10 +45,6 @@ JSGameLogicJob::JSGameLogicJob(IJSGameLogicContext* context,
     if (!m_context)
     {
         ERROR_AND_DIE("JSGameLogicJob: IJSGameLogicContext pointer cannot be null");
-    }
-    if (!m_commandQueue)
-    {
-        ERROR_AND_DIE("JSGameLogicJob: RenderCommandQueue pointer cannot be null");
     }
     if (!m_entityBuffer)
     {
@@ -270,7 +264,7 @@ void JSGameLogicJob::ExecuteJavaScriptFrame()
         float const deltaTime = static_cast<float>(Clock::GetSystemClock().GetDeltaSeconds());
 
         // Execute JavaScript update on worker thread with proper parameters
-        m_context->UpdateJSWorkerThread(deltaTime, m_commandQueue);
+        m_context->UpdateJSWorkerThread(deltaTime);
 
         // Phase 3.2: Check for JavaScript exceptions after update
         if (tryCatch.HasCaught())
@@ -281,7 +275,7 @@ void JSGameLogicJob::ExecuteJavaScriptFrame()
 
         // Execute JavaScript render logic on worker thread
         // This calls JSEngine.render() which submits render commands
-        m_context->RenderJSWorkerThread(deltaTime, m_commandQueue);
+        m_context->RenderJSWorkerThread(deltaTime);
 
         // Phase 3.2: Check for JavaScript exceptions after render
         if (tryCatch.HasCaught())
@@ -485,7 +479,6 @@ void JSGameLogicJob::HandleV8Exception(v8::TryCatch& tryCatch,
 //   Lifetimes:
 //     - JSGameLogicJob: Created in App::Startup(), destroyed in App::Shutdown()
 //     - m_game: Outlives JSGameLogicJob (guaranteed by App lifecycle)
-//     - m_commandQueue: Outlives JSGameLogicJob (created before, destroyed after)
 //     - m_entityBuffer: Outlives JSGameLogicJob (created before, destroyed after)
 //
 //   Dangling Pointer Prevention:

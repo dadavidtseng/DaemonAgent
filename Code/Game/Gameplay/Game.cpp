@@ -517,7 +517,7 @@ void Game::InitializeJavaScriptFramework()
 // IJSGameLogicContext Interface (Worker Thread)
 //----------------------------------------------------------------------------------------------------
 
-void Game::UpdateJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue)
+void Game::UpdateJSWorkerThread(float deltaTime)
 {
     if (!IsScriptSubsystemReady())
     {
@@ -544,7 +544,7 @@ void Game::UpdateJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueu
 }
 
 //----------------------------------------------------------------------------------------------------
-void Game::RenderJSWorkerThread(float deltaTime, RenderCommandQueue* commandQueue)
+void Game::RenderJSWorkerThread(float deltaTime)
 {
     if (!IsScriptSubsystemReady())
     {

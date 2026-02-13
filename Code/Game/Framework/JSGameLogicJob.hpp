@@ -46,7 +46,6 @@
 // Forward Declarations
 //----------------------------------------------------------------------------------------------------
 class IJSGameLogicContext;  // Abstract interface for JavaScript execution context
-class RenderCommandQueue;
 class CallbackQueue;        // Phase 2.3: Lock-free callback queue for async callback processing
 
 namespace v8 {
@@ -75,7 +74,7 @@ class Context;
 // Usage Pattern:
 //
 // Initialization (Main Thread):
-//   JSGameLogicJob* job = new JSGameLogicJob(gameContext, commandQueue, entityBuffer);
+//   JSGameLogicJob* job = new JSGameLogicJob(gameContext, entityBuffer, callbackQueue);
 //   g_jobSystem->QueueJob(job);  // Submit to worker thread
 //
 // Frame Execution (Main Thread):
@@ -107,12 +106,11 @@ public:
 	// Constructor
 	// Parameters:
 	//   - context: Interface to game-specific JavaScript execution context
-	//   - commandQueue: Render command queue for JavaScript → C++ communication
 	//   - entityBuffer: Double-buffered entity state for rendering isolation
 	//   - callbackQueue: Callback queue for async JavaScript callback processing (Phase 2.3)
 	//
 	// Thread Safety: Call from main thread only
-	JSGameLogicJob(IJSGameLogicContext* context, RenderCommandQueue* commandQueue, EntityStateBuffer* entityBuffer, CallbackQueue* callbackQueue);
+	JSGameLogicJob(IJSGameLogicContext* context, EntityStateBuffer* entityBuffer, CallbackQueue* callbackQueue);
 
 	// Destructor
 	// Ensures clean shutdown if not already performed
@@ -201,7 +199,6 @@ private:
 	// Dependencies (Injected via Constructor)
 	//------------------------------------------------------------------------------------------------
 	IJSGameLogicContext* m_context;         // Interface to JavaScript execution context
-	RenderCommandQueue*  m_commandQueue;    // Render command output queue
 	EntityStateBuffer*   m_entityBuffer;    // Entity state output buffer
 	CallbackQueue*       m_callbackQueue;    // Callback queue for async callback processing (Phase 2.3)
 
