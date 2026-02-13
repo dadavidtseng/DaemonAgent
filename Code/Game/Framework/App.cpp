@@ -1162,6 +1162,315 @@ void App::Startup()
             return HandlerResult::Success();
         });
 
+    // === GenericCommand handlers: "debug_render.*" (Pass 2 — DebugRenderAPI migration) ===
+    // Replaces DebugRenderSystemScriptInterface direct calls with GenericCommand pipeline.
+    // Handlers call Engine's global DebugAdd* functions directly (main-thread safe).
+    // JS DebugRenderAPI.js submits these commands via CommandQueue → GenericCommandQueue → here.
+
+    // --- Helper lambdas for debug_render handlers ---
+    auto parseDebugRenderMode = [](String const& modeStr) -> eDebugRenderMode
+    {
+        if (modeStr == "ALWAYS") return eDebugRenderMode::ALWAYS;
+        if (modeStr == "X_RAY")  return eDebugRenderMode::X_RAY;
+        return eDebugRenderMode::USE_DEPTH;
+    };
+
+    auto parseJsonPayload = [](std::any const& payload, nlohmann::json& outJson) -> String
+    {
+        String payloadStr;
+        try { payloadStr = std::any_cast<String>(payload); }
+        catch (std::bad_any_cast const&)
+        { return "ERR_INVALID_PAYLOAD: expected JSON string"; }
+
+        try { outJson = nlohmann::json::parse(payloadStr); }
+        catch (nlohmann::json::exception const& e)
+        { return Stringf("ERR_JSON_PARSE: %s", e.what()); }
+
+        return ""; // empty = success
+    };
+
+    // --- Control handlers ---
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.set_visible",
+        [parseJsonPayload](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            DebugRenderSetVisible();
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.set_hidden",
+        [parseJsonPayload](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            DebugRenderSetHidden();
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.clear",
+        [parseJsonPayload](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            DebugRenderClear();
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.clear_all",
+        [this, parseJsonPayload](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            DebugRenderClear();
+            m_debugRenderStateBuffer->GetBackBuffer()->clear();
+            return HandlerResult::Success();
+        });
+
+    // --- World-space geometry handlers ---
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.add_world_point",
+        [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            Vec3 pos(json.value("x", 0.0f), json.value("y", 0.0f), json.value("z", 0.0f));
+            float radius   = json.value("radius", 0.1f);
+            float duration  = json.value("duration", 0.0f);
+            Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
+                        static_cast<unsigned char>(json.value("g", 255)),
+                        static_cast<unsigned char>(json.value("b", 255)),
+                        static_cast<unsigned char>(json.value("a", 255)));
+            eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+
+            DebugAddWorldPoint(pos, radius, duration, color, color, mode);
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.add_world_line",
+        [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            Vec3 start(json.value("x1", 0.0f), json.value("y1", 0.0f), json.value("z1", 0.0f));
+            Vec3 end(json.value("x2", 0.0f), json.value("y2", 0.0f), json.value("z2", 0.0f));
+            float radius   = json.value("radius", 0.02f);
+            float duration  = json.value("duration", 0.0f);
+            Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
+                        static_cast<unsigned char>(json.value("g", 255)),
+                        static_cast<unsigned char>(json.value("b", 255)),
+                        static_cast<unsigned char>(json.value("a", 255)));
+            eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+
+            DebugAddWorldLine(start, end, radius, duration, color, color, mode);
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.add_world_cylinder",
+        [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            Vec3 base(json.value("baseX", 0.0f), json.value("baseY", 0.0f), json.value("baseZ", 0.0f));
+            Vec3 top(json.value("topX", 0.0f), json.value("topY", 0.0f), json.value("topZ", 0.0f));
+            float radius      = json.value("radius", 0.5f);
+            float duration     = json.value("duration", 0.0f);
+            bool  isWireframe  = json.value("isWireframe", false);
+            Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
+                        static_cast<unsigned char>(json.value("g", 255)),
+                        static_cast<unsigned char>(json.value("b", 255)),
+                        static_cast<unsigned char>(json.value("a", 255)));
+            eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+
+            DebugAddWorldCylinder(base, top, radius, duration, isWireframe, color, color, mode);
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.add_world_wire_sphere",
+        [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            Vec3 center(json.value("x", 0.0f), json.value("y", 0.0f), json.value("z", 0.0f));
+            float radius   = json.value("radius", 0.5f);
+            float duration  = json.value("duration", 0.0f);
+            Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
+                        static_cast<unsigned char>(json.value("g", 255)),
+                        static_cast<unsigned char>(json.value("b", 255)),
+                        static_cast<unsigned char>(json.value("a", 255)));
+            eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+
+            DebugAddWorldWireSphere(center, radius, duration, color, color, mode);
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.add_world_arrow",
+        [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            Vec3 start(json.value("x1", 0.0f), json.value("y1", 0.0f), json.value("z1", 0.0f));
+            Vec3 end(json.value("x2", 0.0f), json.value("y2", 0.0f), json.value("z2", 0.0f));
+            float radius   = json.value("radius", 0.02f);
+            float duration  = json.value("duration", 0.0f);
+            Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
+                        static_cast<unsigned char>(json.value("g", 255)),
+                        static_cast<unsigned char>(json.value("b", 255)),
+                        static_cast<unsigned char>(json.value("a", 255)));
+            eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+
+            DebugAddWorldArrow(start, end, radius, duration, color, color, mode);
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.add_world_text",
+        [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            String text     = json.value("text", "");
+            float textHeight = json.value("textHeight", 1.0f);
+            float alignX     = json.value("alignX", 0.5f);
+            float alignY     = json.value("alignY", 0.5f);
+            float duration   = json.value("duration", 0.0f);
+            Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
+                        static_cast<unsigned char>(json.value("g", 255)),
+                        static_cast<unsigned char>(json.value("b", 255)),
+                        static_cast<unsigned char>(json.value("a", 255)));
+            eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+
+            // Build transform from 16-element array (or identity if not provided)
+            Mat44 transform;
+            if (json.contains("transform") && json["transform"].is_array())
+            {
+                auto const& arr = json["transform"];
+                if (arr.size() >= 16)
+                {
+                    float values[16];
+                    for (int i = 0; i < 16; ++i)
+                        values[i] = arr[i].get<float>();
+                    transform = Mat44(values);
+                }
+            }
+
+            DebugAddWorldText(text, transform, textHeight, Vec2(alignX, alignY), duration, color, color, mode);
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.add_billboard_text",
+        [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            String text     = json.value("text", "");
+            Vec3 origin(json.value("x", 0.0f), json.value("y", 0.0f), json.value("z", 0.0f));
+            float textHeight = json.value("textHeight", 1.0f);
+            float alignX     = json.value("alignX", 0.5f);
+            float alignY     = json.value("alignY", 0.5f);
+            float duration   = json.value("duration", 0.0f);
+            Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
+                        static_cast<unsigned char>(json.value("g", 255)),
+                        static_cast<unsigned char>(json.value("b", 255)),
+                        static_cast<unsigned char>(json.value("a", 255)));
+            eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+
+            DebugAddBillboardText(text, origin, textHeight, Vec2(alignX, alignY), duration, color, color, mode);
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.add_world_basis",
+        [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            float duration = json.value("duration", 0.0f);
+            eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+
+            // Build transform from 16-element array (or identity if not provided)
+            Mat44 transform;
+            if (json.contains("transform") && json["transform"].is_array())
+            {
+                auto const& arr = json["transform"];
+                if (arr.size() >= 16)
+                {
+                    float values[16];
+                    for (int i = 0; i < 16; ++i)
+                        values[i] = arr[i].get<float>();
+                    transform = Mat44(values);
+                }
+            }
+
+            DebugAddWorldBasis(transform, duration, mode);
+            return HandlerResult::Success();
+        });
+
+    // --- Screen-space geometry handlers ---
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.add_screen_text",
+        [parseJsonPayload](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            String text  = json.value("text", "");
+            Vec2 pos(json.value("x", 0.0f), json.value("y", 0.0f));
+            float size    = json.value("size", 20.0f);
+            float alignX  = json.value("alignX", 0.0f);
+            float alignY  = json.value("alignY", 0.0f);
+            float duration = json.value("duration", 0.0f);
+            Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
+                        static_cast<unsigned char>(json.value("g", 255)),
+                        static_cast<unsigned char>(json.value("b", 255)),
+                        static_cast<unsigned char>(json.value("a", 255)));
+
+            DebugAddScreenText(text, pos, size, Vec2(alignX, alignY), duration, color, color);
+            return HandlerResult::Success();
+        });
+
+    m_genericCommandExecutor->RegisterHandler("debug_render.add_message",
+        [parseJsonPayload](std::any const& payload) -> HandlerResult
+        {
+            nlohmann::json json;
+            String err = parseJsonPayload(payload, json);
+            if (!err.empty()) return HandlerResult::Error(err);
+
+            String text   = json.value("text", "");
+            float duration = json.value("duration", 0.0f);
+            Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
+                        static_cast<unsigned char>(json.value("g", 255)),
+                        static_cast<unsigned char>(json.value("b", 255)),
+                        static_cast<unsigned char>(json.value("a", 255)));
+
+            DebugAddMessage(text, duration, color, color);
+            return HandlerResult::Success();
+        });
+
     DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - Async architecture initialized");
 
     g_game = new Game();
