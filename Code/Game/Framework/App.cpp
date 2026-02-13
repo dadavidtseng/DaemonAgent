@@ -44,7 +44,6 @@
 #include "Engine/Renderer/DebugRenderAPI.hpp"
 #include "Engine/Renderer/DebugRenderStateBuffer.hpp"
 #include "Engine/Renderer/DebugRenderSystem.hpp"
-#include "Engine/Renderer/DebugRenderSystemScriptInterface.hpp"
 #include "Engine/Renderer/RenderCommandQueue.hpp"
 #include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Renderer/VertexUtils.hpp"
@@ -54,6 +53,8 @@
 #include "Engine/UI/ImGuiSubsystem.hpp"
 #include "ThirdParty/json/json.hpp"
 #include <fstream>
+
+#include "Engine/Renderer/DebugRenderSystemScriptInterface.hpp"
 
 
 //----------------------------------------------------------------------------------------------------
@@ -83,7 +84,7 @@ void App::Startup()
     // Initialize async architecture infrastructure
     m_callbackQueue      = new CallbackQueue();
     m_renderCommandQueue = new RenderCommandQueue();
-    m_audioCommandQueue  = new AudioCommandQueue();
+
     // Load GenericCommand configuration from JSON (optional — uses defaults if file missing)
     size_t   gcQueueCapacity   = 500;    // GenericCommandQueue::DEFAULT_CAPACITY
     uint32_t gcRateLimitPerAgent = 100;  // Default: 100 commands/sec per agent
@@ -137,10 +138,7 @@ void App::Startup()
     m_renderResourceManager = new RenderResourceManager();
 
     // Initialize APIs
-    m_entityAPI      = new EntityAPI(m_renderCommandQueue, g_scriptSubsystem);
-    m_cameraAPI      = new CameraAPI(m_renderCommandQueue, g_scriptSubsystem, m_cameraStateBuffer);
     m_debugRenderAPI = new DebugRenderAPI(m_renderCommandQueue, g_scriptSubsystem, m_debugRenderStateBuffer, m_callbackQueue);
-    m_audioAPI       = new AudioAPI(m_audioCommandQueue, g_scriptSubsystem, m_callbackQueue);
 
     // === GenericCommand handler: "create_mesh" (Task 8.3 — EntityScriptInterface migration) ===
     // Replaces EntityScriptInterface::ExecuteCreateMesh with GenericCommand pipeline.
@@ -190,25 +188,32 @@ void App::Startup()
                 static_cast<unsigned char>(colorArr.size() > 3 ? colorArr[3] : 255)
             );
 
-            // Generate entity ID (same as EntityAPI::CreateMesh)
-            EntityID entityId = m_entityAPI->GenerateEntityID();
+            // Generate entity ID (atomic counter — no EntityAPI dependency needed)
+            static std::atomic<EntityID> s_nextEntityId{1};
+            EntityID entityId = s_nextEntityId++;
 
-            // Build render command (same as EntityAPI::CreateMesh)
-            MeshCreationData meshData;
-            meshData.meshType = meshType;
-            meshData.position = position;
-            meshData.radius   = scale;
-            meshData.color    = color;
-
-            RenderCommand command(RenderCommandType::CREATE_MESH, entityId, meshData);
-            bool submitted = m_renderCommandQueue->Submit(command);
-
-            if (!submitted)
+            // Register entity with RenderResourceManager (creates vertex buffer)
+            int vbHandle = m_renderResourceManager->RegisterEntity(entityId, meshType, scale, color);
+            if (vbHandle == 0)
             {
                 DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                           Stringf("GenericCommand [create_mesh]: RenderCommandQueue full, entity %llu dropped", entityId));
-                return HandlerResult::Error("ERR_QUEUE_FULL: render command queue is full");
+                           Stringf("GenericCommand [create_mesh]: RegisterEntity failed for entity %llu", entityId));
+                return HandlerResult::Error("ERR_REGISTER_FAILED: could not create render resource");
             }
+
+            // Write directly to EntityStateBuffer (Audio pattern — no RenderCommandQueue hop)
+            EntityState state;
+            state.position    = position;
+            state.orientation = EulerAngles::ZERO;
+            state.color       = color;
+            state.radius      = scale;
+            state.meshType    = meshType;
+            state.isActive    = true;
+            state.cameraType  = "world";
+
+            auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+            (*backBuffer)[entityId] = state;
+            m_entityStateBuffer->MarkDirty(entityId);
 
             DAEMON_LOG(LogApp, eLogVerbosity::Log,
                        Stringf("GenericCommand [create_mesh]: entityId=%llu, mesh=%s, pos=(%.1f,%.1f,%.1f), scale=%.1f",
@@ -220,8 +225,8 @@ void App::Startup()
 
     // === GenericCommand handler: "create_camera" (Task 8.4 — CameraScriptInterface migration) ===
     // Replaces CameraScriptInterface::ExecuteCreateCamera with GenericCommand pipeline.
-    // Handler generates cameraId immediately; render command queued for async GPU-side creation.
-    // Note: callbackId in CameraCreationData set to 0 — GenericCommand pipeline handles callbacks.
+    // Direct CameraStateBuffer write (Audio/Entity pattern — no RenderCommandQueue hop).
+    // Camera ID generated via static atomic counter (same namespace as CameraAPI: starts at 1000).
     m_genericCommandExecutor->RegisterHandler("create_camera",
         [this](std::any const& payload) -> HandlerResult
         {
@@ -253,25 +258,48 @@ void App::Startup()
 
             String type = json.value("type", "world");
 
-            // Generate camera ID (same as CameraAPI::CreateCamera)
-            EntityID cameraId = m_cameraAPI->GenerateCameraID();
+            // Generate camera ID (atomic counter — no CameraAPI dependency needed)
+            // Camera IDs start at 1000 to avoid collision with entity IDs
+            static std::atomic<EntityID> s_nextCameraId{1000};
+            EntityID cameraId = s_nextCameraId++;
 
-            // Build render command (same as CameraAPI::CreateCamera)
-            CameraCreationData cameraData;
-            cameraData.position    = position;
-            cameraData.orientation = orientation;
-            cameraData.type        = type;
-            cameraData.callbackId  = 0;  // GenericCommand pipeline handles callbacks, bypass CameraAPI's callback system
+            // Write directly to CameraStateBuffer (Audio/Entity pattern — no RenderCommandQueue hop)
+            CameraState state;
+            state.position    = position;
+            state.orientation = orientation;
+            state.type        = type;
+            state.isActive    = true;
 
-            RenderCommand command(RenderCommandType::CREATE_CAMERA, cameraId, cameraData);
-            bool submitted = m_renderCommandQueue->Submit(command);
-
-            if (!submitted)
+            // Configure camera based on type (inlined from ProcessRenderCommands CREATE_CAMERA)
+            if (type == "world")
             {
-                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                           Stringf("GenericCommand [create_camera]: RenderCommandQueue full, camera %llu dropped", cameraId));
-                return HandlerResult::Error("ERR_QUEUE_FULL: render command queue is full");
+                state.mode              = Camera::eMode_Perspective;
+                state.perspectiveFOV    = 60.0f;
+                state.perspectiveAspect = 16.0f / 9.0f;
+                state.perspectiveNear   = 0.1f;
+                state.perspectiveFar    = 100.0f;
             }
+            else if (type == "screen")
+            {
+                Vec2 viewportDimensions = Vec2(1600.f, 800.f);
+                if (Window::s_mainWindow)
+                {
+                    viewportDimensions = Window::s_mainWindow->GetViewportDimensions();
+                }
+
+                state.mode        = Camera::eMode_Orthographic;
+                state.orthoLeft   = 0.0f;
+                state.orthoBottom = 0.0f;
+                state.orthoRight  = viewportDimensions.x;
+                state.orthoTop    = viewportDimensions.y;
+                state.orthoNear   = 0.0f;
+                state.orthoFar    = 1.0f;
+                state.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);
+            }
+
+            auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+            (*backBuffer)[cameraId] = state;
+            m_cameraStateBuffer->MarkDirty(cameraId);
 
             DAEMON_LOG(LogApp, eLogVerbosity::Log,
                        Stringf("GenericCommand [create_camera]: cameraId=%llu, type=%s, pos=(%.1f,%.1f,%.1f)",
@@ -282,7 +310,7 @@ void App::Startup()
 
     // === GenericCommand handler: "set_active_camera" (Task 8.4) ===
     // Replaces CameraScriptInterface::ExecuteSetActiveCamera.
-    // Callback marked ready immediately (same as CameraAPI::SetActiveCamera).
+    // Direct CameraStateBuffer write (Audio/Entity pattern — no RenderCommandQueue hop).
     m_genericCommandExecutor->RegisterHandler("set_active_camera",
         [this](std::any const& payload) -> HandlerResult
         {
@@ -300,15 +328,8 @@ void App::Startup()
             if (cameraId == 0)
             { return HandlerResult::Error("ERR_INVALID_PARAM: cameraId is required and must be non-zero"); }
 
-            RenderCommand command(RenderCommandType::SET_ACTIVE_CAMERA, cameraId, std::monostate{});
-            bool submitted = m_renderCommandQueue->Submit(command);
-
-            if (!submitted)
-            {
-                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                           Stringf("GenericCommand [set_active_camera]: RenderCommandQueue full, camera %llu dropped", cameraId));
-                return HandlerResult::Error("ERR_QUEUE_FULL: render command queue is full");
-            }
+            // Write directly to CameraStateBuffer (Audio/Entity pattern — no RenderCommandQueue hop)
+            m_cameraStateBuffer->SetActiveCameraID(cameraId);
 
             DAEMON_LOG(LogApp, eLogVerbosity::Log,
                        Stringf("GenericCommand [set_active_camera]: cameraId=%llu", cameraId));
@@ -318,7 +339,7 @@ void App::Startup()
 
     // === GenericCommand handler: "update_camera_type" (Task 8.4) ===
     // Replaces CameraScriptInterface::ExecuteUpdateCameraType.
-    // Callback marked ready immediately (same as CameraAPI::UpdateCameraType).
+    // Direct CameraStateBuffer write (Audio/Entity pattern — no RenderCommandQueue hop).
     m_genericCommandExecutor->RegisterHandler("update_camera_type",
         [this](std::any const& payload) -> HandlerResult
         {
@@ -340,18 +361,43 @@ void App::Startup()
             if (type.empty())
             { return HandlerResult::Error("ERR_INVALID_PARAM: type is required"); }
 
-            CameraTypeUpdateData typeUpdateData;
-            typeUpdateData.type = type;
-
-            RenderCommand command(RenderCommandType::UPDATE_CAMERA_TYPE, cameraId, typeUpdateData);
-            bool submitted = m_renderCommandQueue->Submit(command);
-
-            if (!submitted)
+            // Write directly to CameraStateBuffer (Audio/Entity pattern — no RenderCommandQueue hop)
+            // Inlined from ProcessRenderCommands UPDATE_CAMERA_TYPE
+            auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(cameraId);
+            if (it == backBuffer->end())
             {
-                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                           Stringf("GenericCommand [update_camera_type]: RenderCommandQueue full, camera %llu dropped", cameraId));
-                return HandlerResult::Error("ERR_QUEUE_FULL: render command queue is full");
+                return HandlerResult::Error(Stringf("ERR_NOT_FOUND: camera %llu not in CameraStateBuffer", cameraId));
             }
+
+            it->second.type = type;
+
+            if (type == "world")
+            {
+                it->second.mode              = Camera::eMode_Perspective;
+                it->second.perspectiveFOV    = 60.0f;
+                it->second.perspectiveAspect = 16.0f / 9.0f;
+                it->second.perspectiveNear   = 0.1f;
+                it->second.perspectiveFar    = 100.0f;
+            }
+            else if (type == "screen")
+            {
+                Vec2 clientDimensions = Vec2(1600.f, 800.f);
+                if (Window::s_mainWindow)
+                {
+                    clientDimensions = Window::s_mainWindow->GetClientDimensions();
+                }
+
+                it->second.mode        = Camera::eMode_Orthographic;
+                it->second.orthoLeft   = 0.0f;
+                it->second.orthoBottom = 0.0f;
+                it->second.orthoRight  = clientDimensions.x;
+                it->second.orthoTop    = clientDimensions.y;
+                it->second.orthoNear   = 0.0f;
+                it->second.orthoFar    = 1.0f;
+            }
+
+            m_cameraStateBuffer->MarkDirty(cameraId);
 
             DAEMON_LOG(LogApp, eLogVerbosity::Log,
                        Stringf("GenericCommand [update_camera_type]: cameraId=%llu, type=%s", cameraId, type.c_str()));
@@ -361,7 +407,7 @@ void App::Startup()
 
     // === GenericCommand handler: "destroy_camera" (Task 8.4) ===
     // Replaces CameraScriptInterface::ExecuteDestroyCamera.
-    // Callback marked ready immediately (same as CameraAPI::DestroyCamera).
+    // Direct CameraStateBuffer write (Audio/Entity pattern — no RenderCommandQueue hop).
     m_genericCommandExecutor->RegisterHandler("destroy_camera",
         [this](std::any const& payload) -> HandlerResult
         {
@@ -379,14 +425,13 @@ void App::Startup()
             if (cameraId == 0)
             { return HandlerResult::Error("ERR_INVALID_PARAM: cameraId is required and must be non-zero"); }
 
-            RenderCommand command(RenderCommandType::DESTROY_CAMERA, cameraId, std::monostate{});
-            bool submitted = m_renderCommandQueue->Submit(command);
-
-            if (!submitted)
+            // Write directly to CameraStateBuffer (Audio/Entity pattern — no RenderCommandQueue hop)
+            auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(cameraId);
+            if (it != backBuffer->end())
             {
-                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                           Stringf("GenericCommand [destroy_camera]: RenderCommandQueue full, camera %llu dropped", cameraId));
-                return HandlerResult::Error("ERR_QUEUE_FULL: render command queue is full");
+                it->second.isActive = false;
+                m_cameraStateBuffer->MarkDirty(cameraId);
             }
 
             DAEMON_LOG(LogApp, eLogVerbosity::Log,
@@ -769,7 +814,14 @@ void App::Startup()
 
             Vec3 position(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
 
-            m_entityAPI->UpdatePosition(entityId, position);
+            // Write directly to EntityStateBuffer (Audio pattern — no RenderCommandQueue hop)
+            auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(entityId);
+            if (it != backBuffer->end())
+            {
+                it->second.position = position;
+                m_entityStateBuffer->MarkDirty(entityId);
+            }
 
             // Fire-and-forget: no callback result needed
             return HandlerResult::Success();
@@ -804,7 +856,15 @@ void App::Startup()
 
             Vec3 delta(static_cast<float>(dx), static_cast<float>(dy), static_cast<float>(dz));
 
-            m_entityAPI->MoveBy(entityId, delta);
+            // Write directly to EntityStateBuffer (Audio pattern — no RenderCommandQueue hop)
+            // Proper relative movement: read current position, add delta, write back
+            auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(entityId);
+            if (it != backBuffer->end())
+            {
+                it->second.position += delta;
+                m_entityStateBuffer->MarkDirty(entityId);
+            }
 
             // Fire-and-forget: no callback result needed
             return HandlerResult::Success();
@@ -835,7 +895,14 @@ void App::Startup()
 
             EulerAngles orientation(static_cast<float>(yaw), static_cast<float>(pitch), static_cast<float>(roll));
 
-            m_entityAPI->UpdateOrientation(entityId, orientation);
+            // Write directly to EntityStateBuffer (Audio pattern — no RenderCommandQueue hop)
+            auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(entityId);
+            if (it != backBuffer->end())
+            {
+                it->second.orientation = orientation;
+                m_entityStateBuffer->MarkDirty(entityId);
+            }
 
             return HandlerResult::Success();
         });
@@ -869,7 +936,14 @@ void App::Startup()
                         static_cast<unsigned char>(b),
                         static_cast<unsigned char>(a));
 
-            m_entityAPI->UpdateColor(entityId, color);
+            // Write directly to EntityStateBuffer (Audio pattern — no RenderCommandQueue hop)
+            auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(entityId);
+            if (it != backBuffer->end())
+            {
+                it->second.color = color;
+                m_entityStateBuffer->MarkDirty(entityId);
+            }
 
             return HandlerResult::Success();
         });
@@ -893,7 +967,14 @@ void App::Startup()
             { return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required"); }
             uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
 
-            m_entityAPI->DestroyEntity(entityId);
+            // Write directly to EntityStateBuffer (Audio pattern — no RenderCommandQueue hop)
+            auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(entityId);
+            if (it != backBuffer->end())
+            {
+                it->second.isActive = false;
+                m_entityStateBuffer->MarkDirty(entityId);
+            }
 
             DAEMON_LOG(LogApp, eLogVerbosity::Log,
                        Stringf("GenericCommand [entity.destroy]: entityId=%llu", entityId));
@@ -902,8 +983,7 @@ void App::Startup()
         });
 
     // === GenericCommand handler: "camera.update" (Task 9.2.2 — CameraAPI fire-and-forget migration) ===
-    // Atomic position+orientation update. Replaces direct C++ camera.update() call.
-    // Flow: JS submit("camera.update", {cameraId, posX, posY, posZ, yaw, pitch, roll}) → handler → CameraAPI::UpdateCamera()
+    // Atomic position+orientation update. Direct CameraStateBuffer write (Audio/Entity pattern).
     m_genericCommandExecutor->RegisterHandler("camera.update",
         [this](std::any const& payload) -> HandlerResult
         {
@@ -928,13 +1008,22 @@ void App::Startup()
             float pitch = json.value("pitch", 0.0f);
             float roll  = json.value("roll", 0.0f);
 
-            m_cameraAPI->UpdateCamera(cameraId, Vec3(posX, posY, posZ), EulerAngles(yaw, pitch, roll));
+            // Write directly to CameraStateBuffer (Audio/Entity pattern — no RenderCommandQueue hop)
+            auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(cameraId);
+            if (it != backBuffer->end())
+            {
+                it->second.position    = Vec3(posX, posY, posZ);
+                it->second.orientation = EulerAngles(yaw, pitch, roll);
+                m_cameraStateBuffer->MarkDirty(cameraId);
+            }
 
             return HandlerResult::Success();
         });
 
     // === GenericCommand handler: "camera.update_position" (Task 9.2.3) ===
     // DEPRECATED: Use camera.update for atomic updates. Kept for backward compatibility.
+    // Direct CameraStateBuffer write (Audio/Entity pattern).
     m_genericCommandExecutor->RegisterHandler("camera.update_position",
         [this](std::any const& payload) -> HandlerResult
         {
@@ -956,13 +1045,21 @@ void App::Startup()
             float y = json.value("y", 0.0f);
             float z = json.value("z", 0.0f);
 
-            m_cameraAPI->UpdateCameraPosition(cameraId, Vec3(x, y, z));
+            // Write directly to CameraStateBuffer (Audio/Entity pattern — no RenderCommandQueue hop)
+            auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(cameraId);
+            if (it != backBuffer->end())
+            {
+                it->second.position = Vec3(x, y, z);
+                m_cameraStateBuffer->MarkDirty(cameraId);
+            }
 
             return HandlerResult::Success();
         });
 
     // === GenericCommand handler: "camera.update_orientation" (Task 9.2.4) ===
     // DEPRECATED: Use camera.update for atomic updates. Kept for backward compatibility.
+    // Direct CameraStateBuffer write (Audio/Entity pattern).
     m_genericCommandExecutor->RegisterHandler("camera.update_orientation",
         [this](std::any const& payload) -> HandlerResult
         {
@@ -984,13 +1081,20 @@ void App::Startup()
             float pitch = json.value("pitch", 0.0f);
             float roll  = json.value("roll", 0.0f);
 
-            m_cameraAPI->UpdateCameraOrientation(cameraId, EulerAngles(yaw, pitch, roll));
+            // Write directly to CameraStateBuffer (Audio/Entity pattern — no RenderCommandQueue hop)
+            auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(cameraId);
+            if (it != backBuffer->end())
+            {
+                it->second.orientation = EulerAngles(yaw, pitch, roll);
+                m_cameraStateBuffer->MarkDirty(cameraId);
+            }
 
             return HandlerResult::Success();
         });
 
     // === GenericCommand handler: "camera.move_by" (Task 9.2.5) ===
-    // Relative camera movement by delta vector.
+    // Relative camera movement. Direct CameraStateBuffer read-modify-write (Audio/Entity pattern).
     m_genericCommandExecutor->RegisterHandler("camera.move_by",
         [this](std::any const& payload) -> HandlerResult
         {
@@ -1012,13 +1116,21 @@ void App::Startup()
             float dy = json.value("dy", 0.0f);
             float dz = json.value("dz", 0.0f);
 
-            m_cameraAPI->MoveCameraBy(cameraId, Vec3(dx, dy, dz));
+            // Read-modify-write to CameraStateBuffer (Audio/Entity pattern — no RenderCommandQueue hop)
+            auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(cameraId);
+            if (it != backBuffer->end())
+            {
+                it->second.position += Vec3(dx, dy, dz);
+                m_cameraStateBuffer->MarkDirty(cameraId);
+            }
 
             return HandlerResult::Success();
         });
 
     // === GenericCommand handler: "camera.look_at" (Task 9.2.6) ===
-    // Make camera look at target position. (Phase 2 stub in CameraAPI — will work when implemented.)
+    // Make camera look at target position. (Phase 2 stub — not yet implemented.)
+    // Direct CameraStateBuffer write (Audio/Entity pattern) — will compute orientation when implemented.
     m_genericCommandExecutor->RegisterHandler("camera.look_at",
         [this](std::any const& payload) -> HandlerResult
         {
@@ -1040,7 +1152,12 @@ void App::Startup()
             float targetY = json.value("targetY", 0.0f);
             float targetZ = json.value("targetZ", 0.0f);
 
-            m_cameraAPI->LookAtCamera(cameraId, Vec3(targetX, targetY, targetZ));
+            // TODO: Phase 2 — compute orientation from current position to target, write to CameraStateBuffer
+            // For now, this is a no-op stub
+            (void)cameraId;
+            (void)targetX;
+            (void)targetY;
+            (void)targetZ;
 
             return HandlerResult::Success();
         });
@@ -1107,17 +1224,17 @@ void App::Shutdown()
     GAME_SAFE_RELEASE(g_game);
 
     // Cleanup APIs (before state buffers)
-    delete m_entityAPI;
-    m_entityAPI = nullptr;
+    // delete m_entityAPI;
+    // m_entityAPI = nullptr;
 
-    delete m_cameraAPI;
-    m_cameraAPI = nullptr;
+    // delete m_cameraAPI;
+    // m_cameraAPI = nullptr;
 
     delete m_debugRenderAPI;
     m_debugRenderAPI = nullptr;
 
-    delete m_audioAPI;
-    m_audioAPI = nullptr;
+    // delete m_audioAPI;
+    // m_audioAPI = nullptr;
 
     delete m_renderResourceManager;
     m_renderResourceManager = nullptr;
@@ -1138,9 +1255,6 @@ void App::Shutdown()
     // Cleanup command queues
     delete m_renderCommandQueue;
     m_renderCommandQueue = nullptr;
-
-    delete m_audioCommandQueue;
-    m_audioCommandQueue = nullptr;
 
     delete m_genericCommandExecutor;
     m_genericCommandExecutor = nullptr;
@@ -1217,7 +1331,6 @@ void App::Update()
     g_scriptSubsystem->Update();
 
     ProcessRenderCommands();
-    ProcessAudioCommands();
     ProcessGenericCommands();
 
     // Async Frame Synchronization: Check if worker thread completed previous JavaScript frame
@@ -1252,9 +1365,9 @@ void App::Update()
     }
 
     // Execute pending callbacks from APIs
-    if (m_entityAPI) m_entityAPI->ExecutePendingCallbacks(m_callbackQueue);
-    if (m_cameraAPI) m_cameraAPI->ExecutePendingCallbacks(m_callbackQueue);
-    if (m_audioAPI) m_audioAPI->ExecutePendingCallbacks(m_callbackQueue);
+    // if (m_entityAPI) m_entityAPI->ExecutePendingCallbacks(m_callbackQueue);
+    // if (m_cameraAPI) m_cameraAPI->ExecutePendingCallbacks(m_callbackQueue);
+    // if (m_audioAPI) m_audioAPI->ExecutePendingCallbacks(m_callbackQueue);
     if (m_debugRenderAPI) m_debugRenderAPI->ExecutePendingCallbacks(m_callbackQueue);
     if (m_genericCommandExecutor) m_genericCommandExecutor->ExecutePendingCallbacks(m_callbackQueue);
 }
@@ -1426,18 +1539,10 @@ void App::SetupScriptingBindings()
     m_clockScriptInterface = std::make_shared<ClockScriptInterface>();
     g_scriptSubsystem->RegisterScriptableObject("clock", m_clockScriptInterface);
 
-#ifdef ENGINE_SCRIPTING_ENABLED
-    // Configure AudioCommandQueue for async JavaScript audio operations
-    if (m_audioCommandQueue && m_callbackQueue && g_audio)
-    {
-        g_audio->SetCommandQueue(m_audioCommandQueue, m_callbackQueue);
-    }
-#endif
-
     // Register debug render script interface
     if (m_debugRenderAPI)
     {
-        m_debugRenderSystemScriptInterface = std::make_shared<DebugRenderSystemScriptInterface>(m_debugRenderAPI, m_cameraAPI);
+        m_debugRenderSystemScriptInterface = std::make_shared<DebugRenderSystemScriptInterface>(m_debugRenderAPI, m_cameraStateBuffer);
         g_scriptSubsystem->RegisterScriptableObject("debugRenderInterface", m_debugRenderSystemScriptInterface);
     }
 
@@ -1478,7 +1583,7 @@ void App::SetupScriptingBindings()
 //----------------------------------------------------------------------------------------------------
 void App::ProcessRenderCommands()
 {
-    if (!m_renderCommandQueue || !m_entityStateBuffer || !m_cameraStateBuffer || !m_entityAPI || !m_cameraAPI)
+    if (!m_renderCommandQueue || !m_entityStateBuffer || !m_cameraStateBuffer  )
     {
         return;
     }
@@ -1534,53 +1639,53 @@ void App::ProcessRenderCommands()
                 break;
             }
 
-        case RenderCommandType::CREATE_CAMERA:
-            {
-                auto const& cameraData = std::get<CameraCreationData>(cmd.data);
-
-                CameraState state;
-                state.position    = cameraData.position;
-                state.orientation = cameraData.orientation;
-                state.type        = cameraData.type;
-                state.isActive    = true;
-
-                // Configure camera based on type
-                if (cameraData.type == "world")
-                {
-                    state.mode              = Camera::eMode_Perspective;
-                    state.perspectiveFOV    = 60.0f;
-                    state.perspectiveAspect = 16.0f / 9.0f;
-                    state.perspectiveNear   = 0.1f;
-                    state.perspectiveFar    = 100.0f;
-                }
-                else if (cameraData.type == "screen")
-                {
-                    Vec2 viewportDimensions = Vec2(1600.f, 800.f);
-                    if (Window::s_mainWindow)
-                    {
-                        viewportDimensions = Window::s_mainWindow->GetViewportDimensions();
-                    }
-
-                    state.mode        = Camera::eMode_Orthographic;
-                    state.orthoLeft   = 0.0f;
-                    state.orthoBottom = 0.0f;
-                    state.orthoRight  = viewportDimensions.x;
-                    state.orthoTop    = viewportDimensions.y;
-                    state.orthoNear   = 0.0f;
-                    state.orthoFar    = 1.0f;
-                    state.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);
-                }
-
-                auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
-                (*backBuffer)[cmd.entityId] = state;
-                m_cameraStateBuffer->MarkDirty(cmd.entityId);
-
-                if (m_cameraAPI && cameraData.callbackId != 0)
-                {
-                    m_cameraAPI->NotifyCallbackReady(cameraData.callbackId, cmd.entityId);
-                }
-                break;
-            }
+        // case RenderCommandType::CREATE_CAMERA:
+        //     {
+        //         auto const& cameraData = std::get<CameraCreationData>(cmd.data);
+        //
+        //         CameraState state;
+        //         state.position    = cameraData.position;
+        //         state.orientation = cameraData.orientation;
+        //         state.type        = cameraData.type;
+        //         state.isActive    = true;
+        //
+        //         // Configure camera based on type
+        //         if (cameraData.type == "world")
+        //         {
+        //             state.mode              = Camera::eMode_Perspective;
+        //             state.perspectiveFOV    = 60.0f;
+        //             state.perspectiveAspect = 16.0f / 9.0f;
+        //             state.perspectiveNear   = 0.1f;
+        //             state.perspectiveFar    = 100.0f;
+        //         }
+        //         else if (cameraData.type == "screen")
+        //         {
+        //             Vec2 viewportDimensions = Vec2(1600.f, 800.f);
+        //             if (Window::s_mainWindow)
+        //             {
+        //                 viewportDimensions = Window::s_mainWindow->GetViewportDimensions();
+        //             }
+        //
+        //             state.mode        = Camera::eMode_Orthographic;
+        //             state.orthoLeft   = 0.0f;
+        //             state.orthoBottom = 0.0f;
+        //             state.orthoRight  = viewportDimensions.x;
+        //             state.orthoTop    = viewportDimensions.y;
+        //             state.orthoNear   = 0.0f;
+        //             state.orthoFar    = 1.0f;
+        //             state.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);
+        //         }
+        //
+        //         auto* backBuffer = m_cameraStateBuffer->GetBackBuffer();
+        //         (*backBuffer)[cmd.entityId] = state;
+        //         m_cameraStateBuffer->MarkDirty(cmd.entityId);
+        //
+        //         if (m_cameraAPI && cameraData.callbackId != 0)
+        //         {
+        //             // m_cameraAPI->NotifyCallbackReady(cameraData.callbackId, cmd.entityId);
+        //         }
+        //         break;
+        //     }
 
         case RenderCommandType::UPDATE_CAMERA:
             {
@@ -1824,139 +1929,6 @@ void App::ProcessRenderCommands()
         case RenderCommandType::CREATE_LIGHT:
         case RenderCommandType::UPDATE_LIGHT:
         default:
-            break;
-        }
-    });
-}
-
-//----------------------------------------------------------------------------------------------------
-void App::ProcessAudioCommands()
-{
-    if (!m_audioCommandQueue || !m_audioStateBuffer || !m_audioAPI)
-    {
-        return;
-    }
-
-    m_audioCommandQueue->ConsumeAll([this](AudioCommand const& cmd)
-    {
-        switch (cmd.type)
-        {
-        case AudioCommandType::LOAD_SOUND:
-            {
-                SoundLoadData const& loadData = std::get<SoundLoadData>(cmd.data);
-                SoundID soundId = g_audio->CreateOrGetSound(loadData.soundPath, eAudioSystemSoundDimension::Sound3D);
-
-                if (soundId != MISSING_SOUND_ID)
-                {
-                    AudioState state;
-                    state.soundId   = soundId;
-                    state.soundPath = loadData.soundPath;
-                    state.position  = Vec3::ZERO;
-                    state.volume    = 1.0f;
-                    state.isPlaying = false;
-                    state.isLooped  = false;
-                    state.isLoaded  = true;
-                    state.isActive  = true;
-
-                    (*m_audioStateBuffer->GetBackBuffer())[soundId] = state;
-                    m_audioStateBuffer->MarkDirty(soundId);
-                    m_audioAPI->NotifyCallbackReady(loadData.callbackId, soundId);
-                }
-                else
-                {
-                    DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               Stringf("ProcessAudioCommands - LOAD_SOUND failed: path=%s", loadData.soundPath.c_str()));
-                    m_audioAPI->NotifyCallbackReady(loadData.callbackId, 0);
-                }
-                break;
-            }
-
-        case AudioCommandType::PLAY_SOUND:
-            {
-                SoundPlayData const& playData = std::get<SoundPlayData>(cmd.data);
-                auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
-                auto  it = backBuffer->find(cmd.soundId);
-
-                if (it != backBuffer->end())
-                {
-                    it->second.isPlaying = true;
-                    it->second.volume    = playData.volume;
-                    it->second.position  = playData.position;
-                    it->second.isLooped  = playData.looped;
-
-                    m_audioStateBuffer->MarkDirty(cmd.soundId);
-                    g_audio->StartSoundAt(cmd.soundId, playData.position, playData.looped, playData.volume);
-                }
-                else
-                {
-                    DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               Stringf("ProcessAudioCommands - PLAY_SOUND: soundId=%llu not found", cmd.soundId));
-                }
-                break;
-            }
-
-        case AudioCommandType::STOP_SOUND:
-            {
-                auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
-                auto  it = backBuffer->find(cmd.soundId);
-
-                if (it != backBuffer->end())
-                {
-                    it->second.isPlaying = false;
-                    m_audioStateBuffer->MarkDirty(cmd.soundId);
-                    g_audio->StopSound(cmd.soundId);
-                }
-                else
-                {
-                    DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               Stringf("ProcessAudioCommands - STOP_SOUND: soundId=%llu not found", cmd.soundId));
-                }
-                break;
-            }
-
-        case AudioCommandType::SET_VOLUME:
-            {
-                VolumeUpdateData const& volumeData = std::get<VolumeUpdateData>(cmd.data);
-                auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
-                auto  it = backBuffer->find(cmd.soundId);
-
-                if (it != backBuffer->end())
-                {
-                    it->second.volume = volumeData.volume;
-                    m_audioStateBuffer->MarkDirty(cmd.soundId);
-                    g_audio->SetSoundPlaybackVolume(cmd.soundId, volumeData.volume);
-                }
-                else
-                {
-                    DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               Stringf("ProcessAudioCommands - SET_VOLUME: soundId=%llu not found", cmd.soundId));
-                }
-                break;
-            }
-
-        case AudioCommandType::UPDATE_3D_POSITION:
-            {
-                Position3DUpdateData const& positionData = std::get<Position3DUpdateData>(cmd.data);
-                auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
-                auto  it = backBuffer->find(cmd.soundId);
-
-                if (it != backBuffer->end())
-                {
-                    it->second.position = positionData.position;
-                    m_audioStateBuffer->MarkDirty(cmd.soundId);
-                    g_audio->SetSoundPosition(cmd.soundId, positionData.position);
-                }
-                else
-                {
-                    DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                               Stringf("ProcessAudioCommands - UPDATE_3D_POSITION: soundId=%llu not found", cmd.soundId));
-                }
-                break;
-            }
-
-        default:
-            DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                       Stringf("ProcessAudioCommands - Unknown command type: %d", static_cast<int>(cmd.type)));
             break;
         }
     });

@@ -13,16 +13,12 @@
 //----------------------------------------------------------------------------------------------------
 // Forward Declarations
 //----------------------------------------------------------------------------------------------------
-class AudioAPI;
-class AudioCommandQueue;
+class CameraStateBuffer;
 class CallbackQueue;
 class CallbackQueueScriptInterface;
-class CameraAPI;
-class CameraStateBuffer;
 class ClockScriptInterface;
 class DebugRenderAPI;
 class DebugRenderSystemScriptInterface;
-class EntityAPI;
 class GameScriptInterface;
 class GenericCommandExecutor;
 class GenericCommandQueue;
@@ -65,7 +61,6 @@ private:
 
     // Command Processing
     void ProcessRenderCommands();
-    void ProcessAudioCommands();
     void ProcessGenericCommands();
 
     // Rendering
@@ -88,7 +83,6 @@ private:
     // Async Architecture Infrastructure
     //------------------------------------------------------------------------------------------------
     RenderCommandQueue*     m_renderCommandQueue     = nullptr;
-    AudioCommandQueue*      m_audioCommandQueue      = nullptr;
     CallbackQueue*          m_callbackQueue          = nullptr;
     GenericCommandQueue*    m_genericCommandQueue    = nullptr;
     GenericCommandExecutor* m_genericCommandExecutor = nullptr;
@@ -105,9 +99,6 @@ private:
     //------------------------------------------------------------------------------------------------
     // APIs (Direct management interfaces)
     //------------------------------------------------------------------------------------------------
-    EntityAPI*             m_entityAPI             = nullptr;
-    CameraAPI*             m_cameraAPI             = nullptr;
     DebugRenderAPI*        m_debugRenderAPI        = nullptr;
-    AudioAPI*              m_audioAPI              = nullptr;
     RenderResourceManager* m_renderResourceManager = nullptr;
 };
