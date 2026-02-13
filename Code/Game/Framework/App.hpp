@@ -15,17 +15,14 @@
 //----------------------------------------------------------------------------------------------------
 class AudioAPI;
 class AudioCommandQueue;
-class AudioScriptInterface;
 class CallbackQueue;
 class CallbackQueueScriptInterface;
 class CameraAPI;
-class CameraScriptInterface;
 class CameraStateBuffer;
 class ClockScriptInterface;
 class DebugRenderAPI;
 class DebugRenderSystemScriptInterface;
 class EntityAPI;
-class EntityScriptInterface;
 class GameScriptInterface;
 class GenericCommandExecutor;
 class GenericCommandQueue;
@@ -80,13 +77,10 @@ private:
     // Script Interfaces
     //------------------------------------------------------------------------------------------------
     std::shared_ptr<InputScriptInterface>             m_inputScriptInterface;
-    std::shared_ptr<AudioScriptInterface>             m_audioScriptInterface;
     std::shared_ptr<ClockScriptInterface>             m_clockScriptInterface;
     std::shared_ptr<DebugRenderSystemScriptInterface> m_debugRenderSystemScriptInterface;
     std::shared_ptr<GameScriptInterface>              m_gameScriptInterface;
     std::shared_ptr<KADIScriptInterface>              m_kadiScriptInterface;
-    std::shared_ptr<EntityScriptInterface>            m_entityScriptInterface;
-    std::shared_ptr<CameraScriptInterface>            m_cameraScriptInterface;
     std::shared_ptr<CallbackQueueScriptInterface>     m_callbackQueueScriptInterface;
     std::shared_ptr<GenericCommandScriptInterface>    m_genericCommandScriptInterface;
 

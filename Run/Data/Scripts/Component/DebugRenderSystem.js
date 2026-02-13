@@ -4,7 +4,6 @@
 
 import { Subsystem } from '../Core/Subsystem.js';
 import { DebugRenderInterface } from '../Interface/DebugRenderInterface.js';
-import { CameraAPI } from '../Interface/CameraAPI.js';
 
 /**
  * DebugRenderSystem - JavaScript wrapper for debug visualization
@@ -27,7 +26,6 @@ export class DebugRenderSystem extends Subsystem
 
         this.isInitialized = false;
         this.debugRenderInterface = new DebugRenderInterface();
-        this.cameraAPI = new CameraAPI();  // Phase 5: Use CameraAPI abstraction instead of direct globalThis access
 
         console.log('DebugRenderSystem: Module loaded (Phase 4 ES6)');
         console.log(`DebugRenderSystem: this.id = ${this.id}, this.priority = ${this.priority}`);
@@ -144,21 +142,14 @@ export class DebugRenderSystem extends Subsystem
      */
     renderWorld(cameraId)
     {
-        // Phase 5: Use CameraAPI abstraction instead of direct globalThis access
-        if (!this.cameraAPI || !this.cameraAPI.isAvailable())
+        if (!this.debugRenderInterface || !this.debugRenderInterface.isAvailable())
         {
-            console.log('DebugRenderSystem.renderWorld: CameraAPI not available');
+            console.log('DebugRenderSystem.renderWorld: debugRenderInterface not available');
             return;
         }
 
-        const cameraHandle = this.cameraAPI.getHandle(cameraId);
-        if (cameraHandle === 0)
-        {
-            console.log(`DebugRenderSystem.renderWorld: Camera ${cameraId} not found`);
-            return;
-        }
-
-        return this.debugRenderInterface.renderWorld(cameraHandle);
+        // C++ resolves cameraId → Camera* internally via CameraAPI
+        return this.debugRenderInterface.renderWorld(cameraId);
     }
 
     /**
@@ -167,21 +158,14 @@ export class DebugRenderSystem extends Subsystem
      */
     renderScreen(cameraId)
     {
-        // Phase 5: Use CameraAPI abstraction instead of direct globalThis access
-        if (!this.cameraAPI || !this.cameraAPI.isAvailable())
+        if (!this.debugRenderInterface || !this.debugRenderInterface.isAvailable())
         {
-            console.log('DebugRenderSystem.renderScreen: CameraAPI not available');
+            console.log('DebugRenderSystem.renderScreen: debugRenderInterface not available');
             return;
         }
 
-        const cameraHandle = this.cameraAPI.getHandle(cameraId);
-        if (cameraHandle === 0)
-        {
-            console.log(`DebugRenderSystem.renderScreen: Camera ${cameraId} not found`);
-            return;
-        }
-
-        return this.debugRenderInterface.renderScreen(cameraHandle);
+        // C++ resolves cameraId → Camera* internally via CameraAPI
+        return this.debugRenderInterface.renderScreen(cameraId);
     }
 
     /**

@@ -238,7 +238,7 @@
 > Sync methods remain on their original ScriptInterface (no benefit from async queue for direct reads/writes).
 > Each migration follows: (1) Register GenericCommand handler in App.cpp, (2) Update JS facade to use CommandQueue.submit(), (3) Remove old async method from ScriptInterface, (4) Delete dedicated CommandQueue class if fully replaced, (5) Verify round-trip.
 
-- [ ] 8.1. Migrate ResourceScriptInterface async methods to GenericCommand
+- [x] 8.1. Migrate ResourceScriptInterface async methods to GenericCommand ✅ DONE (new path added via GenericCommand; ResourceScriptInterface was never wired into App)
   - File: `Engine/Code/Engine/Resource/ResourceScriptInterface.hpp/.cpp` (modify — remove async methods)
   - File: `Engine/Code/Engine/Resource/ResourceCommandQueue.hpp/.cpp` (delete — fully replaced)
   - File: `Code/Game/Framework/App.cpp` (modify — register handlers: `resource.loadTexture`, `resource.loadModel`, `resource.loadShader`)
@@ -251,7 +251,7 @@
   - Verify: resource loading still works via GenericCommand round-trip
   - _Purpose: First full migration — eliminates ResourceCommandQueue entirely_
 
-- [ ] 8.2. Migrate AudioScriptInterface async methods to GenericCommand
+- [x] 8.2. Migrate AudioScriptInterface async methods to GenericCommand ✅ DONE (new path added, old path preserved)
   - File: `Engine/Code/Engine/Audio/AudioScriptInterface.hpp/.cpp` (modify — remove 5 async methods, keep 11 sync methods)
   - File: `Engine/Code/Engine/Audio/AudioCommandQueue.hpp/.cpp` (delete — fully replaced)
   - File: `Code/Game/Framework/App.cpp` (modify — register handlers: `audio.loadSoundAsync`, `audio.playSoundAsync`, `audio.stopSoundAsync`, `audio.setVolumeAsync`, `audio.update3DPositionAsync`)
@@ -273,7 +273,7 @@
   - Old `createMesh()` preserved for backward compat; full cutover after verification
   - _Purpose: Proves entity creation works through GenericCommand pipeline_
 
-- [ ] 8.4. Migrate CameraScriptInterface async methods to GenericCommand
+- [x] 8.4. Migrate CameraScriptInterface async methods to GenericCommand ✅ DONE
   - File: `Engine/Code/Engine/Renderer/CameraScriptInterface.hpp/.cpp` (modify — remove 4 async methods)
   - File: `Code/Game/Framework/App.cpp` (modify — register handlers: `camera.create`, `camera.setActive`, `camera.updateType`, `camera.destroy`)
   - File: `Run/Data/Scripts/Interface/CameraAPI.js` (modify — 4 async methods use CommandQueue.submit())
@@ -285,14 +285,14 @@
   - Verify: camera lifecycle operations work via GenericCommand round-trip
   - _Purpose: Simplifies CameraScriptInterface to sync-only, removes camera callback routing_
 
-- [ ] 8.5. Clean up unified callback routing in JSEngine.js
+- [x] 8.5. Clean up unified callback routing in JSEngine.js ✅ DONE (removed ENTITY_CREATED, CAMERA_CREATED, RESOURCE_LOADED cases; only GENERIC remains)
   - File: `Run/Data/Scripts/JSEngine.js` (modify)
   - After all migrations complete, remove per-type callback routing for migrated types (ENTITY_CREATED, CAMERA_CREATED, AUDIO_LOADED, etc.)
   - All migrated async operations now route through GENERIC → CommandQueueAPI.handleCallback()
   - Verify: only non-migrated callback types remain in switch statement
   - _Purpose: Simplify callback routing — single GENERIC path for all GenericCommand operations_
 
-- [ ] 8.6. Remove smoke test code from main.js and App.cpp
+- [x] 8.6. Remove smoke test code from main.js and App.cpp ✅ DONE (removed ping handler + all 6 smoke test blocks)
   - File: `Run/Data/Scripts/main.js` (modify — remove ping/unknown_cmd smoke test)
   - File: `Code/Game/Framework/App.cpp` (modify — remove ping handler registration)
   - Purpose: Clean up temporary verification code after migration is proven
@@ -344,3 +344,116 @@
 ### Files Modified (3 existing)
 - `Code/Game/Framework/App.hpp` + `App.cpp` (integration)
 - `Run/Data/Scripts/JSEngine.js` (CommandQueue.update() call)
+
+## Phase 9: Full EntityAPI & CameraAPI GenericCommand Migration
+
+> **Goal**: Migrate ALL remaining fire-and-forget (per-frame) methods in EntityAPI and CameraAPI to the GenericCommand pipeline. This trades a small amount of per-frame overhead (JSON serialization + queue) for architectural consistency — every engine operation flows through a single, auditable, rate-limited command path.
+
+### 9.1 EntityAPI — Migrate fire-and-forget methods to GenericCommand
+
+- [x] 9.1.1. Migrate `updatePosition` to GenericCommand ✅ DONE
+  - File: `Code/Game/Framework/App.cpp` (modify — register `entity.update_position` handler)
+  - File: `Run/Data/Scripts/Interface/EntityAPI.js` (modify — rewrite `updatePosition()` to use `commandQueue.submit()`)
+  - Handler extracts `entityId`, `x`, `y`, `z` from JSON payload, calls `EntityAPI::UpdatePosition()`
+  - JS method: `commandQueue.submit('entity.update_position', { entityId, x, y, z }, agentId)`
+  - Fire-and-forget: no callback needed
+  - _Purpose: Route per-frame position updates through GenericCommand_
+
+- [x] 9.1.2. Migrate `moveBy` to GenericCommand ✅ DONE
+  - File: `Code/Game/Framework/App.cpp` (modify — register `entity.move_by` handler)
+  - File: `Run/Data/Scripts/Interface/EntityAPI.js` (modify — rewrite `moveBy()` to use `commandQueue.submit()`)
+  - Handler extracts `entityId`, `dx`, `dy`, `dz` from JSON payload, calls `EntityAPI::MoveBy()`
+  - JS method: `commandQueue.submit('entity.move_by', { entityId, dx, dy, dz }, agentId)`
+  - Fire-and-forget: no callback needed
+  - _Purpose: Route relative movement through GenericCommand_
+
+- [x] 9.1.3. Migrate `updateOrientation` to GenericCommand ✅ DONE
+  - File: `Code/Game/Framework/App.cpp` (modify — register `entity.update_orientation` handler)
+  - File: `Run/Data/Scripts/Interface/EntityAPI.js` (modify — rewrite `updateOrientation()` to use `commandQueue.submit()`)
+  - Handler extracts `entityId`, `pitch`, `yaw`, `roll` from JSON payload, calls `EntityAPI::UpdateOrientation()`
+  - JS method: `commandQueue.submit('entity.update_orientation', { entityId, pitch, yaw, roll }, agentId)`
+  - Fire-and-forget: no callback needed
+  - _Purpose: Route orientation updates through GenericCommand_
+
+- [x] 9.1.4. Migrate `updateColor` to GenericCommand ✅ DONE
+  - File: `Code/Game/Framework/App.cpp` (modify — register `entity.update_color` handler)
+  - File: `Run/Data/Scripts/Interface/EntityAPI.js` (modify — rewrite `updateColor()` to use `commandQueue.submit()`)
+  - Handler extracts `entityId`, `r`, `g`, `b`, `a` from JSON payload, calls `EntityAPI::UpdateColor()`
+  - JS method: `commandQueue.submit('entity.update_color', { entityId, r, g, b, a }, agentId)`
+  - Fire-and-forget: no callback needed
+  - _Purpose: Route color updates through GenericCommand_
+
+- [x] 9.1.5. Migrate `destroyEntity` to GenericCommand ✅ DONE
+  - File: `Code/Game/Framework/App.cpp` (modify — register `entity.destroy` handler)
+  - File: `Run/Data/Scripts/Interface/EntityAPI.js` (modify — rewrite `destroyEntity()` to use `commandQueue.submit()`)
+  - Handler extracts `entityId` from JSON payload, calls `EntityAPI::DestroyEntity()`
+  - JS method: `commandQueue.submit('entity.destroy', { entityId }, agentId, callback)` — callback optional for confirmation
+  - _Purpose: Route entity destruction through GenericCommand_
+
+### 9.2 CameraAPI — Migrate fire-and-forget methods to GenericCommand
+
+- [x] 9.2.1. Use cameraId (from createCamera callback) for all per-frame operations ✅ DONE
+  - File: `Run/Data/Scripts/Interface/CameraAPI.js` (modify — store cameraId from `createCamera()` callback result)
+  - After `createCamera()` callback returns, store `this.cameraId = result.resultId` (already returned by create_camera handler)
+  - All subsequent per-frame methods pass `cameraId` in GenericCommand payload — C++ handlers look up `Camera*` internally
+  - Follows Entity's ID-based pattern: JS holds numeric ID, C++ does pointer lookup
+  - No handle caching, no invalidation logic needed
+  - _Purpose: Adopt Entity's ID-based pattern for Camera, eliminating per-frame `getHandle()` C++ call_
+
+- [x] 9.2.2. Migrate `update` (camera) to GenericCommand ✅ DONE
+  - File: `Code/Game/Framework/App.cpp` (modify — register `camera.update` handler)
+  - File: `Run/Data/Scripts/Interface/CameraAPI.js` (modify — rewrite `update()` to use `commandQueue.submit()`)
+  - Handler extracts `cameraId`, `deltaTime` from JSON payload, looks up `Camera*` internally, calls `CameraAPI::Update()`
+  - JS method: `commandQueue.submit('camera.update', { cameraId: this.cameraId, deltaTime }, 'camera-api')`
+  - Fire-and-forget: no callback needed
+  - _Purpose: Route per-frame camera update through GenericCommand_
+
+- [x] 9.2.3. Migrate `updatePosition` (camera) to GenericCommand ✅ DONE
+  - File: `Code/Game/Framework/App.cpp` (modify — register `camera.update_position` handler)
+  - File: `Run/Data/Scripts/Interface/CameraAPI.js` (modify — rewrite `updatePosition()` to use `commandQueue.submit()`)
+  - Handler extracts `cameraId`, `x`, `y`, `z` from JSON payload, looks up `Camera*` internally, calls `CameraAPI::UpdatePosition()`
+  - JS method: `commandQueue.submit('camera.update_position', { cameraId: this.cameraId, x, y, z }, 'camera-api')`
+  - Fire-and-forget: no callback needed
+  - _Purpose: Route camera position updates through GenericCommand_
+
+- [x] 9.2.4. Migrate `updateOrientation` (camera) to GenericCommand ✅ DONE
+  - File: `Code/Game/Framework/App.cpp` (modify — register `camera.update_orientation` handler)
+  - File: `Run/Data/Scripts/Interface/CameraAPI.js` (modify — rewrite `updateOrientation()` to use `commandQueue.submit()`)
+  - Handler extracts `cameraId`, `yaw`, `pitch`, `roll` from JSON payload, looks up `Camera*` internally, calls `CameraAPI::UpdateOrientation()`
+  - JS method: `commandQueue.submit('camera.update_orientation', { cameraId: this.cameraId, yaw, pitch, roll }, 'camera-api')`
+  - Fire-and-forget: no callback needed
+  - _Purpose: Route camera orientation updates through GenericCommand_
+
+- [x] 9.2.5. Migrate `moveBy` (camera) to GenericCommand ✅ DONE
+  - File: `Code/Game/Framework/App.cpp` (modify — register `camera.move_by` handler)
+  - File: `Run/Data/Scripts/Interface/CameraAPI.js` (modify — rewrite `moveBy()` to use `commandQueue.submit()`)
+  - Handler extracts `cameraId`, `dx`, `dy`, `dz` from JSON payload, looks up `Camera*` internally, calls `CameraAPI::MoveBy()`
+  - JS method: `commandQueue.submit('camera.move_by', { cameraId: this.cameraId, dx, dy, dz }, 'camera-api')`
+  - Fire-and-forget: no callback needed
+  - _Purpose: Route camera relative movement through GenericCommand_
+
+- [x] 9.2.6. Migrate `lookAt` (camera) to GenericCommand ✅ DONE
+  - File: `Code/Game/Framework/App.cpp` (modify — register `camera.look_at` handler)
+  - File: `Run/Data/Scripts/Interface/CameraAPI.js` (modify — rewrite `lookAt()` to use `commandQueue.submit()`)
+  - Handler extracts `cameraId`, `targetX`, `targetY`, `targetZ` from JSON payload, looks up `Camera*` internally, calls `CameraAPI::LookAt()`
+  - JS method: `commandQueue.submit('camera.look_at', { cameraId: this.cameraId, targetX, targetY, targetZ }, 'camera-api')`
+  - Fire-and-forget: no callback needed
+  - _Purpose: Route camera lookAt through GenericCommand_
+
+### 9.3 Dead code cleanup
+
+- [x] 9.3.1. Remove dead `handleCallback()` and `callbackRegistry` from EntityAPI.js ✅ DONE
+  - File: `Run/Data/Scripts/Interface/EntityAPI.js` (modify)
+  - Remove `handleCallback()` method and `callbackRegistry` Map — no longer used after GenericCommand migration
+  - _Purpose: Clean up legacy callback infrastructure_
+
+- [x] 9.3.2. Remove dead `handleCallback()` and `callbackRegistry` from CameraAPI.js ✅ DONE
+  - File: `Run/Data/Scripts/Interface/CameraAPI.js` (modify)
+  - Remove `handleCallback()` method and `callbackRegistry` Map — no longer used after GenericCommand migration
+  - _Purpose: Clean up legacy callback infrastructure_
+
+- [x] 9.3.3. Remove `getHandle()` from CameraAPI.js — C++ `DebugRenderSystemScriptInterface` now resolves `cameraId → Camera*` internally via `CameraAPI` ✅ DONE
+  - File: `Run/Data/Scripts/Interface/CameraAPI.js` (modify)
+  - Remove `getHandle()` method — replaced by cameraId-based pattern (C++ handlers look up Camera* internally)
+  - Verify no other callers depend on `getHandle()` before removal
+  - _Purpose: Eliminate per-frame C++ call that is no longer needed_

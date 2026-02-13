@@ -18,7 +18,6 @@
 #include "Engine/Audio/AudioAPI.hpp"
 #include "Engine/Audio/AudioCommand.hpp"
 #include "Engine/Audio/AudioCommandQueue.hpp"
-#include "Engine/Audio/AudioScriptInterface.hpp"
 #include "Engine/Audio/AudioStateBuffer.hpp"
 #include "Engine/Audio/AudioSystem.hpp"
 #include "Engine/Core/CallbackQueue.hpp"
@@ -34,7 +33,6 @@
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/Core/LogSubsystem.hpp"
 #include "Engine/Entity/EntityAPI.hpp"
-#include "Engine/Entity/EntityScriptInterface.hpp"
 #include "Engine/Entity/EntityStateBuffer.hpp"
 #include "Engine/Input/InputScriptInterface.hpp"
 #include "Engine/Input/InputSystem.hpp"
@@ -42,7 +40,6 @@
 #include "Engine/Platform/Window.hpp"
 #include "Engine/Renderer/Camera.hpp"
 #include "Engine/Renderer/CameraAPI.hpp"
-#include "Engine/Renderer/CameraScriptInterface.hpp"
 #include "Engine/Renderer/CameraStateBuffer.hpp"
 #include "Engine/Renderer/DebugRenderAPI.hpp"
 #include "Engine/Renderer/DebugRenderStateBuffer.hpp"
@@ -122,13 +119,6 @@ void App::Startup()
     m_genericCommandExecutor = new GenericCommandExecutor();
     m_genericCommandExecutor->SetRateLimitPerAgent(gcRateLimitPerAgent);
     m_genericCommandExecutor->SetAuditLoggingEnabled(gcAuditLogging);
-
-    // === Smoke-test handler: "ping" → returns {pong: "hello"} ===
-    m_genericCommandExecutor->RegisterHandler("ping", [](std::any const& /*payload*/) -> HandlerResult
-    {
-        DAEMON_LOG(LogApp, eLogVerbosity::Log, "GenericCommand [ping] handler: received ping, returning pong");
-        return HandlerResult::Success({{"pong", std::any(String("hello"))}});
-    });
 
     // Initialize state buffers with dirty tracking for O(d) swap optimization
     m_entityStateBuffer = new EntityStateBuffer();
@@ -226,6 +216,833 @@ void App::Startup()
 
             // Return entityId via resultId field — GenericCommand pipeline delivers to JS callback
             return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(entityId))}});
+        });
+
+    // === GenericCommand handler: "create_camera" (Task 8.4 — CameraScriptInterface migration) ===
+    // Replaces CameraScriptInterface::ExecuteCreateCamera with GenericCommand pipeline.
+    // Handler generates cameraId immediately; render command queued for async GPU-side creation.
+    // Note: callbackId in CameraCreationData set to 0 — GenericCommand pipeline handles callbacks.
+    m_genericCommandExecutor->RegisterHandler("create_camera",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            // Extract position [x, y, z] — default [0, 0, 0]
+            auto posArr = json.value("position", std::vector<double>{0.0, 0.0, 0.0});
+            Vec3 position(
+                static_cast<float>(posArr.size() > 0 ? posArr[0] : 0.0),
+                static_cast<float>(posArr.size() > 1 ? posArr[1] : 0.0),
+                static_cast<float>(posArr.size() > 2 ? posArr[2] : 0.0)
+            );
+
+            // Extract orientation [yaw, pitch, roll] — default [0, 0, 0]
+            auto oriArr = json.value("orientation", std::vector<double>{0.0, 0.0, 0.0});
+            EulerAngles orientation(
+                static_cast<float>(oriArr.size() > 0 ? oriArr[0] : 0.0),
+                static_cast<float>(oriArr.size() > 1 ? oriArr[1] : 0.0),
+                static_cast<float>(oriArr.size() > 2 ? oriArr[2] : 0.0)
+            );
+
+            String type = json.value("type", "world");
+
+            // Generate camera ID (same as CameraAPI::CreateCamera)
+            EntityID cameraId = m_cameraAPI->GenerateCameraID();
+
+            // Build render command (same as CameraAPI::CreateCamera)
+            CameraCreationData cameraData;
+            cameraData.position    = position;
+            cameraData.orientation = orientation;
+            cameraData.type        = type;
+            cameraData.callbackId  = 0;  // GenericCommand pipeline handles callbacks, bypass CameraAPI's callback system
+
+            RenderCommand command(RenderCommandType::CREATE_CAMERA, cameraId, cameraData);
+            bool submitted = m_renderCommandQueue->Submit(command);
+
+            if (!submitted)
+            {
+                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
+                           Stringf("GenericCommand [create_camera]: RenderCommandQueue full, camera %llu dropped", cameraId));
+                return HandlerResult::Error("ERR_QUEUE_FULL: render command queue is full");
+            }
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [create_camera]: cameraId=%llu, type=%s, pos=(%.1f,%.1f,%.1f)",
+                           cameraId, type.c_str(), position.x, position.y, position.z));
+
+            return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(cameraId))}});
+        });
+
+    // === GenericCommand handler: "set_active_camera" (Task 8.4) ===
+    // Replaces CameraScriptInterface::ExecuteSetActiveCamera.
+    // Callback marked ready immediately (same as CameraAPI::SetActiveCamera).
+    m_genericCommandExecutor->RegisterHandler("set_active_camera",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            EntityID cameraId = json.value("cameraId", static_cast<uint64_t>(0));
+            if (cameraId == 0)
+            { return HandlerResult::Error("ERR_INVALID_PARAM: cameraId is required and must be non-zero"); }
+
+            RenderCommand command(RenderCommandType::SET_ACTIVE_CAMERA, cameraId, std::monostate{});
+            bool submitted = m_renderCommandQueue->Submit(command);
+
+            if (!submitted)
+            {
+                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
+                           Stringf("GenericCommand [set_active_camera]: RenderCommandQueue full, camera %llu dropped", cameraId));
+                return HandlerResult::Error("ERR_QUEUE_FULL: render command queue is full");
+            }
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [set_active_camera]: cameraId=%llu", cameraId));
+
+            return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(cameraId))}});
+        });
+
+    // === GenericCommand handler: "update_camera_type" (Task 8.4) ===
+    // Replaces CameraScriptInterface::ExecuteUpdateCameraType.
+    // Callback marked ready immediately (same as CameraAPI::UpdateCameraType).
+    m_genericCommandExecutor->RegisterHandler("update_camera_type",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            EntityID cameraId = json.value("cameraId", static_cast<uint64_t>(0));
+            if (cameraId == 0)
+            { return HandlerResult::Error("ERR_INVALID_PARAM: cameraId is required and must be non-zero"); }
+
+            String type = json.value("type", "");
+            if (type.empty())
+            { return HandlerResult::Error("ERR_INVALID_PARAM: type is required"); }
+
+            CameraTypeUpdateData typeUpdateData;
+            typeUpdateData.type = type;
+
+            RenderCommand command(RenderCommandType::UPDATE_CAMERA_TYPE, cameraId, typeUpdateData);
+            bool submitted = m_renderCommandQueue->Submit(command);
+
+            if (!submitted)
+            {
+                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
+                           Stringf("GenericCommand [update_camera_type]: RenderCommandQueue full, camera %llu dropped", cameraId));
+                return HandlerResult::Error("ERR_QUEUE_FULL: render command queue is full");
+            }
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [update_camera_type]: cameraId=%llu, type=%s", cameraId, type.c_str()));
+
+            return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(cameraId))}});
+        });
+
+    // === GenericCommand handler: "destroy_camera" (Task 8.4) ===
+    // Replaces CameraScriptInterface::ExecuteDestroyCamera.
+    // Callback marked ready immediately (same as CameraAPI::DestroyCamera).
+    m_genericCommandExecutor->RegisterHandler("destroy_camera",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            EntityID cameraId = json.value("cameraId", static_cast<uint64_t>(0));
+            if (cameraId == 0)
+            { return HandlerResult::Error("ERR_INVALID_PARAM: cameraId is required and must be non-zero"); }
+
+            RenderCommand command(RenderCommandType::DESTROY_CAMERA, cameraId, std::monostate{});
+            bool submitted = m_renderCommandQueue->Submit(command);
+
+            if (!submitted)
+            {
+                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
+                           Stringf("GenericCommand [destroy_camera]: RenderCommandQueue full, camera %llu dropped", cameraId));
+                return HandlerResult::Error("ERR_QUEUE_FULL: render command queue is full");
+            }
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [destroy_camera]: cameraId=%llu", cameraId));
+
+            return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(cameraId))}});
+        });
+
+    // === GenericCommand handler: "load_sound" (Task 8.2 — AudioScriptInterface migration) ===
+    // Replaces AudioScriptInterface::ExecuteLoadSoundAsync + ProcessAudioCommands LOAD_SOUND path.
+    // Handler runs on main thread; calls g_audio->CreateOrGetSound() directly, updates AudioStateBuffer.
+    m_genericCommandExecutor->RegisterHandler("load_sound",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            String soundPath = json.value("soundPath", "");
+            if (soundPath.empty())
+            { return HandlerResult::Error("ERR_INVALID_PARAM: soundPath is required"); }
+
+            // Dimension: default Sound2D (2D is always audible; use Sound3D explicitly for spatial audio)
+            String dimStr = json.value("dimension", "Sound2D");
+            eAudioSystemSoundDimension dimension = eAudioSystemSoundDimension::Sound3D;
+            if (dimStr == "Sound2D" || dimStr == "2D")
+            { dimension = eAudioSystemSoundDimension::Sound2D; }
+
+            SoundID soundId = g_audio->CreateOrGetSound(soundPath, dimension);
+
+            if (soundId == MISSING_SOUND_ID)
+            {
+                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
+                           Stringf("GenericCommand [load_sound]: failed to load '%s'", soundPath.c_str()));
+                return HandlerResult::Error("ERR_LOAD_FAILED: sound file not found or invalid");
+            }
+
+            // Update AudioStateBuffer (same as ProcessAudioCommands LOAD_SOUND)
+            AudioState state;
+            state.soundId   = soundId;
+            state.soundPath = soundPath;
+            state.position  = Vec3::ZERO;
+            state.volume    = 1.0f;
+            state.isPlaying = false;
+            state.isLooped  = false;
+            state.isLoaded  = true;
+            state.isActive  = true;
+
+            (*m_audioStateBuffer->GetBackBuffer())[soundId] = state;
+            m_audioStateBuffer->MarkDirty(soundId);
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [load_sound]: soundId=%llu, path=%s", soundId, soundPath.c_str()));
+
+            return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(soundId))}});
+        });
+
+    // === GenericCommand handler: "play_sound" (Task 8.2) ===
+    // Replaces AudioScriptInterface::ExecutePlaySoundAsync + ProcessAudioCommands PLAY_SOUND path.
+    m_genericCommandExecutor->RegisterHandler("play_sound",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("soundId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: soundId is required"); }
+            SoundID soundId = json.value("soundId", static_cast<uint64_t>(0));
+
+            float volume = json.value("volume", 1.0f);
+            bool  looped = json.value("looped", false);
+
+            // Verify sound exists in AudioStateBuffer
+            auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(soundId);
+            if (it == backBuffer->end())
+            {
+                return HandlerResult::Error(Stringf("ERR_NOT_FOUND: soundId %llu not in AudioStateBuffer", soundId));
+            }
+
+            // 2D vs 3D: match the playback mode to how the sound was loaded.
+            // Sound2D (FMOD_DEFAULT) → StartSound (no FMOD_3D flag)
+            // Sound3D (FMOD_3D)      → StartSoundAt (with 3D position)
+            SoundPlaybackID playbackId = MISSING_SOUND_ID;
+            bool const has3DPosition = json.contains("position");
+
+            if (has3DPosition)
+            {
+                auto posArr = json.value("position", std::vector<double>{0.0, 0.0, 0.0});
+                Vec3 position(
+                    static_cast<float>(posArr.size() > 0 ? posArr[0] : 0.0),
+                    static_cast<float>(posArr.size() > 1 ? posArr[1] : 0.0),
+                    static_cast<float>(posArr.size() > 2 ? posArr[2] : 0.0)
+                );
+                it->second.position = position;
+                playbackId = g_audio->StartSoundAt(soundId, position, looped, volume);
+            }
+            else
+            {
+                // 2D playback — matches Sound2D (FMOD_DEFAULT) load mode.
+                // This is the same path as the original synchronous AudioInterface.startSound().
+                playbackId = g_audio->StartSound(soundId, looped, volume);
+            }
+
+            // Update state
+            it->second.isPlaying = true;
+            it->second.volume    = volume;
+            it->second.isLooped  = looped;
+            m_audioStateBuffer->MarkDirty(soundId);
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [play_sound]: soundId=%llu, playbackId=%llu, vol=%.2f, looped=%d, 3D=%d",
+                               soundId, playbackId, volume, looped, has3DPosition));
+
+            return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(playbackId))}});
+        });
+
+    // === GenericCommand handler: "stop_sound" (Task 8.2) ===
+    // Replaces AudioScriptInterface::ExecuteStopSoundAsync + ProcessAudioCommands STOP_SOUND path.
+    m_genericCommandExecutor->RegisterHandler("stop_sound",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("soundId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: soundId is required"); }
+            SoundID soundId = json.value("soundId", static_cast<uint64_t>(0));
+
+            auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(soundId);
+            if (it != backBuffer->end())
+            {
+                it->second.isPlaying = false;
+                m_audioStateBuffer->MarkDirty(soundId);
+            }
+
+            g_audio->StopSound(soundId);
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [stop_sound]: soundId=%llu", soundId));
+
+            return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(soundId))}});
+        });
+
+    // === GenericCommand handler: "set_volume" (Task 8.2) ===
+    // Replaces AudioScriptInterface::ExecuteSetVolumeAsync + ProcessAudioCommands SET_VOLUME path.
+    m_genericCommandExecutor->RegisterHandler("set_volume",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("soundId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: soundId is required"); }
+            SoundID soundId = json.value("soundId", static_cast<uint64_t>(0));
+
+            float volume = json.value("volume", 1.0f);
+
+            auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(soundId);
+            if (it != backBuffer->end())
+            {
+                it->second.volume = volume;
+                m_audioStateBuffer->MarkDirty(soundId);
+            }
+
+            g_audio->SetSoundPlaybackVolume(soundId, volume);
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [set_volume]: soundId=%llu, volume=%.2f", soundId, volume));
+
+            return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(soundId))}});
+        });
+
+    // === GenericCommand handler: "update_3d_position" (Task 8.2) ===
+    // Replaces AudioScriptInterface::ExecuteUpdate3DPositionAsync + ProcessAudioCommands UPDATE_3D_POSITION path.
+    m_genericCommandExecutor->RegisterHandler("update_3d_position",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("soundId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: soundId is required"); }
+            SoundID soundId = json.value("soundId", static_cast<uint64_t>(0));
+
+            auto posArr = json.value("position", std::vector<double>{0.0, 0.0, 0.0});
+            Vec3 position(
+                static_cast<float>(posArr.size() > 0 ? posArr[0] : 0.0),
+                static_cast<float>(posArr.size() > 1 ? posArr[1] : 0.0),
+                static_cast<float>(posArr.size() > 2 ? posArr[2] : 0.0)
+            );
+
+            auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
+            auto  it = backBuffer->find(soundId);
+            if (it != backBuffer->end())
+            {
+                it->second.position = position;
+                m_audioStateBuffer->MarkDirty(soundId);
+            }
+
+            g_audio->SetSoundPosition(soundId, position);
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [update_3d_position]: soundId=%llu, pos=(%.1f,%.1f,%.1f)",
+                           soundId, position.x, position.y, position.z));
+
+            return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(soundId))}});
+        });
+
+    // === GenericCommand handler: "load_texture" (Task 8.1 — ResourceScriptInterface migration) ===
+    // Replaces ResourceScriptInterface::ExecuteLoadTexture with GenericCommand pipeline.
+    // Handler runs on main thread; calls g_resourceSubsystem->CreateOrGetTextureFromFile() directly.
+    // Returns opaque resourceId (Texture* cast to uint64_t) matching ResourceLoadJob pattern.
+    m_genericCommandExecutor->RegisterHandler("load_texture",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            String path = json.value("path", "");
+            if (path.empty())
+            { return HandlerResult::Error("ERR_INVALID_PARAM: path is required"); }
+
+            if (!g_resourceSubsystem)
+            { return HandlerResult::Error("ERR_NOT_INITIALIZED: ResourceSubsystem is null"); }
+
+            Texture* texture = g_resourceSubsystem->CreateOrGetTextureFromFile(path);
+            if (!texture)
+            {
+                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
+                           Stringf("GenericCommand [load_texture]: failed to load '%s'", path.c_str()));
+                return HandlerResult::Error(Stringf("ERR_LOAD_FAILED: texture not found or invalid: %s", path.c_str()));
+            }
+
+            uint64_t resourceId = reinterpret_cast<uint64_t>(texture);
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [load_texture]: resourceId=%llu, path=%s", resourceId, path.c_str()));
+
+            return HandlerResult::Success({{"resultId", std::any(resourceId)}});
+        });
+
+    // === GenericCommand handler: "load_model" (Task 8.1 — ResourceScriptInterface migration) ===
+    // Replaces ResourceScriptInterface::ExecuteLoadModel with GenericCommand pipeline.
+    // NOTE: ResourceSubsystem does not yet have CreateOrGetModelFromFile().
+    // Returns error until model loading is implemented (matches ResourceLoadJob behavior).
+    m_genericCommandExecutor->RegisterHandler("load_model",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            String path = json.value("path", "");
+            if (path.empty())
+            { return HandlerResult::Error("ERR_INVALID_PARAM: path is required"); }
+
+            // Model loading via ResourceSubsystem not yet implemented
+            DAEMON_LOG(LogApp, eLogVerbosity::Warning,
+                       Stringf("GenericCommand [load_model]: not yet implemented for '%s'", path.c_str()));
+
+            return HandlerResult::Error(Stringf("ERR_NOT_IMPLEMENTED: model loading not yet supported: %s", path.c_str()));
+        });
+
+    // === GenericCommand handler: "load_shader" (Task 8.1 — ResourceScriptInterface migration) ===
+    // Replaces ResourceScriptInterface::ExecuteLoadShader with GenericCommand pipeline.
+    // Handler runs on main thread; calls g_resourceSubsystem->CreateOrGetShaderFromFile() directly.
+    // Returns opaque resourceId (Shader* cast to uint64_t) matching ResourceLoadJob pattern.
+    m_genericCommandExecutor->RegisterHandler("load_shader",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            String path = json.value("path", "");
+            if (path.empty())
+            { return HandlerResult::Error("ERR_INVALID_PARAM: path is required"); }
+
+            if (!g_resourceSubsystem)
+            { return HandlerResult::Error("ERR_NOT_INITIALIZED: ResourceSubsystem is null"); }
+
+            Shader* shader = g_resourceSubsystem->CreateOrGetShaderFromFile(path);
+            if (!shader)
+            {
+                DAEMON_LOG(LogApp, eLogVerbosity::Warning,
+                           Stringf("GenericCommand [load_shader]: failed to load '%s'", path.c_str()));
+                return HandlerResult::Error(Stringf("ERR_LOAD_FAILED: shader not found or invalid: %s", path.c_str()));
+            }
+
+            uint64_t resourceId = reinterpret_cast<uint64_t>(shader);
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [load_shader]: resourceId=%llu, path=%s", resourceId, path.c_str()));
+
+            return HandlerResult::Success({{"resultId", std::any(resourceId)}});
+        });
+
+    // === GenericCommand handler: "entity.update_position" (Task 9.1.1 — EntityAPI fire-and-forget migration) ===
+    // Replaces EntityScriptInterface::ExecuteUpdatePosition with GenericCommand pipeline.
+    // Fire-and-forget: no callback needed, position applied immediately on main thread.
+    // Flow: JS submit("entity.update_position", {entityId, x, y, z}) → handler → EntityAPI::UpdatePosition()
+    m_genericCommandExecutor->RegisterHandler("entity.update_position",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            // Extract entityId (required)
+            if (!json.contains("entityId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required"); }
+            uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
+
+            // Extract position components (required)
+            double x = json.value("x", 0.0);
+            double y = json.value("y", 0.0);
+            double z = json.value("z", 0.0);
+
+            Vec3 position(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
+
+            m_entityAPI->UpdatePosition(entityId, position);
+
+            // Fire-and-forget: no callback result needed
+            return HandlerResult::Success();
+        });
+
+    // === GenericCommand handler: "entity.move_by" (Task 9.1.2 — EntityAPI fire-and-forget migration) ===
+    // Replaces EntityScriptInterface::ExecuteMoveBy with GenericCommand pipeline.
+    // Fire-and-forget: relative movement applied immediately on main thread.
+    // Flow: JS submit("entity.move_by", {entityId, dx, dy, dz}) → handler → EntityAPI::MoveBy()
+    m_genericCommandExecutor->RegisterHandler("entity.move_by",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            // Extract entityId (required)
+            if (!json.contains("entityId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required"); }
+            uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
+
+            // Extract delta components
+            double dx = json.value("dx", 0.0);
+            double dy = json.value("dy", 0.0);
+            double dz = json.value("dz", 0.0);
+
+            Vec3 delta(static_cast<float>(dx), static_cast<float>(dy), static_cast<float>(dz));
+
+            m_entityAPI->MoveBy(entityId, delta);
+
+            // Fire-and-forget: no callback result needed
+            return HandlerResult::Success();
+        });
+
+    // === GenericCommand handler: "entity.update_orientation" (Task 9.1.3) ===
+    // Fire-and-forget: orientation applied immediately on main thread.
+    m_genericCommandExecutor->RegisterHandler("entity.update_orientation",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("entityId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required"); }
+            uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
+
+            double yaw   = json.value("yaw",   0.0);
+            double pitch = json.value("pitch", 0.0);
+            double roll  = json.value("roll",  0.0);
+
+            EulerAngles orientation(static_cast<float>(yaw), static_cast<float>(pitch), static_cast<float>(roll));
+
+            m_entityAPI->UpdateOrientation(entityId, orientation);
+
+            return HandlerResult::Success();
+        });
+
+    // === GenericCommand handler: "entity.update_color" (Task 9.1.4) ===
+    // Fire-and-forget: color applied immediately on main thread.
+    m_genericCommandExecutor->RegisterHandler("entity.update_color",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("entityId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required"); }
+            uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
+
+            int r = json.value("r", 255);
+            int g = json.value("g", 255);
+            int b = json.value("b", 255);
+            int a = json.value("a", 255);
+
+            Rgba8 color(static_cast<unsigned char>(r),
+                        static_cast<unsigned char>(g),
+                        static_cast<unsigned char>(b),
+                        static_cast<unsigned char>(a));
+
+            m_entityAPI->UpdateColor(entityId, color);
+
+            return HandlerResult::Success();
+        });
+
+    // === GenericCommand handler: "entity.destroy" (Task 9.1.5) ===
+    // Lifecycle operation with optional callback for confirmation.
+    m_genericCommandExecutor->RegisterHandler("entity.destroy",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("entityId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required"); }
+            uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
+
+            m_entityAPI->DestroyEntity(entityId);
+
+            DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                       Stringf("GenericCommand [entity.destroy]: entityId=%llu", entityId));
+
+            return HandlerResult::Success({{"resultId", std::any(entityId)}});
+        });
+
+    // === GenericCommand handler: "camera.update" (Task 9.2.2 — CameraAPI fire-and-forget migration) ===
+    // Atomic position+orientation update. Replaces direct C++ camera.update() call.
+    // Flow: JS submit("camera.update", {cameraId, posX, posY, posZ, yaw, pitch, roll}) → handler → CameraAPI::UpdateCamera()
+    m_genericCommandExecutor->RegisterHandler("camera.update",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("cameraId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: cameraId is required"); }
+            uint64_t cameraId = json.value("cameraId", static_cast<uint64_t>(0));
+
+            float posX  = json.value("posX", 0.0f);
+            float posY  = json.value("posY", 0.0f);
+            float posZ  = json.value("posZ", 0.0f);
+            float yaw   = json.value("yaw", 0.0f);
+            float pitch = json.value("pitch", 0.0f);
+            float roll  = json.value("roll", 0.0f);
+
+            m_cameraAPI->UpdateCamera(cameraId, Vec3(posX, posY, posZ), EulerAngles(yaw, pitch, roll));
+
+            return HandlerResult::Success();
+        });
+
+    // === GenericCommand handler: "camera.update_position" (Task 9.2.3) ===
+    // DEPRECATED: Use camera.update for atomic updates. Kept for backward compatibility.
+    m_genericCommandExecutor->RegisterHandler("camera.update_position",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("cameraId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: cameraId is required"); }
+            uint64_t cameraId = json.value("cameraId", static_cast<uint64_t>(0));
+
+            float x = json.value("x", 0.0f);
+            float y = json.value("y", 0.0f);
+            float z = json.value("z", 0.0f);
+
+            m_cameraAPI->UpdateCameraPosition(cameraId, Vec3(x, y, z));
+
+            return HandlerResult::Success();
+        });
+
+    // === GenericCommand handler: "camera.update_orientation" (Task 9.2.4) ===
+    // DEPRECATED: Use camera.update for atomic updates. Kept for backward compatibility.
+    m_genericCommandExecutor->RegisterHandler("camera.update_orientation",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("cameraId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: cameraId is required"); }
+            uint64_t cameraId = json.value("cameraId", static_cast<uint64_t>(0));
+
+            float yaw   = json.value("yaw", 0.0f);
+            float pitch = json.value("pitch", 0.0f);
+            float roll  = json.value("roll", 0.0f);
+
+            m_cameraAPI->UpdateCameraOrientation(cameraId, EulerAngles(yaw, pitch, roll));
+
+            return HandlerResult::Success();
+        });
+
+    // === GenericCommand handler: "camera.move_by" (Task 9.2.5) ===
+    // Relative camera movement by delta vector.
+    m_genericCommandExecutor->RegisterHandler("camera.move_by",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("cameraId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: cameraId is required"); }
+            uint64_t cameraId = json.value("cameraId", static_cast<uint64_t>(0));
+
+            float dx = json.value("dx", 0.0f);
+            float dy = json.value("dy", 0.0f);
+            float dz = json.value("dz", 0.0f);
+
+            m_cameraAPI->MoveCameraBy(cameraId, Vec3(dx, dy, dz));
+
+            return HandlerResult::Success();
+        });
+
+    // === GenericCommand handler: "camera.look_at" (Task 9.2.6) ===
+    // Make camera look at target position. (Phase 2 stub in CameraAPI — will work when implemented.)
+    m_genericCommandExecutor->RegisterHandler("camera.look_at",
+        [this](std::any const& payload) -> HandlerResult
+        {
+            String payloadStr;
+            try { payloadStr = std::any_cast<String>(payload); }
+            catch (std::bad_any_cast const&)
+            { return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string"); }
+
+            nlohmann::json json;
+            try { json = nlohmann::json::parse(payloadStr); }
+            catch (nlohmann::json::exception const& e)
+            { return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what())); }
+
+            if (!json.contains("cameraId"))
+            { return HandlerResult::Error("ERR_INVALID_PARAM: cameraId is required"); }
+            uint64_t cameraId = json.value("cameraId", static_cast<uint64_t>(0));
+
+            float targetX = json.value("targetX", 0.0f);
+            float targetY = json.value("targetY", 0.0f);
+            float targetZ = json.value("targetZ", 0.0f);
+
+            m_cameraAPI->LookAtCamera(cameraId, Vec3(targetX, targetY, targetZ));
+
+            return HandlerResult::Success();
         });
 
     DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - Async architecture initialized");
@@ -606,9 +1423,6 @@ void App::SetupScriptingBindings()
     m_inputScriptInterface = std::make_shared<InputScriptInterface>(g_input);
     g_scriptSubsystem->RegisterScriptableObject("input", m_inputScriptInterface);
 
-    m_audioScriptInterface = std::make_shared<AudioScriptInterface>(g_audio);
-    g_scriptSubsystem->RegisterScriptableObject("audio", m_audioScriptInterface);
-
     m_clockScriptInterface = std::make_shared<ClockScriptInterface>();
     g_scriptSubsystem->RegisterScriptableObject("clock", m_clockScriptInterface);
 
@@ -617,25 +1431,14 @@ void App::SetupScriptingBindings()
     if (m_audioCommandQueue && m_callbackQueue && g_audio)
     {
         g_audio->SetCommandQueue(m_audioCommandQueue, m_callbackQueue);
-        m_audioScriptInterface->SetCommandQueue(m_audioCommandQueue, m_callbackQueue);
     }
 #endif
 
     // Register debug render script interface
     if (m_debugRenderAPI)
     {
-        m_debugRenderSystemScriptInterface = std::make_shared<DebugRenderSystemScriptInterface>(m_debugRenderAPI);
+        m_debugRenderSystemScriptInterface = std::make_shared<DebugRenderSystemScriptInterface>(m_debugRenderAPI, m_cameraAPI);
         g_scriptSubsystem->RegisterScriptableObject("debugRenderInterface", m_debugRenderSystemScriptInterface);
-    }
-
-    // Register entity and camera script interfaces
-    if (m_entityAPI && m_cameraAPI)
-    {
-        m_entityScriptInterface = std::make_shared<EntityScriptInterface>(m_entityAPI);
-        g_scriptSubsystem->RegisterScriptableObject("entity", m_entityScriptInterface);
-
-        m_cameraScriptInterface = std::make_shared<CameraScriptInterface>(m_cameraAPI);
-        g_scriptSubsystem->RegisterScriptableObject("camera", m_cameraScriptInterface);
     }
 
     // Register KADI broker integration

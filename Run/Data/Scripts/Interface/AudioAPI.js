@@ -24,14 +24,12 @@ export class AudioAPI
     constructor()
     {
         this.audioInterface = new AudioInterface();
-        this.callbackRegistry = new Map();  // callbackId -> callback function
-        this.nextLocalCallbackId = 1;  // For generating unique callback IDs
 
-        console.log('AudioAPI: Initialized with callback registry');
+        console.log('AudioAPI: Initialized (GenericCommand pipeline)');
     }
 
     /**
-     * Load sound asynchronously via AudioCommandQueue
+     * Load sound asynchronously via GenericCommand pipeline
      * @param {string} soundPath - Path to the sound file
      * @returns {Promise<number>} Promise resolving to soundID
      */
@@ -39,41 +37,22 @@ export class AudioAPI
     {
         return new Promise((resolve, reject) =>
         {
-            try
+            this.audioInterface.loadSoundAsync(soundPath, (soundId) =>
             {
-                // Call C++ async method (returns callbackId)
-                const callbackId = this.audioInterface.loadSoundAsync(soundPath);
-
-                if (!callbackId || callbackId === 0)
+                if (soundId < 0)
                 {
-                    reject(new Error('Failed to submit loadSoundAsync command'));
-                    return;
+                    reject(new Error(`Failed to load sound: ${soundPath}`));
                 }
-
-                // Register callback for when C++ completes the operation
-                this.callbackRegistry.set(callbackId, (soundId, errorMessage) =>
+                else
                 {
-                    if (errorMessage && errorMessage.length > 0)
-                    {
-                        reject(new Error(errorMessage));
-                    }
-                    else
-                    {
-                        resolve(soundId);
-                    }
-                });
-
-                console.log(`AudioAPI: Registered callback ${callbackId} for loadSoundAsync('${soundPath}')`);
-            }
-            catch (error)
-            {
-                reject(error);
-            }
+                    resolve(soundId);
+                }
+            });
         });
     }
 
     /**
-     * Play sound asynchronously via AudioCommandQueue
+     * Play sound asynchronously via GenericCommand pipeline
      * @param {number} soundID - Sound ID from loadSoundAsync
      * @param {number} volume - Volume (0.0 to 1.0)
      * @param {boolean} looped - Whether sound should loop
@@ -83,41 +62,22 @@ export class AudioAPI
     {
         return new Promise((resolve, reject) =>
         {
-            try
+            this.audioInterface.playSoundAsync(soundID, volume, looped, (playbackId) =>
             {
-                // Call C++ async method (returns callbackId)
-                const callbackId = this.audioInterface.playSoundAsync(soundID, volume, looped);
-
-                if (!callbackId || callbackId === 0)
+                if (playbackId < 0)
                 {
-                    reject(new Error('Failed to submit playSoundAsync command'));
-                    return;
+                    reject(new Error(`Failed to play sound: ${soundID}`));
                 }
-
-                // Register callback for when C++ completes the operation
-                this.callbackRegistry.set(callbackId, (playbackId, errorMessage) =>
+                else
                 {
-                    if (errorMessage && errorMessage.length > 0)
-                    {
-                        reject(new Error(errorMessage));
-                    }
-                    else
-                    {
-                        resolve(playbackId);
-                    }
-                });
-
-                console.log(`AudioAPI: Registered callback ${callbackId} for playSoundAsync(soundId=${soundID})`);
-            }
-            catch (error)
-            {
-                reject(error);
-            }
+                    resolve(playbackId);
+                }
+            });
         });
     }
 
     /**
-     * Stop sound asynchronously via AudioCommandQueue
+     * Stop sound asynchronously via GenericCommand pipeline
      * @param {number} playbackID - Playback ID from playSoundAsync
      * @returns {Promise<void>}
      */
@@ -125,41 +85,22 @@ export class AudioAPI
     {
         return new Promise((resolve, reject) =>
         {
-            try
+            this.audioInterface.stopSoundAsync(playbackID, (resultId) =>
             {
-                // Call C++ async method (returns callbackId)
-                const callbackId = this.audioInterface.stopSoundAsync(playbackID);
-
-                if (!callbackId || callbackId === 0)
+                if (resultId < 0)
                 {
-                    reject(new Error('Failed to submit stopSoundAsync command'));
-                    return;
+                    reject(new Error(`Failed to stop sound: ${playbackID}`));
                 }
-
-                // Register callback for when C++ completes the operation
-                this.callbackRegistry.set(callbackId, (resultId, errorMessage) =>
+                else
                 {
-                    if (errorMessage && errorMessage.length > 0)
-                    {
-                        reject(new Error(errorMessage));
-                    }
-                    else
-                    {
-                        resolve();
-                    }
-                });
-
-                console.log(`AudioAPI: Registered callback ${callbackId} for stopSoundAsync(playbackId=${playbackID})`);
-            }
-            catch (error)
-            {
-                reject(error);
-            }
+                    resolve();
+                }
+            });
         });
     }
 
     /**
-     * Set volume asynchronously via AudioCommandQueue
+     * Set volume asynchronously via GenericCommand pipeline
      * @param {number} playbackID - Playback ID
      * @param {number} volume - Volume (0.0 to 1.0)
      * @returns {Promise<void>}
@@ -168,72 +109,21 @@ export class AudioAPI
     {
         return new Promise((resolve, reject) =>
         {
-            try
+            this.audioInterface.setVolumeAsync(playbackID, volume, (resultId) =>
             {
-                // Call C++ async method (returns callbackId)
-                const callbackId = this.audioInterface.setVolumeAsync(playbackID, volume);
-
-                if (!callbackId || callbackId === 0)
+                if (resultId < 0)
                 {
-                    reject(new Error('Failed to submit setVolumeAsync command'));
-                    return;
+                    reject(new Error(`Failed to set volume: ${playbackID}`));
                 }
-
-                // Register callback for when C++ completes the operation
-                this.callbackRegistry.set(callbackId, (resultId, errorMessage) =>
+                else
                 {
-                    if (errorMessage && errorMessage.length > 0)
-                    {
-                        reject(new Error(errorMessage));
-                    }
-                    else
-                    {
-                        resolve();
-                    }
-                });
-
-                console.log(`AudioAPI: Registered callback ${callbackId} for setVolumeAsync(playbackId=${playbackID}, volume=${volume})`);
-            }
-            catch (error)
-            {
-                reject(error);
-            }
+                    resolve();
+                }
+            });
         });
     }
 
-    /**
-     * Handle callback from C++ (Phase 2: AudioCommandQueue)
-     * Called by JSEngine.executeCallback() when callback dequeued from CallbackQueue
-     *
-     * @param {number} callbackId - Callback ID from C++
-     * @param {number} resultId - Result ID (soundID or playbackID, or 0 if failed)
-     * @param {string} errorMessage - Error message (empty if success)
-     */
-    handleCallback(callbackId, resultId, errorMessage)
-    {
-        // Look up callback function in registry
-        const callback = this.callbackRegistry.get(callbackId);
 
-        if (!callback)
-        {
-            // Callback already executed or not registered (hot-reload or duplicate enqueue)
-            console.log(`AudioAPI: No callback registered for callbackId ${callbackId} (may be hot-reload)`);
-            return;
-        }
-
-        // Remove callback from registry (one-time use)
-        this.callbackRegistry.delete(callbackId);
-
-        // Invoke JavaScript callback
-        try
-        {
-            callback(resultId, errorMessage);
-        }
-        catch (error)
-        {
-            console.log(`AudioAPI: Error executing callback ${callbackId}:`, error);
-        }
-    }
 
     /**
      * Check if C++ audio interface is available
@@ -251,4 +141,4 @@ export const audioAPI = new AudioAPI();
 // Export to globalThis for JSEngine callback routing
 globalThis.audioAPI = audioAPI;
 
-console.log('AudioAPI: Module loaded (Phase 2: AudioCommandQueue)');
+console.log('AudioAPI: Module loaded (GenericCommand pipeline)');

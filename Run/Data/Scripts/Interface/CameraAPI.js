@@ -1,20 +1,21 @@
 //----------------------------------------------------------------------------------------------------
 // CameraAPI.js
-// M4-T8: High-Level Camera API Wrapper for C++ camera interface (globalThis.camera)
+// High-Level Camera API — all operations routed through GenericCommand pipeline
 // Part of the interface wrapper layer for C++/JavaScript bridge
 //----------------------------------------------------------------------------------------------------
 
 /**
- * CameraAPI - High-level abstraction over C++ camera system (M4-T8)
+ * CameraAPI - High-level abstraction over C++ camera system
  *
- * This wrapper provides a JavaScript-friendly interface to the C++ high-level camera API,
- * enabling easy camera creation and management with support for multiple cameras and overlays.
+ * All operations are submitted via CommandQueue.submit() through the GenericCommand pipeline.
+ * C++ handlers execute on the main thread; results are delivered via CallbackQueue.
  *
  * Design Principles:
- * - Single Responsibility: Only wraps C++ camera interface
- * - Safe Fallbacks: Returns sensible defaults if C++ interface unavailable
+ * - Single Responsibility: Only wraps camera operations
+ * - Safe Fallbacks: Returns sensible defaults if CommandQueue unavailable
  * - Type Safety: Clear return types and parameter documentation
  * - Async Callbacks: Lifecycle methods use callbacks for async results
+ * - Fire-and-Forget: Per-frame updates submit commands with no callback
  * - Error Resilience: JavaScript errors should never crash C++ rendering
  *
  * Coordinate System: X-forward, Y-left, Z-up (right-handed)
@@ -26,20 +27,19 @@
  * - 'world': 3D perspective camera for world rendering
  * - 'screen': 2D orthographic camera for UI/HUD overlay
  *
- * M4-T8 CHANGE: C++ Interface Methods (exposed via globalThis.camera - SPLIT FROM globalThis.entity):
+ * GenericCommand Operations:
  * Lifecycle (async with callback):
- * - create(posX, posY, posZ, yaw, pitch, roll, type, callback): callbackId (FLATTENED API)
- * - setActive(cameraId, callback): callbackId
- * - updateType(cameraId, type, callback): callbackId
- * - destroy(cameraId, callback): callbackId
+ * - create_camera(posX, posY, posZ, yaw, pitch, roll, type) → callback(cameraId)
+ * - camera.set_active(cameraId) → callback(success)
+ * - camera.update_type(cameraId, type) → callback(success)
+ * - camera.destroy(cameraId) → callback(success)
  *
- * Updates (fire-and-forget, FLATTENED API):
- * - update(cameraId, posX, posY, posZ, yaw, pitch, roll): void [RECOMMENDED - atomic update]
- * - updatePosition(cameraId, posX, posY, posZ): void [DEPRECATED - use update]
- * - updateOrientation(cameraId, yaw, pitch, roll): void [DEPRECATED - use update]
- * - moveBy(cameraId, dx, dy, dz): void
- * - lookAt(cameraId, targetX, targetY, targetZ): void
- * - getHandle(cameraId): number (for debug rendering)
+ * Updates (fire-and-forget):
+ * - camera.update(cameraId, posX, posY, posZ, yaw, pitch, roll) [RECOMMENDED - atomic]
+ * - camera.update_position(cameraId, x, y, z)
+ * - camera.update_orientation(cameraId, yaw, pitch, roll)
+ * - camera.move_by(cameraId, dx, dy, dz)
+ * - camera.look_at(cameraId, targetX, targetY, targetZ)
  *
  * Usage Example:
  * ```javascript
@@ -74,88 +74,39 @@ export class CameraAPI
             return globalThis.CameraAPI;
         }
 
-        this.cppCamera = globalThis.camera; // M4-T8: C++ camera interface (separated from entity system)
-
-        // Phase 2.4: Callback registry for C++ → JavaScript callbacks
-        this.callbackRegistry = new Map();  // Maps callbackId → callback function
+        // Phase 9.2.1: Store cameraId from createCamera callback for per-frame operations
+        this.cameraId = null;
 
         // Make instance globally accessible for JSEngine callback routing
         globalThis.CameraAPI = this;
 
-        if (!this.cppCamera)
-        {
-            console.log('CameraAPI: C++ camera interface (globalThis.camera) not available');
-        }
-        else
-        {
-            console.log('CameraAPI: Successfully connected to C++ high-level camera interface (Phase 2.4)');
-        }
-    }
-
-    /**
-     * Handle callback from C++ (Phase 2.4)
-     * Called by JSEngine.executeCallback() when callback dequeued from CallbackQueue
-     *
-     * @param {number} callbackId - Callback ID from C++
-     * @param {number} resultId - Camera ID (or 0 if failed)
-     * @param {string} errorMessage - Error message (empty if success)
-     */
-    handleCallback(callbackId, resultId, errorMessage)
-    {
-        // Look up callback function in registry
-        const callback = this.callbackRegistry.get(callbackId);
-
-        if (!callback)
-        {
-            // Callback already executed or not registered (hot-reload or duplicate enqueue)
-            // This is expected behavior - silently skip
-            return;
-        }
-
-        // Remove callback from registry (one-time use)
-        this.callbackRegistry.delete(callbackId);
-
-        // Invoke JavaScript callback
-        try
-        {
-            if (errorMessage && errorMessage.length > 0)
-            {
-                console.log(`CameraAPI: Callback ${callbackId} failed: ${errorMessage}`);
-                callback(0);  // Signal failure with cameraId = 0
-            }
-            else
-            {
-                callback(resultId);  // Success - pass cameraId
-            }
-        }
-        catch (error)
-        {
-            console.log(`CameraAPI: Error executing callback ${callbackId}: ${error.message}`);
-        }
+        console.log('CameraAPI: Initialized (GenericCommand pipeline)');
     }
 
     //----------------------------------------------------------------------------------------------------
-    // Camera Lifecycle Methods (Async with Callbacks)
+    // Camera Lifecycle Methods (GenericCommand pipeline)
     //----------------------------------------------------------------------------------------------------
 
     /**
      * Create a camera with specified position, orientation, and type (async)
+     * Uses CommandQueue.submit("create_camera") via GenericCommand pipeline.
+     *
      * @param {Array<number>} position - [x, y, z] camera position (X-forward, Y-left, Z-up)
      * @param {Array<number>} orientation - [yaw, pitch, roll] rotation in degrees
      * @param {string} type - Camera type: 'world' (3D perspective) or 'screen' (2D orthographic)
      * @param {Function} callback - Callback function(cameraId) called when camera is created
-     * @returns {number} callbackId - ID for tracking the callback
+     * @returns {number} callbackId
      */
     createCamera(position, orientation, type, callback)
     {
-        if (!this.cppCamera || !this.cppCamera.create)
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
         {
-            console.log('CameraAPI: ERROR - create not available');
-            if (callback) callback(0); // 0 = creation failed
+            console.log('CameraAPI: ERROR - createCamera requires CommandQueue');
+            if (callback) callback(0);
             return 0;
         }
 
-        // Validate parameters
         if (!Array.isArray(position) || position.length !== 3)
         {
             console.log('CameraAPI: ERROR - position must be [x, y, z] array');
@@ -177,94 +128,76 @@ export class CameraAPI
             return 0;
         }
 
-        // FLATTENED API: V8 binding cannot handle nested objects
-        // Call C++ with individual primitive arguments instead
-        // M4-T8: Signature changed to camera.create(posX, posY, posZ, yaw, pitch, roll, type, callback)
-        try
-        {
-            console.log('CameraAPI: Calling flattened create API with 8 arguments (M4-T8)');
-            console.log(`  position: [${position[0]}, ${position[1]}, ${position[2]}]`);
-            console.log(`  orientation: [${orientation[0]}, ${orientation[1]}, ${orientation[2]}]`);
-            console.log(`  type: ${type}`);
-
-            const result = this.cppCamera.create(
-                position[0],        // arg 0: double (posX)
-                position[1],        // arg 1: double (posY)
-                position[2],        // arg 2: double (posZ)
-                orientation[0],     // arg 3: double (yaw)
-                orientation[1],     // arg 4: double (pitch)
-                orientation[2],     // arg 5: double (roll)
-                type,               // arg 6: string (type)
-                0                   // arg 7: 0 sentinel (Phase 2.4 - callback stored in JavaScript, V8 drops trailing null)
-            );
-
-            console.log(`CameraAPI: create returned callbackId: ${result}`);
-
-            // Phase 2.4: Store callback in registry instead of passing to C++
-            if (callback && result !== 0)
+        const callbackId = commandQueue.submit(
+            'create_camera',
+            { position, orientation, type },
+            'camera-api',
+            (result) =>
             {
-                this.callbackRegistry.set(result, callback);
-                console.log(`CameraAPI: Registered callback ${result} for camera creation`);
-            }
+                // Phase 9.2.1: Store cameraId for per-frame operations
+                const cameraId = result.success ? result.resultId : null;
+                this.cameraId = cameraId;
 
-            return result;
-        }
-        catch (error)
-        {
-            console.log('CameraAPI: ERROR - create exception:', error);
-            if (callback) callback(0);
-            return 0;
-        }
+                if (callback)
+                {
+                    // Adapt GenericCommand result → CameraAPI callback format
+                    // GenericCommand: { success, resultId, error }
+                    // CameraAPI callback: (cameraId) where 0 = failure
+                    callback(cameraId !== null ? cameraId : 0);
+                }
+            }
+        );
+
+        return callbackId;
     }
 
     /**
      * Set camera as active for rendering (async with callback)
+     * Uses CommandQueue.submit("set_active_camera") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to activate
      * @param {Function} callback - Callback function(result) called when operation completes
-     * @returns {number} callbackId - ID for tracking the callback
+     * @returns {number} callbackId
      */
     setActive(cameraId, callback)
     {
-        if (!this.cppCamera || !this.cppCamera.setActive)
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
         {
-            console.log('CameraAPI: ERROR - setActive not available');
+            console.log('CameraAPI: ERROR - setActive requires CommandQueue');
             if (callback) callback(0);
             return 0;
         }
 
-        try
-        {
-            const result = this.cppCamera.setActive(cameraId, 0); // Phase 2.4 - callback stored in JavaScript (0 sentinel, V8 drops trailing null)
-
-            // Phase 2.4: Store callback in registry
-            if (callback && result !== 0)
+        const callbackId = commandQueue.submit(
+            'set_active_camera',
+            { cameraId },
+            'camera-api',
+            (result) =>
             {
-                this.callbackRegistry.set(result, callback);
-                console.log(`CameraAPI: Registered callback ${result} for setActive`);
+                if (callback)
+                {
+                    callback(result.success ? result.resultId : 0);
+                }
             }
+        );
 
-            return result;
-        }
-        catch (error)
-        {
-            console.log('CameraAPI: ERROR - setActive exception:', error);
-            if (callback) callback(0);
-            return 0;
-        }
+        return callbackId;
     }
 
     /**
      * Update camera type (async with callback)
+     * Uses CommandQueue.submit("update_camera_type") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to update
      * @param {string} type - New camera type: 'world' or 'screen'
      * @param {Function} callback - Callback function(result) called when operation completes
-     * @returns {number} callbackId - ID for tracking the callback
+     * @returns {number} callbackId
      */
     updateType(cameraId, type, callback)
     {
-        if (!this.cppCamera || !this.cppCamera.updateType)
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
         {
-            console.log('CameraAPI: ERROR - updateType not available');
+            console.log('CameraAPI: ERROR - updateType requires CommandQueue');
             if (callback) callback(0);
             return 0;
         }
@@ -276,69 +209,68 @@ export class CameraAPI
             return 0;
         }
 
-        try
-        {
-            const result = this.cppCamera.updateType(cameraId, type, 0); // Phase 2.4 - callback stored in JavaScript (0 sentinel, V8 drops trailing null)
-
-            // Phase 2.4: Store callback in registry
-            if (callback && result !== 0)
+        const callbackId = commandQueue.submit(
+            'update_camera_type',
+            { cameraId, type },
+            'camera-api',
+            (result) =>
             {
-                this.callbackRegistry.set(result, callback);
-                console.log(`CameraAPI: Registered callback ${result} for updateType`);
+                if (callback)
+                {
+                    callback(result.success ? result.resultId : 0);
+                }
             }
+        );
 
-            return result;
-        }
-        catch (error)
-        {
-            console.log('CameraAPI: ERROR - updateType exception:', error);
-            if (callback) callback(0);
-            return 0;
-        }
+        return callbackId;
     }
 
     /**
      * Destroy camera (async with callback)
+     * Uses CommandQueue.submit("destroy_camera") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to destroy
      * @param {Function} callback - Callback function(result) called when operation completes
-     * @returns {number} callbackId - ID for tracking the callback
+     * @returns {number} callbackId
      */
     destroy(cameraId, callback)
     {
-        if (!this.cppCamera || !this.cppCamera.destroy)
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
         {
-            console.log('CameraAPI: ERROR - destroy not available');
+            console.log('CameraAPI: ERROR - destroy requires CommandQueue');
             if (callback) callback(0);
             return 0;
         }
 
-        try
-        {
-            const result = this.cppCamera.destroy(cameraId, 0); // Phase 2.4 - callback stored in JavaScript (0 sentinel, V8 drops trailing null)
-
-            // Phase 2.4: Store callback in registry
-            if (callback && result !== 0)
+        const callbackId = commandQueue.submit(
+            'destroy_camera',
+            { cameraId },
+            'camera-api',
+            (result) =>
             {
-                this.callbackRegistry.set(result, callback);
-                console.log(`CameraAPI: Registered callback ${result} for destroy`);
-            }
+                // Phase 9.2.1: Clear stored cameraId on destroy
+                if (result.success)
+                {
+                    this.cameraId = null;
+                }
 
-            return result;
-        }
-        catch (error)
-        {
-            console.log('CameraAPI: ERROR - destroy exception:', error);
-            if (callback) callback(0);
-            return 0;
-        }
+                if (callback)
+                {
+                    callback(result.success ? result.resultId : 0);
+                }
+            }
+        );
+
+        return callbackId;
     }
 
     //----------------------------------------------------------------------------------------------------
-    // Camera Update Methods (Fire-and-Forget)
+    // Camera Update Methods (GenericCommand pipeline, fire-and-forget)
     //----------------------------------------------------------------------------------------------------
 
     /**
      * RECOMMENDED: Update camera position AND orientation atomically (eliminates race conditions)
+     * Uses CommandQueue.submit("camera.update") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to update
      * @param {number} posX - X position (forward direction)
      * @param {number} posY - Y position (left direction)
@@ -349,35 +281,28 @@ export class CameraAPI
      */
     update(cameraId, posX, posY, posZ, yaw, pitch, roll)
     {
-        if (!this.cppCamera || !this.cppCamera.update)
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
         {
-            console.log('CameraAPI: ERROR - update not available');
+            console.log('CameraAPI: ERROR - update requires CommandQueue');
             return;
         }
 
-        try
-        {
-            // FLATTENED API: V8 binding cannot handle nested objects
-            // Call C++ with individual primitive arguments
-            // M4-T8: Signature changed to camera.update(cameraId, posX, posY, posZ, yaw, pitch, roll)
-            this.cppCamera.update(cameraId, posX, posY, posZ, yaw, pitch, roll);
-        }
-        catch (error)
-        {
-            console.log('CameraAPI: ERROR - update exception:', error);
-        }
+        commandQueue.submit('camera.update', { cameraId, posX, posY, posZ, yaw, pitch, roll }, 'camera-api');
     }
 
     /**
      * DEPRECATED: Update camera position only (use update() instead to avoid race conditions)
+     * Uses CommandQueue.submit("camera.update_position") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to update
      * @param {Array<number>} position - [x, y, z] new position (X-forward, Y-left, Z-up)
      */
     updatePosition(cameraId, position)
     {
-        if (!this.cppCamera || !this.cppCamera.updatePosition)
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
         {
-            console.log('CameraAPI: ERROR - updatePosition not available');
+            console.log('CameraAPI: ERROR - updatePosition requires CommandQueue');
             return;
         }
 
@@ -387,29 +312,21 @@ export class CameraAPI
             return;
         }
 
-        try
-        {
-            // FLATTENED API: V8 binding cannot handle nested objects
-            // Call C++ with individual primitive arguments instead
-            // M4-T8: Signature changed to camera.updatePosition(cameraId, posX, posY, posZ)
-            this.cppCamera.updatePosition(cameraId, position[0], position[1], position[2]);
-        }
-        catch (error)
-        {
-            console.log('CameraAPI: ERROR - updatePosition exception:', error);
-        }
+        commandQueue.submit('camera.update_position', { cameraId, x: position[0], y: position[1], z: position[2] }, 'camera-api');
     }
 
     /**
      * Update camera orientation (absolute rotation)
+     * Uses CommandQueue.submit("camera.update_orientation") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to update
      * @param {Array<number>} orientation - [yaw, pitch, roll] rotation in degrees
      */
     updateOrientation(cameraId, orientation)
     {
-        if (!this.cppCamera || !this.cppCamera.updateOrientation)
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
         {
-            console.log('CameraAPI: ERROR - updateOrientation not available');
+            console.log('CameraAPI: ERROR - updateOrientation requires CommandQueue');
             return;
         }
 
@@ -419,29 +336,21 @@ export class CameraAPI
             return;
         }
 
-        try
-        {
-            // FLATTENED API: V8 binding cannot handle nested objects
-            // Call C++ with individual primitive arguments instead
-            // M4-T8: Signature changed to camera.updateOrientation(cameraId, yaw, pitch, roll)
-            this.cppCamera.updateOrientation(cameraId, orientation[0], orientation[1], orientation[2]);
-        }
-        catch (error)
-        {
-            console.log('CameraAPI: ERROR - updateOrientation exception:', error);
-        }
+        commandQueue.submit('camera.update_orientation', { cameraId, yaw: orientation[0], pitch: orientation[1], roll: orientation[2] }, 'camera-api');
     }
 
     /**
      * Move camera by relative delta
+     * Uses CommandQueue.submit("camera.move_by") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to move
      * @param {Array<number>} delta - [dx, dy, dz] movement delta (X-forward, Y-left, Z-up)
      */
     moveBy(cameraId, delta)
     {
-        if (!this.cppCamera || !this.cppCamera.moveBy)
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
         {
-            console.log('CameraAPI: ERROR - moveBy not available');
+            console.log('CameraAPI: ERROR - moveBy requires CommandQueue');
             return;
         }
 
@@ -451,29 +360,21 @@ export class CameraAPI
             return;
         }
 
-        try
-        {
-            // FLATTENED API: V8 binding cannot handle nested objects
-            // Call C++ with individual primitive arguments instead
-            // M4-T8: Signature changed to camera.moveBy(cameraId, dx, dy, dz)
-            this.cppCamera.moveBy(cameraId, delta[0], delta[1], delta[2]);
-        }
-        catch (error)
-        {
-            console.log('CameraAPI: ERROR - moveBy exception:', error);
-        }
+        commandQueue.submit('camera.move_by', { cameraId, dx: delta[0], dy: delta[1], dz: delta[2] }, 'camera-api');
     }
 
     /**
      * Make camera look at a target position
+     * Uses CommandQueue.submit("camera.look_at") via GenericCommand pipeline.
      * @param {number} cameraId - Camera ID to update
      * @param {Array<number>} target - [x, y, z] target position to look at (X-forward, Y-left, Z-up)
      */
     lookAt(cameraId, target)
     {
-        if (!this.cppCamera || !this.cppCamera.lookAt)
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
         {
-            console.log('CameraAPI: ERROR - lookAt not available');
+            console.log('CameraAPI: ERROR - lookAt requires CommandQueue');
             return;
         }
 
@@ -483,42 +384,7 @@ export class CameraAPI
             return;
         }
 
-        try
-        {
-            // FLATTENED API: V8 binding cannot handle nested objects
-            // Call C++ with individual primitive arguments instead
-            // M4-T8: Signature changed to camera.lookAt(cameraId, targetX, targetY, targetZ)
-            this.cppCamera.lookAt(cameraId, target[0], target[1], target[2]);
-        }
-        catch (error)
-        {
-            console.log('CameraAPI: ERROR - lookAt exception:', error);
-        }
-    }
-
-    /**
-     * Get camera handle for debug rendering
-     * @param {number} cameraId - Camera ID
-     * @returns {number} Camera handle (pointer as number) for debug rendering, 0 if failed
-     */
-    getHandle(cameraId)
-    {
-        if (!this.cppCamera || !this.cppCamera.getHandle)
-        {
-            console.log('CameraAPI: ERROR - getHandle not available');
-            return 0;
-        }
-
-        try
-        {
-            // Direct C++ call - no flattening needed (single parameter)
-            return this.cppCamera.getHandle(cameraId);
-        }
-        catch (error)
-        {
-            console.log('CameraAPI: ERROR - getHandle exception:', error);
-            return 0;
-        }
+        commandQueue.submit('camera.look_at', { cameraId, targetX: target[0], targetY: target[1], targetZ: target[2] }, 'camera-api');
     }
 
     //----------------------------------------------------------------------------------------------------
@@ -526,37 +392,25 @@ export class CameraAPI
     //----------------------------------------------------------------------------------------------------
 
     /**
-     * Check if C++ camera interface is available
-     * @returns {boolean} True if C++ interface is connected
+     * Check if GenericCommand pipeline is available for camera operations
+     * @returns {boolean} True if CommandQueue is connected
      */
     isAvailable()
     {
-        return this.cppCamera !== undefined && this.cppCamera !== null;
+        return globalThis.CommandQueueAPI !== undefined && globalThis.CommandQueueAPI !== null;
     }
 
     /**
      * Get interface status for debugging
-     * @returns {Object} Status object with availability and method information
+     * @returns {Object} Status object with availability and pipeline information
      */
     getStatus()
     {
         return {
             available: this.isAvailable(),
-            cppInterfaceType: typeof this.cppCamera,
-            hasMethods: this.cppCamera ? {
-                // Lifecycle methods (M4-T8: method names updated)
-                create: typeof this.cppCamera.create === 'function',
-                setActive: typeof this.cppCamera.setActive === 'function',
-                updateType: typeof this.cppCamera.updateType === 'function',
-                destroy: typeof this.cppCamera.destroy === 'function',
-                // Update methods (RECOMMENDED: use update for atomic updates)
-                update: typeof this.cppCamera.update === 'function',
-                updatePosition: typeof this.cppCamera.updatePosition === 'function',
-                updateOrientation: typeof this.cppCamera.updateOrientation === 'function',
-                moveBy: typeof this.cppCamera.moveBy === 'function',
-                lookAt: typeof this.cppCamera.lookAt === 'function',
-                getHandle: typeof this.cppCamera.getHandle === 'function'
-            } : null
+            pipeline: 'GenericCommand',
+            commandQueueAvailable: globalThis.CommandQueueAPI !== undefined,
+            cameraId: this.cameraId
         };
     }
 }

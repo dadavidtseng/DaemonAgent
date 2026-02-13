@@ -362,38 +362,14 @@ export class JSEngine {
             const {callbackId, resultId, errorMessage, type} = callbackData;
 
             // Callback execution - routing to appropriate API handler
+            // Task 8.5: All async operations now route through GENERIC → CommandQueueAPI.
+            // Per-type routing (ENTITY_CREATED, CAMERA_CREATED, RESOURCE_LOADED) removed
+            // after migration to GenericCommand pipeline (Tasks 8.1–8.4).
 
             // Route callback to appropriate handler based on type
             switch (type) {
-                case 'ENTITY_CREATED':
-                    // Forward to EntityAPI callback handler
-                    if (globalThis.EntityAPI && globalThis.EntityAPI.handleCallback) {
-                        globalThis.EntityAPI.handleCallback(callbackId, resultId, errorMessage);
-                    } else {
-                        console.log(`JSEngine: EntityAPI callback handler not available for callback ${callbackId}`);
-                    }
-                    break;
-
-                case 'CAMERA_CREATED':
-                    // Forward to CameraAPI callback handler
-                    if (globalThis.CameraAPI && globalThis.CameraAPI.handleCallback) {
-                        globalThis.CameraAPI.handleCallback(callbackId, resultId, errorMessage);
-                    } else {
-                        console.log(`JSEngine: CameraAPI callback handler not available for callback ${callbackId}`);
-                    }
-                    break;
-
-                case 'RESOURCE_LOADED':
-                    // Phase 2: Forward audio async callbacks to AudioAPI
-                    if (globalThis.audioAPI && globalThis.audioAPI.handleCallback) {
-                        globalThis.audioAPI.handleCallback(callbackId, resultId, errorMessage);
-                    } else {
-                        console.log(`JSEngine: AudioAPI callback handler not available for callback ${callbackId}`);
-                    }
-                    break;
-
                 case 'GENERIC':
-                    // Forward to CommandQueue callback handler (GenericCommand system)
+                    // Unified callback path for all GenericCommand operations
                     if (globalThis.CommandQueueAPI && globalThis.CommandQueueAPI.handleCallback) {
                         globalThis.CommandQueueAPI.handleCallback(callbackId, resultId, errorMessage);
                     } else {
@@ -402,7 +378,10 @@ export class JSEngine {
                     break;
 
                 default:
-                    console.log(`JSEngine: Unhandled callback type '${type}' for callback ${callbackId}`);
+                    // Legacy callback types (ENTITY_CREATED, CAMERA_CREATED, RESOURCE_LOADED)
+                    // have been migrated to GENERIC via GenericCommand pipeline.
+                    // If you see this warning, old ScriptInterface async methods are still in use.
+                    console.log(`JSEngine: Deprecated callback type '${type}' for callback ${callbackId} — use GenericCommand methods instead`);
                     break;
             }
 

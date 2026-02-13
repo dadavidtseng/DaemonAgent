@@ -59,9 +59,7 @@ export class CameraComponent extends Component
         // Ensure CameraAPI is available
         if (!this.cameraAPI.isAvailable())
         {
-            console.log('CameraComponent: ERROR - CameraAPI not available!');
-            console.log('CameraComponent: globalThis.camera =', globalThis.camera);
-            console.log('CameraComponent: typeof globalThis.camera =', typeof globalThis.camera);
+            console.log('CameraComponent: ERROR - CameraAPI not available (CommandQueue not ready)');
             return;
         }
 

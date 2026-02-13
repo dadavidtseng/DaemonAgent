@@ -3,24 +3,23 @@
 
 import { Subsystem } from '../Core/Subsystem.js';
 import { EventTypes } from '../Event/EventTypes.js';
-import { AudioInterface } from '../Interface/AudioInterface.js';
-import { audioAPI } from '../Interface/AudioAPI.js';  // Phase 2: Async audio via AudioCommandQueue
+import { audioAPI } from '../Interface/AudioAPI.js';  // Async audio via GenericCommand pipeline
 
 /**
- * AudioSystem - JavaScript wrapper for AudioScriptInterface
- * Phase 4.5 ES6 Module using Subsystem pattern + Event System (DIP)
+ * AudioSystem - Audio subsystem using GenericCommand pipeline
+ * ES6 Module using Subsystem pattern + Event System (DIP)
  *
  * Features:
- * - Sound loading and caching
- * - Basic and advanced playback control
+ * - Async sound loading and caching via GenericCommand
+ * - Playback control via GenericCommand callbacks
  * - Volume and playback state management
- * - FMOD integration through C++ AudioScriptInterface
+ * - FMOD integration through C++ GenericCommand handlers
  * - Event-based state change audio (Dependency Inversion)
  *
  * Architecture:
  * - Subscribes to GameStateChanged events
  * - NO dependency on InputSystem (loose coupling)
- * - Plays audio in response to events
+ * - All audio operations go through CommandQueue → GenericCommand → C++ handlers
  */
 export class AudioSystem extends Subsystem {
     constructor() {
@@ -29,7 +28,6 @@ export class AudioSystem extends Subsystem {
         this.loadedSounds = new Map(); // Cache for loaded sound IDs
         this.activeSounds = new Map(); // Track active playback IDs
         this.isInitialized = false;
-        this.audioInterface = new AudioInterface();
 
         console.log('AudioSystem: Module loaded (Phase 4.5 ES6 + Event System)');
         this.initialize();
@@ -92,12 +90,12 @@ export class AudioSystem extends Subsystem {
      */
     initialize() {
         try {
-            // Check if C++ audio interface is available through wrapper
-            if (this.audioInterface.isAvailable()) {
-                console.log('AudioSystem: C++ audio interface available');
+            // Check if GenericCommand pipeline is available for audio operations
+            if (audioAPI.isAvailable()) {
+                console.log('AudioSystem: GenericCommand pipeline available for audio');
                 this.isInitialized = true;
             } else {
-                console.log('AudioSystem: C++ audio interface NOT available - using mock mode');
+                console.log('AudioSystem: GenericCommand pipeline NOT available - audio disabled');
                 this.isInitialized = false;
             }
         } catch (error) {
@@ -106,183 +104,7 @@ export class AudioSystem extends Subsystem {
         }
     }
 
-    /**
-     * Load or get a sound file, returns sound ID for playback
-     * @param {string} soundPath - Path to the sound file (e.g., "Data/Audio/TestSound.mp3")
-     * @param {string} dimension - Sound dimension: "Sound2D" or "Sound3D"
-     * @returns {number|null} Sound ID for playback, or null if failed
-     */
-    createOrGetSound(soundPath, dimension = "Sound2D") {
-        try {
-            if (!this.isInitialized) {
-                console.log('AudioSystem: Cannot load sound - system not initialized');
-                return null;
-            }
-
-            // Check cache first
-            const cacheKey = `${soundPath}_${dimension}`;
-            if (this.loadedSounds.has(cacheKey)) {
-                const soundID = this.loadedSounds.get(cacheKey);
-                console.log(`AudioSystem: Using cached sound ID ${soundID} for ${soundPath}`);
-                return soundID;
-            }
-
-            // Load sound through C++ interface
-            const soundID = this.audioInterface.createOrGetSound(soundPath, dimension);
-
-            // Check against MISSING_SOUND_ID, not > 0 (sound ID 0 is valid!)
-            if (soundID !== null && soundID !== undefined) {
-                this.loadedSounds.set(cacheKey, soundID);
-                console.log(`AudioSystem: Loaded sound ${soundPath} with ID ${soundID}`);
-                return soundID;
-            } else {
-                console.log(`AudioSystem: Failed to load sound ${soundPath}`);
-                return null;
-            }
-        } catch (error) {
-            console.log(`AudioSystem: Error loading sound ${soundPath}:`, error);
-            return null;
-        }
-    }
-
-    /**
-     * Start basic sound playback
-     * @param {number} soundID - Sound ID from createOrGetSound
-     * @returns {number|null} Playback ID for control, or null if failed
-     */
-    startSound(soundID) {
-        try {
-            // Sound ID 0 is valid - don't check for truthy value
-            if (soundID === null || soundID === undefined) {
-                console.log('AudioSystem: Cannot start sound - invalid sound ID');
-                return null;
-            }
-
-            const playbackID = this.audioInterface.startSound(soundID);
-
-            if (playbackID && playbackID > 0) {
-                this.activeSounds.set(playbackID, { soundID, startTime: Date.now() });
-                console.log(`AudioSystem: Started sound ${soundID} with playback ID ${playbackID}`);
-                return playbackID;
-            } else {
-                console.log(`AudioSystem: Failed to start sound ${soundID}`);
-                return null;
-            }
-        } catch (error) {
-            console.log(`AudioSystem: Error starting sound ${soundID}:`, error);
-            return null;
-        }
-    }
-
-    /**
-     * Start sound with advanced parameters
-     * @param {number} soundID - Sound ID from createOrGetSound
-     * @param {boolean} isLooped - Whether sound should loop
-     * @param {number} volume - Volume (0.0 to 1.0)
-     * @param {number} balance - Stereo balance (-1.0 to 1.0)
-     * @param {number} speed - Playback speed multiplier (0.1 to 10.0)
-     * @param {boolean} isPaused - Start paused
-     * @returns {number|null} Playback ID for control, or null if failed
-     */
-    startSoundAdvanced(soundID, isLooped = false, volume = 1.0, balance = 0.0, speed = 1.0, isPaused = false) {
-        try {
-            // Sound ID 0 is valid - don't check for truthy value
-            if (soundID === null || soundID === undefined) {
-                console.log('AudioSystem: Cannot start advanced sound - invalid sound ID');
-                return null;
-            }
-
-            const playbackID = this.audioInterface.startSoundAdvanced(soundID, isLooped, volume, balance, speed, isPaused);
-
-            if (playbackID && playbackID > 0) {
-                this.activeSounds.set(playbackID, {
-                    soundID,
-                    startTime: Date.now(),
-                    isLooped,
-                    volume,
-                    balance,
-                    speed,
-                    isPaused
-                });
-                console.log(`AudioSystem: Started advanced sound ${soundID} with playback ID ${playbackID}`);
-                return playbackID;
-            } else {
-                console.log(`AudioSystem: Failed to start advanced sound ${soundID}`);
-                return null;
-            }
-        } catch (error) {
-            console.log(`AudioSystem: Error starting advanced sound ${soundID}:`, error);
-            return null;
-        }
-    }
-
-    /**
-     * Stop a playing sound
-     * @param {number} playbackID - Playback ID from startSound
-     * @returns {boolean} True if stopped successfully
-     */
-    stopSound(playbackID) {
-        try {
-            if (!this.isInitialized || !playbackID) {
-                console.log('AudioSystem: Cannot stop sound - invalid state or playback ID');
-                return false;
-            }
-
-            this.audioInterface.stopSound(playbackID);
-            this.activeSounds.delete(playbackID);
-            console.log(`AudioSystem: Stopped sound with playback ID ${playbackID}`);
-            return true;
-        } catch (error) {
-            console.log(`AudioSystem: Error stopping sound ${playbackID}:`, error);
-            return false;
-        }
-    }
-
-    /**
-     * Set volume of a playing sound
-     * @param {number} playbackID - Playback ID from startSound
-     * @param {number} volume - Volume (0.0 to 1.0)
-     * @returns {boolean} True if set successfully
-     */
-    setSoundVolume(playbackID, volume) {
-        try {
-            if (!this.isInitialized || !playbackID) {
-                return false;
-            }
-
-            this.audioInterface.setSoundVolume(playbackID, volume);
-
-            // Update cached info
-            if (this.activeSounds.has(playbackID)) {
-                this.activeSounds.get(playbackID).volume = volume;
-            }
-
-            console.log(`AudioSystem: Set volume ${volume} for playback ID ${playbackID}`);
-            return true;
-        } catch (error) {
-            console.log(`AudioSystem: Error setting volume for ${playbackID}:`, error);
-            return false;
-        }
-    }
-
-    /**
-     * Convenience method: Load and play a sound in one call
-     * @param {string} soundPath - Path to the sound file
-     * @param {string} dimension - Sound dimension: "Sound2D" or "Sound3D"
-     * @param {number} volume - Volume (0.0 to 1.0)
-     * @returns {number|null} Playback ID or null if failed
-     */
-    playSound(soundPath, dimension = "Sound2D", volume = 1.0) {
-        const soundID = this.createOrGetSound(soundPath, dimension);
-        if (soundID !== null && soundID !== undefined) {
-            const playbackID = this.startSound(soundID);
-            if (playbackID && volume !== 1.0) {
-                this.setSoundVolume(playbackID, volume);
-            }
-            return playbackID;
-        }
-        return null;
-    }
+    // NOTE: All sync methods removed — use async methods (loadSoundAsync, playSoundAsync, etc.)
 
     /**
      * Get system status and statistics
@@ -293,7 +115,8 @@ export class AudioSystem extends Subsystem {
             isInitialized: this.isInitialized,
             loadedSoundsCount: this.loadedSounds.size,
             activeSoundsCount: this.activeSounds.size,
-            cppInterfaceAvailable: this.audioInterface.isAvailable()
+            pipeline: 'GenericCommand',
+            commandQueueAvailable: audioAPI.isAvailable()
         };
     }
 
@@ -326,9 +149,9 @@ export class AudioSystem extends Subsystem {
      */
     cleanup() {
         try {
-            // Stop all active sounds
+            // Stop all active sounds via async pipeline
             for (const [playbackID] of this.activeSounds) {
-                this.stopSound(playbackID);
+                this.stopSoundAsync(playbackID).catch(() => {});
             }
 
             // Clear caches
@@ -399,7 +222,7 @@ export class AudioSystem extends Subsystem {
             // Play sound through AudioAPI (handles callback registry)
             const playbackID = await audioAPI.playSoundAsync(soundID, volume, looped);
 
-            if (playbackID && playbackID > 0) {
+            if (playbackID !== null && playbackID !== undefined && playbackID >= 0) {
                 this.activeSounds.set(playbackID, { soundID, startTime: Date.now(), volume, looped });
                 console.log(`AudioSystem: Started sound ${soundID} async with playback ID ${playbackID}`);
                 return playbackID;

@@ -18,7 +18,7 @@
  *
  * C++ Interface Methods (exposed via globalThis.debugRenderInterface):
  * Control: setVisible(), setHidden(), clear(), clearAll(), beginFrame(), endFrame()
- * Output: renderWorld(camera), renderScreen(camera)
+ * Output: renderWorld(cameraId), renderScreen(cameraId)
  * World Geometry: addWorldPoint, addWorldLine, addWorldCylinder, addWorldWireSphere,
  *                 addWorldArrow, addWorldText, addBillboardText, addWorldBasis
  * Screen Geometry: addScreenText, addMessage
@@ -118,30 +118,30 @@ export class DebugRenderInterface
 
     /**
      * Render world-space debug objects with specified camera
-     * @param {number} cameraHandle - Camera handle (pointer as number)
+     * @param {number} cameraId - Camera ID (C++ resolves to Camera* internally)
      */
-    renderWorld(cameraHandle)
+    renderWorld(cameraId)
     {
         if (!this.cppDebugRender || !this.cppDebugRender.renderWorld)
         {
             console.log('DebugRenderInterface: renderWorld not available');
             return;
         }
-        return this.cppDebugRender.renderWorld(cameraHandle);
+        return this.cppDebugRender.renderWorld(cameraId);
     }
 
     /**
      * Render screen-space debug objects with specified camera
-     * @param {number} cameraHandle - Camera handle (pointer as number)
+     * @param {number} cameraId - Camera ID (C++ resolves to Camera* internally)
      */
-    renderScreen(cameraHandle)
+    renderScreen(cameraId)
     {
         if (!this.cppDebugRender || !this.cppDebugRender.renderScreen)
         {
             console.log('DebugRenderInterface: renderScreen not available');
             return;
         }
-        return this.cppDebugRender.renderScreen(cameraHandle);
+        return this.cppDebugRender.renderScreen(cameraId);
     }
 
     /**

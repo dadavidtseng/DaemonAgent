@@ -8,7 +8,7 @@
     },
 
     "queueCapacity": 500,
-    "rateLimitPerAgent": 100,
+    "rateLimitPerAgent": 10000,
     "enableAuditLogging": false,
     "enableValidation": true
 }
