@@ -674,19 +674,8 @@ export class JSGame
                 }
 
                 // Render screen text using screen camera (works in both modes)
-                // Check if screen camera is ready (async creation may not be complete yet)
-                // console.log(`[gameRender] Frame ${renderFrameCount}: Checking screenCamera availability - screenCamera = ${this.screenCamera}`);
-
-                if (this.screenCamera !== null)
-                {
-                    // console.log(`[gameRender] Frame ${renderFrameCount}: CALLING renderScreen(${this.screenCamera})`);
-                    this.debugRenderSystem.renderScreen(this.screenCamera);
-                    // console.log(`[gameRender] Frame ${renderFrameCount}: renderScreen() completed`);
-                }
-                else
-                {
-                    // console.log(`[gameRender] Frame ${renderFrameCount}: SKIPPING renderScreen - screenCamera is NULL`);
-                }
+                // NOTE: C++ now owns the render cycle (beginFrame/renderWorld/renderScreen/endFrame)
+                //       JS only submits geometry/control commands via GenericCommand pipeline
 
                 // Only render JavaScript entities when in GAME mode
                 // (CppBridgeSystem handles ATTRACT mode rendering)
@@ -725,8 +714,8 @@ export class JSGame
                     return;
                 }
 
-                // Render debug visualization (use same camera as main rendering)
-                this.debugRenderSystem.renderWorld(camera);
+                // NOTE: Debug render world visualization is now handled by C++ App::RenderDebugPrimitives()
+                // JS only submits geometry commands; C++ handles beginFrame/renderWorld/renderScreen/endFrame
 
                 // Phase 2: No need for begin/end camera calls - C++ handles rendering automatically
                 // renderer.beginCamera(camera);  // REMOVED - replaced by EntityAPI system
