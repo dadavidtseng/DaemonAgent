@@ -42,7 +42,12 @@
       "mcp__plugin_serena_serena__create_text_file",
       "mcp__spec-workflow-DaemonAgent__log-implementation",
       "mcp__plugin_serena_serena__replace_symbol_body",
-      "mcp__plugin_serena_serena__replace_content"
+      "mcp__plugin_serena_serena__replace_content",
+      "mcp__plugin_serena_serena__check_onboarding_performed",
+      "mcp__plugin_serena_serena__list_memories",
+      "mcp__plugin_serena_serena__think_about_task_adherence",
+      "mcp__plugin_serena_serena__think_about_whether_you_are_done",
+      "mcp__plugin_serena_serena__get_current_config"
     ],
     "deny": [],
     "ask": []
