@@ -118,10 +118,10 @@ export class CameraComponent extends Component
 
     /**
      * Update camera transform every frame
-     * Uses fire-and-forget updates for position and orientation
+     * Uses async updates for position and orientation via GenericCommand pipeline
      * @param {number} deltaTime - Time since last frame in milliseconds
      */
-    update(deltaTime)
+    async update(deltaTime)
     {
         if (!this.gameObject || !this.cameraReady || this.cameraId === null)
         {
@@ -129,14 +129,14 @@ export class CameraComponent extends Component
         }
 
         // Update camera position and orientation from GameObject transform
-        this.updateCameraTransform();
+        await this.updateCameraTransform();
     }
 
     /**
      * Update C++ camera position and orientation using Phase 2b API
-     * Phase 2b: Uses fire-and-forget updatePosition() and updateOrientation()
+     * Phase 2b: Uses async update() with callback for error detection
      */
-    updateCameraTransform()
+    async updateCameraTransform()
     {
         if (!this.cameraId || !this.gameObject)
         {
@@ -159,7 +159,7 @@ export class CameraComponent extends Component
         // Send BOTH position and orientation in a single command
         // Old approach: Two separate commands caused race condition where second command
         // would read stale position from back buffer before first command was processed
-        this.cameraAPI.update(
+        await this.cameraAPI.update(
             this.cameraId,
             this.gameObject.position.x,
             this.gameObject.position.y,

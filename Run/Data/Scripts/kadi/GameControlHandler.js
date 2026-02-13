@@ -250,7 +250,7 @@ export class GameControlHandler
      * Tool: remove_cube
      * Remove cube from game (immediate destruction - KISS principle)
      */
-    handleRemoveCube(requestId, args)
+    async handleRemoveCube(requestId, args)
     {
         // Validate entity ID
         if (!args.entityId || typeof args.entityId !== 'string')
@@ -284,7 +284,7 @@ export class GameControlHandler
         // Call destroy() to trigger MeshComponent.destroy() → entityAPI.destroyEntity()
         try {
             console.log(`GameControlHandler: [DEBUG] Calling cube.destroy() for ${args.entityId}...`);
-            cube.destroy();
+            await cube.destroy();
             console.log(`GameControlHandler: [DEBUG] cube.destroy() completed for ${args.entityId}`);
         } catch (error) {
             console.log(`GameControlHandler: [ERROR] cube.destroy() failed for ${args.entityId}:`, error);

@@ -161,7 +161,7 @@ export class MeshComponent extends Component
      * Called every frame by GameObject update system
      * @param {number} deltaTime - Time since last update
      */
-    update(deltaTime)
+    async update(deltaTime)
     {
         // Hot-reload detection: Recreate EntityAPI if version changed
         if (EntityAPI.version > this.entityAPIVersion)
@@ -182,7 +182,7 @@ export class MeshComponent extends Component
             this.gameObject.position.y,
             this.gameObject.position.z
         ];
-        this.entityAPI.updatePosition(this.entityId, position);
+        await this.entityAPI.updatePosition(this.entityId, position);
 
         // Sync orientation to C++ entity
         const orientation = [
@@ -190,11 +190,11 @@ export class MeshComponent extends Component
             this.gameObject.orientation.pitch,
             this.gameObject.orientation.roll
         ];
-        this.entityAPI.updateOrientation(this.entityId, orientation);
+        await this.entityAPI.updateOrientation(this.entityId, orientation);
 
         // Sync color if changed (optional optimization: only sync on change)
         const color = [this.color.r, this.color.g, this.color.b, this.color.a];
-        this.entityAPI.updateColor(this.entityId, color);
+        await this.entityAPI.updateColor(this.entityId, color);
     }
 
     /**
@@ -214,7 +214,7 @@ export class MeshComponent extends Component
      * Color will be synced to C++ on next update()
      * @param {Object} color - Color {r, g, b, a}
      */
-    setColor(color)
+    async setColor(color)
     {
         this.color = color;
 
@@ -222,7 +222,7 @@ export class MeshComponent extends Component
         if (this.entityId && this.entityAPI.isAvailable())
         {
             const colorArray = [color.r, color.g, color.b, color.a];
-            this.entityAPI.updateColor(this.entityId, colorArray);
+            await this.entityAPI.updateColor(this.entityId, colorArray);
         }
     }
 
@@ -242,11 +242,11 @@ export class MeshComponent extends Component
      * @param {number} dy - Delta Y (left)
      * @param {number} dz - Delta Z (up)
      */
-    moveBy(dx, dy, dz)
+    async moveBy(dx, dy, dz)
     {
         if (this.entityId && this.entityAPI.isAvailable())
         {
-            this.entityAPI.moveBy(this.entityId, [dx, dy, dz]);
+            await this.entityAPI.moveBy(this.entityId, [dx, dy, dz]);
 
             // Update GameObject position for consistency
             this.gameObject.position.x += dx;
@@ -258,11 +258,11 @@ export class MeshComponent extends Component
     /**
      * Cleanup - Destroy C++ entity when component is destroyed
      */
-    destroy()
+    async destroy()
     {
         if (this.entityId && this.entityAPI.isAvailable())
         {
-            this.entityAPI.destroyEntity(this.entityId);
+            await this.entityAPI.destroyEntity(this.entityId);
             console.log(`MeshComponent: Destroyed entity ${this.entityId} (Phase 2)`);
             this.entityId = null;
         }

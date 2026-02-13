@@ -91,12 +91,12 @@ export class GameObject
      * @param {string} componentType - Type identifier of the component
      * @returns {boolean} True if component was removed
      */
-    removeComponent(componentType)
+    async removeComponent(componentType)
     {
         const component = this.components.get(componentType);
         if (component)
         {
-            component.destroy();
+            await component.destroy();
             this.components.delete(componentType);
             console.log(`GameObject: ${this.name} removed component ${componentType}`);
             return true;
@@ -148,14 +148,14 @@ export class GameObject
     /**
      * Destroy this GameObject and all its components
      */
-    destroy()
+    async destroy()
     {
         console.log(`GameObject: ${this.name} destroying...`);
 
         // Destroy all components
         for (const [type, component] of this.components)
         {
-            component.destroy();
+            await component.destroy();
         }
 
         this.components.clear();

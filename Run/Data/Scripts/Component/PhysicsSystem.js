@@ -522,7 +522,7 @@ export class PhysicsSystem
      * Update physics simulation (called every frame)
      * @param {number} deltaTime - Frame time in milliseconds
      */
-    update(deltaTime)
+    async update(deltaTime)
     {
         // Convert deltaTime from milliseconds to seconds
         const dt = deltaTime / 1000.0;
@@ -685,7 +685,7 @@ export class PhysicsSystem
             }
 
             // Update entity position via EntityAPI
-            this.entityAPI.updatePosition(data.entityId, data.position);
+            await this.entityAPI.updatePosition(data.entityId, data.position);
 
             // Sync GameObject position if reference is available
             if (data.gameObject)
