@@ -359,7 +359,7 @@ export class JSEngine {
      */
     executeCallback(callbackData) {
         try {
-            const {callbackId, resultId, errorMessage, type} = callbackData;
+            const {callbackId, resultId, errorMessage, resultJson, type} = callbackData;
 
             // Callback execution - routing to appropriate API handler
             // Task 8.5: All async operations now route through GENERIC → CommandQueueAPI.
@@ -371,7 +371,7 @@ export class JSEngine {
                 case 'GENERIC':
                     // Unified callback path for all GenericCommand operations
                     if (globalThis.CommandQueueAPI && globalThis.CommandQueueAPI.handleCallback) {
-                        globalThis.CommandQueueAPI.handleCallback(callbackId, resultId, errorMessage);
+                        globalThis.CommandQueueAPI.handleCallback(callbackId, resultId, errorMessage, resultJson);
                     } else {
                         console.log(`JSEngine: CommandQueueAPI callback handler not available for callback ${callbackId}`);
                     }
@@ -413,6 +413,11 @@ export class JSEngine {
         // AUTOMATIC HOT-RELOAD: Check for module reloads every frame
         if (this.hotReloadEnabled) {
             this.checkForHotReloads();
+        }
+
+        // Advance the JS game clock with the system delta from C++
+        if (jsGameInstance && jsGameInstance.gameClock) {
+            jsGameInstance.gameClock.advance(systemDeltaSeconds);
         }
 
         // Execute all registered update systems

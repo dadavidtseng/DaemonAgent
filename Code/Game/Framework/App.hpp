@@ -5,7 +5,6 @@
 //----------------------------------------------------------------------------------------------------
 #include "Engine/Core/EventSystem.hpp"
 #include "Engine/Entity/EntityStateBuffer.hpp"
-#include "Engine/Renderer/DebugRenderStateBuffer.hpp"
 #include "Engine/Audio/AudioStateBuffer.hpp"
 //----------------------------------------------------------------------------------------------------
 #include <any>
@@ -16,8 +15,6 @@
 class CameraStateBuffer;
 class CallbackQueue;
 class CallbackQueueScriptInterface;
-class ClockScriptInterface;
-class GameScriptInterface;
 class GenericCommandExecutor;
 class GenericCommandQueue;
 class GenericCommandScriptInterface;
@@ -61,15 +58,11 @@ private:
 
     // Rendering
     void RenderEntities() const;
-    // void RenderDebugPrimitives() const;
-    // void UpdateDebugPrimitiveExpiration(float deltaSeconds);
 
     //------------------------------------------------------------------------------------------------
     // Script Interfaces
     //------------------------------------------------------------------------------------------------
     std::shared_ptr<InputScriptInterface>             m_inputScriptInterface;
-    std::shared_ptr<ClockScriptInterface>             m_clockScriptInterface;
-    std::shared_ptr<GameScriptInterface>              m_gameScriptInterface;
     std::shared_ptr<KADIScriptInterface>              m_kadiScriptInterface;
     std::shared_ptr<CallbackQueueScriptInterface>     m_callbackQueueScriptInterface;
     std::shared_ptr<GenericCommandScriptInterface>    m_genericCommandScriptInterface;
@@ -87,7 +80,6 @@ private:
     //------------------------------------------------------------------------------------------------
     EntityStateBuffer*      m_entityStateBuffer      = nullptr;
     CameraStateBuffer*      m_cameraStateBuffer      = nullptr;
-    // DebugRenderStateBuffer* m_debugRenderStateBuffer = nullptr;
     AudioStateBuffer*       m_audioStateBuffer       = nullptr;
 
     //------------------------------------------------------------------------------------------------

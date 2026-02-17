@@ -194,6 +194,33 @@ export const DevelopmentTools = [
             },
             required: ["filePath", "operation", "params"]
         }
+    },
+    {
+        name: "capture_screenshot",
+        description: "Capture a screenshot of the current game window and save it as PNG or JPEG",
+        inputSchema: {
+            type: "object",
+            properties: {
+                format: {
+                    type: "string",
+                    enum: ["png", "jpeg"],
+                    default: "png",
+                    description: "Image format (default: png)"
+                },
+                quality: {
+                    type: "integer",
+                    minimum: 1,
+                    maximum: 100,
+                    default: 90,
+                    description: "JPEG quality 1-100 (only used for jpeg format, default: 90)"
+                },
+                filename: {
+                    type: "string",
+                    description: "Optional filename (without extension). If omitted, auto-generates timestamp-based name"
+                }
+            },
+            required: []
+        }
     }
 ];
 
@@ -259,4 +286,4 @@ export const DevelopmentTools = [
 // Export for hot-reload
 globalThis.DevelopmentTools = DevelopmentTools;
 
-console.log('DevelopmentTools: Module loaded (9 tools defined)');
+console.log('DevelopmentTools: Module loaded (10 tools defined)');

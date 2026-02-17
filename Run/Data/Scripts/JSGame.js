@@ -111,16 +111,9 @@ export class JSGame
         // Press SPACE to transition to GAME mode
         this.gameState = GameState.ATTRACT;
 
-        // Create game clock (uses ClockInterface wrapper for C++ clock)
-        // Matches C++ Game::Game() which creates: m_gameClock = new Clock(Clock::GetSystemClock())
-        try
-        {
-            this.gameClock = new Clock();
-            console.log('JSGame: Game clock created successfully');
-        } catch (error)
-        {
-            console.log('JSGame: ERROR - Clock creation failed:', error);
-        }
+        // Create game clock (pure JS — transforms C++ system delta with local timeScale/pause)
+        this.gameClock = new Clock();
+        console.log('JSGame: Game clock created successfully');
 
         // === Debug Visualization Setup (migrated from C++ Game constructor) ===
         // Now with comprehensive error handling to prevent constructor failure

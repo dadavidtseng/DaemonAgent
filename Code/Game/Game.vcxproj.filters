@@ -29,9 +29,6 @@
     <ClCompile Include="Framework\GameCommon.cpp">
       <Filter>Framework</Filter>
     </ClCompile>
-    <ClCompile Include="Framework\GameScriptInterface.cpp">
-      <Filter>Framework</Filter>
-    </ClCompile>
     <ClCompile Include="Framework\JSGameLogicJob.cpp">
       <Filter>Framework</Filter>
     </ClCompile>
@@ -56,9 +53,6 @@
       <Filter>Framework</Filter>
     </ClInclude>
     <ClInclude Include="Framework\GameCommon.hpp">
-      <Filter>Framework</Filter>
-    </ClInclude>
-    <ClInclude Include="Framework\GameScriptInterface.hpp">
       <Filter>Framework</Filter>
     </ClInclude>
     <ClInclude Include="Framework\JSGameLogicJob.hpp">

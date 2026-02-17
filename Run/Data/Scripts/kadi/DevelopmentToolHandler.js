@@ -1,38 +1,57 @@
 //----------------------------------------------------------------------------------------------------
 // DevelopmentToolHandler.js
 // KADI development tool invocation handlers (Phase 6a)
+// Migrated to async GenericCommand pipeline (no direct C++ bridge)
 //----------------------------------------------------------------------------------------------------
+
+import {CommandQueue} from '../Interface/CommandQueue.js';
 
 /**
  * DevelopmentToolHandler - Handles KADI tool invocations for development tools
  *
  * Architecture:
- * - Bridges JavaScript to C++ GameScriptInterface methods
- * - Handles file I/O operations (create/read/delete scripts)
- * - Handles input injection (press/hold keycodes)
- * - Provides error handling and validation
+ * - Uses CommandQueue (GenericCommand pipeline) for all C++ operations
+ * - All tool handlers are async (Promise-based callbacks from C++)
+ * - No direct C++ bridge dependency (decoupled via command types)
  *
- * Responsibilities:
- * - create_script: Create new .js file via C++ bridge
- * - read_script: Read existing .js file via C++ bridge
- * - delete_script: Delete .js file via C++ bridge
- * - press_keycode: Inject single key press event via C++ bridge
- * - hold_keycode: Inject multi-key sequence events with precise timing via C++ bridge
- * - get_keyhold_status: Query status of active key hold jobs
- * - cancel_keyhold: Cancel active key hold jobs
- * - list_active_keyholds: List all active key hold jobs
- * - modify_script: Fine-grained script modifications (add/remove lines, functions, replace text)
+ * Command Types Used:
+ * - game.create_script_file  → Create .js file
+ * - game.read_script_file    → Read .js file
+ * - game.delete_script_file  → Delete .js file
+ * - game.inject_key_press    → Single key press
+ * - game.inject_key_hold     → Multi-key sequence
+ * - game.get_key_hold_status → Query key hold job
+ * - game.cancel_key_hold     → Cancel key hold job
+ * - game.list_active_key_holds → List active jobs
+ * - game.capture_screenshot    → Capture game window screenshot
  */
 export class DevelopmentToolHandler
 {
     /**
-     * @param {object} game - Reference to Game interface (for C++ bridge access)
+     * @param {CommandQueue} commandQueue - CommandQueue instance for GenericCommand pipeline
      */
-    constructor(game)
+    constructor(commandQueue)
     {
-        this.game = game;
+        this.commandQueue = commandQueue;
 
-        console.log('DevelopmentToolHandler: Initialized');
+        console.log('DevelopmentToolHandler: Initialized (async GenericCommand mode)');
+    }
+
+    /**
+     * Submit a command and return a Promise for the result
+     * @param {string} type - Command type (e.g. 'game.read_script_file')
+     * @param {Object} payload - Command payload
+     * @returns {Promise<Object>} Resolves with the callback result
+     */
+    _submitCommand(type, payload)
+    {
+        return new Promise((resolve) =>
+        {
+            this.commandQueue.submit(type, payload, 'DevelopmentToolHandler', (result) =>
+            {
+                resolve(result);
+            });
+        });
     }
 
     /**
@@ -43,279 +62,224 @@ export class DevelopmentToolHandler
     {
         console.log(`DevelopmentToolHandler: Tool invoked - ${toolName}`, args);
 
-        // Parse args if it's a JSON string (C++ interface might pass JSON string)
+        // Parse args if it's a JSON string
         let parsedArgs = args;
         if (typeof args === 'string')
         {
-            console.log('DevelopmentToolHandler: Parsing args from JSON string');
             try
             {
                 parsedArgs = JSON.parse(args);
             }
             catch (error)
             {
-                console.log('DevelopmentToolHandler: ERROR - Failed to parse args JSON:', error);
                 this.sendError(requestId, `Invalid arguments: ${error.message}`);
                 return;
             }
         }
 
-        try
-        {
-            switch (toolName)
-            {
-                case 'create_script':
-                    this.handleCreateScript(requestId, parsedArgs);
-                    break;
-
-                case 'read_script':
-                    this.handleReadScript(requestId, parsedArgs);
-                    break;
-
-                case 'delete_script':
-                    this.handleDeleteScript(requestId, parsedArgs);
-                    break;
-
-                case 'input_press_keycode':
-                    this.handlePressKeycode(requestId, parsedArgs);
-                    break;
-
-                case 'input_hold_keycode':
-                    this.handleHoldKeycode(requestId, parsedArgs);
-                    break;
-
-                case 'get_keyhold_status':
-                    this.handleGetKeyHoldStatus(requestId, parsedArgs);
-                    break;
-
-                case 'cancel_keyhold':
-                    this.handleCancelKeyHold(requestId, parsedArgs);
-                    break;
-
-                case 'list_active_keyholds':
-                    this.handleListActiveKeyHolds(requestId, parsedArgs);
-                    break;
-
-                case 'modify_script':
-                    this.handleModifyScript(requestId, parsedArgs);
-                    break;
-
-                default:
-                    this.sendError(requestId, `Unknown tool: ${toolName}`);
-            }
-        }
-        catch (error)
+        // Route to async handler — catch rejections
+        this._routeToolAsync(requestId, toolName, parsedArgs).catch((error) =>
         {
             console.log(`DevelopmentToolHandler: ERROR - Error handling ${toolName}:`, error);
             this.sendError(requestId, `Exception: ${error.message}`);
-        }
+        });
     }
 
     /**
-     * Tool: create_script
-     * Create a new JavaScript file in Scripts directory
+     * Async router for tool invocations
      */
-    handleCreateScript(requestId, args)
+    async _routeToolAsync(requestId, toolName, parsedArgs)
     {
-        console.log(`DevelopmentToolHandler: handleCreateScript - args:`, args);
+        switch (toolName)
+        {
+            case 'create_script':
+                await this.handleCreateScript(requestId, parsedArgs);
+                break;
+            case 'read_script':
+                await this.handleReadScript(requestId, parsedArgs);
+                break;
+            case 'delete_script':
+                await this.handleDeleteScript(requestId, parsedArgs);
+                break;
+            case 'input_press_keycode':
+                await this.handlePressKeycode(requestId, parsedArgs);
+                break;
+            case 'input_hold_keycode':
+                await this.handleHoldKeycode(requestId, parsedArgs);
+                break;
+            case 'get_keyhold_status':
+                await this.handleGetKeyHoldStatus(requestId, parsedArgs);
+                break;
+            case 'cancel_keyhold':
+                await this.handleCancelKeyHold(requestId, parsedArgs);
+                break;
+            case 'list_active_keyholds':
+                await this.handleListActiveKeyHolds(requestId, parsedArgs);
+                break;
+            case 'modify_script':
+                await this.handleModifyScript(requestId, parsedArgs);
+                break;
+            case 'capture_screenshot':
+                await this.handleCaptureScreenshot(requestId, parsedArgs);
+                break;
+            default:
+                this.sendError(requestId, `Unknown tool: ${toolName}`);
+        }
+    }
 
-        // Validate required parameters
+    // ==========================================
+    // Tool Handlers (all async)
+    // ==========================================
+
+    /**
+     * Tool: create_script
+     */
+    async handleCreateScript(requestId, args)
+    {
         if (!args.filePath || typeof args.filePath !== 'string')
         {
             this.sendError(requestId, 'Invalid filePath: must be string');
             return;
         }
-
         if (!args.content || typeof args.content !== 'string')
         {
             this.sendError(requestId, 'Invalid content: must be string');
             return;
         }
 
-        // Default overwrite to false if not specified
         const overwrite = args.overwrite !== undefined ? args.overwrite : false;
 
-        try
-        {
-            // Call C++ bridge method (returns JavaScript object, not JSON string)
-            // Note: V8 bridge automatically parses JSON strings starting with { or [
-            const resultObj = this.game.createScriptFile(args.filePath, args.content, overwrite);
+        const resultObj = await this._submitCommand('game.create_script_file', {
+            filePath: args.filePath,
+            content: args.content,
+            overwrite: overwrite
+        });
 
-            if (resultObj.success)
-            {
-                console.log(`DevelopmentToolHandler: Script created successfully - ${args.filePath}`);
-                kadi.sendToolResult(requestId, JSON.stringify({
-                    success: true,
-                    filePath: resultObj.filePath,
-                    bytesWritten: resultObj.bytesWritten
-                }));
-            }
-            else
-            {
-                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
-            }
-        }
-        catch (error)
+        if (resultObj.success)
         {
-            console.log(`DevelopmentToolHandler: ERROR - create_script failed:`, error);
-            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+            console.log(`DevelopmentToolHandler: Script created successfully - ${args.filePath}`);
+            kadi.sendToolResult(requestId, JSON.stringify({
+                success: true,
+                filePath: resultObj.filePath,
+                bytesWritten: resultObj.bytesWritten
+            }));
+        }
+        else
+        {
+            this.sendError(requestId, resultObj.error || 'Unknown error');
         }
     }
 
     /**
      * Tool: read_script
-     * Read an existing JavaScript file from Scripts directory
      */
-    handleReadScript(requestId, args)
+    async handleReadScript(requestId, args)
     {
-        console.log(`DevelopmentToolHandler: handleReadScript - args:`, args);
-
-        // Validate required parameters
         if (!args.filePath || typeof args.filePath !== 'string')
         {
             this.sendError(requestId, 'Invalid filePath: must be string');
             return;
         }
 
-        try
-        {
-            // Call C++ bridge method (returns JavaScript object, not JSON string)
-            // Note: V8 bridge automatically parses JSON strings starting with { or [
-            const resultObj = this.game.readScriptFile(args.filePath);
+        const resultObj = await this._submitCommand('game.read_script_file', {
+            filePath: args.filePath
+        });
 
-            if (resultObj.success)
-            {
-                console.log(`DevelopmentToolHandler: Script read successfully - ${args.filePath} (${resultObj.lineCount} lines, ${resultObj.byteSize} bytes)`);
-                kadi.sendToolResult(requestId, JSON.stringify({
-                    success: true,
-                    filePath: resultObj.filePath,
-                    content: resultObj.content,
-                    lineCount: resultObj.lineCount,
-                    byteSize: resultObj.byteSize
-                }));
-            }
-            else
-            {
-                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
-            }
-        }
-        catch (error)
+        if (resultObj.success)
         {
-            console.log(`DevelopmentToolHandler: ERROR - read_script failed:`, error);
-            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+            console.log(`DevelopmentToolHandler: Script read successfully - ${args.filePath} (${resultObj.lineCount} lines, ${resultObj.byteSize} bytes)`);
+            kadi.sendToolResult(requestId, JSON.stringify({
+                success: true,
+                filePath: resultObj.filePath,
+                content: resultObj.content,
+                lineCount: resultObj.lineCount,
+                byteSize: resultObj.byteSize
+            }));
+        }
+        else
+        {
+            this.sendError(requestId, resultObj.error || 'Unknown error');
         }
     }
 
     /**
      * Tool: delete_script
-     * Delete a JavaScript file from Scripts directory
      */
-    handleDeleteScript(requestId, args)
+    async handleDeleteScript(requestId, args)
     {
-        console.log(`DevelopmentToolHandler: handleDeleteScript - args:`, args);
-
-        // Validate required parameters
         if (!args.filePath || typeof args.filePath !== 'string')
         {
             this.sendError(requestId, 'Invalid filePath: must be string');
             return;
         }
 
-        try
-        {
-            // Call C++ bridge method (returns JavaScript object, not JSON string)
-            // Note: V8 bridge automatically parses JSON strings starting with { or [
-            const resultObj = this.game.deleteScriptFile(args.filePath);
+        const resultObj = await this._submitCommand('game.delete_script_file', {
+            filePath: args.filePath
+        });
 
-            if (resultObj.success)
-            {
-                const existed = resultObj.existed;
-                console.log(`DevelopmentToolHandler: Script deletion completed - ${args.filePath} (existed: ${existed})`);
-                kadi.sendToolResult(requestId, JSON.stringify({
-                    success: true,
-                    filePath: resultObj.filePath,
-                    existed: existed
-                }));
-            }
-            else
-            {
-                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
-            }
-        }
-        catch (error)
+        if (resultObj.success)
         {
-            console.log(`DevelopmentToolHandler: ERROR - delete_script failed:`, error);
-            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+            console.log(`DevelopmentToolHandler: Script deletion completed - ${args.filePath} (existed: ${resultObj.existed})`);
+            kadi.sendToolResult(requestId, JSON.stringify({
+                success: true,
+                filePath: resultObj.filePath,
+                existed: resultObj.existed
+            }));
+        }
+        else
+        {
+            this.sendError(requestId, resultObj.error || 'Unknown error');
         }
     }
 
     /**
      * Tool: press_keycode
-     * Inject a key press event with specified duration
      */
-    handlePressKeycode(requestId, args)
+    async handlePressKeycode(requestId, args)
     {
-        console.log(`DevelopmentToolHandler: handlePressKeycode - args:`, args);
-
-        // Validate required parameters
         if (typeof args.keyCode !== 'number' || args.keyCode < 0 || args.keyCode > 255)
         {
             this.sendError(requestId, 'Invalid keyCode: must be number 0-255');
             return;
         }
 
-        // Default duration to 50ms if not specified
         const durationMs = args.durationMs !== undefined ? args.durationMs : 50;
-
         if (typeof durationMs !== 'number' || durationMs < 0)
         {
             this.sendError(requestId, 'Invalid durationMs: must be number >= 0');
             return;
         }
 
-        try
-        {
-            // Call C++ bridge method (returns JavaScript object, not JSON string)
-            // Note: V8 bridge automatically parses JSON strings starting with { or [
-            const resultObj = this.game.injectKeyPress(args.keyCode, durationMs);
+        const resultObj = await this._submitCommand('game.inject_key_press', {
+            keyCode: args.keyCode,
+            durationMs: durationMs
+        });
 
-            if (resultObj.success)
-            {
-                console.log(`DevelopmentToolHandler: Key press injected - keyCode=${args.keyCode}, duration=${durationMs}ms`);
-                kadi.sendToolResult(requestId, JSON.stringify({
-                    success: true,
-                    keyCode: resultObj.keyCode,
-                    durationMs: resultObj.durationMs
-                }));
-            }
-            else
-            {
-                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
-            }
-        }
-        catch (error)
+        if (resultObj.success)
         {
-            console.log(`DevelopmentToolHandler: ERROR - press_keycode failed:`, error);
-            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+            console.log(`DevelopmentToolHandler: Key press injected - keyCode=${args.keyCode}, duration=${durationMs}ms`);
+            kadi.sendToolResult(requestId, JSON.stringify({
+                success: true,
+                keyCode: resultObj.keyCode,
+                durationMs: resultObj.durationMs
+            }));
+        }
+        else
+        {
+            this.sendError(requestId, resultObj.error || 'Unknown error');
         }
     }
 
     /**
      * Tool: hold_keycode
-     * Inject a key hold event with duration and optional repeat
-     * Enhanced to support multi-key sequences with precise timing control
      */
-    handleHoldKeycode(requestId, args)
+    async handleHoldKeycode(requestId, args)
     {
-        console.log(`DevelopmentToolHandler: handleHoldKeycode - args:`, args);
-
-        // Validate required keySequence parameter
         if (!args.keySequence || !Array.isArray(args.keySequence))
         {
             this.sendError(requestId, 'Invalid keySequence: must be array of key objects');
             return;
         }
-
         if (args.keySequence.length === 0)
         {
             this.sendError(requestId, 'Invalid keySequence: cannot be empty');
@@ -326,25 +290,16 @@ export class DevelopmentToolHandler
         for (let i = 0; i < args.keySequence.length; i++)
         {
             const key = args.keySequence[i];
-
-            // Validate keyCode
             if (typeof key.keyCode !== 'number' || key.keyCode < 0 || key.keyCode > 255)
             {
                 this.sendError(requestId, `Invalid keyCode in keySequence[${i}]: must be number 0-255`);
                 return;
             }
-
-            // Validate delayMs (default to 0 if not provided)
-            if (key.delayMs !== undefined)
+            if (key.delayMs !== undefined && (typeof key.delayMs !== 'number' || key.delayMs < 0))
             {
-                if (typeof key.delayMs !== 'number' || key.delayMs < 0)
-                {
-                    this.sendError(requestId, `Invalid delayMs in keySequence[${i}]: must be number >= 0`);
-                    return;
-                }
+                this.sendError(requestId, `Invalid delayMs in keySequence[${i}]: must be number >= 0`);
+                return;
             }
-
-            // Validate durationMs (required)
             if (typeof key.durationMs !== 'number' || key.durationMs < 0)
             {
                 this.sendError(requestId, `Invalid durationMs in keySequence[${i}]: must be number >= 0`);
@@ -352,200 +307,218 @@ export class DevelopmentToolHandler
             }
         }
 
-        try
-        {
-            // Call C++ bridge method with JSON string
-            // The V8 bridge can only pass primitive types (string, number, bool)
-            // So we serialize the args object to JSON string
-            const resultObj = this.game.injectKeyHold(JSON.stringify(args));
+        // C++ handler expects the full args as JSON (keySequence + optional fields)
+        const resultObj = await this._submitCommand('game.inject_key_hold', args);
 
-            if (resultObj.success)
-            {
-                console.log(`DevelopmentToolHandler: Key sequence injected - ${args.keySequence.length} keys, primaryJobId=${resultObj.primaryJobId}`);
-                kadi.sendToolResult(requestId, JSON.stringify({
-                    success: true,
-                    primaryJobId: resultObj.primaryJobId,
-                    keyCount: resultObj.keyCount,
-                    keySequence: args.keySequence.map(key => ({
-                        keyCode: key.keyCode,
-                        delayMs: key.delayMs || 0,
-                        durationMs: key.durationMs
-                    }))
-                }));
-            }
-            else
-            {
-                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
-            }
-        }
-        catch (error)
+        if (resultObj.success)
         {
-            console.log(`DevelopmentToolHandler: ERROR - hold_keycode failed:`, error);
-            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+            console.log(`DevelopmentToolHandler: Key sequence injected - ${args.keySequence.length} keys, primaryJobId=${resultObj.primaryJobId}`);
+            kadi.sendToolResult(requestId, JSON.stringify({
+                success: true,
+                primaryJobId: resultObj.primaryJobId,
+                keyCount: resultObj.keyCount,
+                keySequence: args.keySequence.map(key => ({
+                    keyCode: key.keyCode,
+                    delayMs: key.delayMs || 0,
+                    durationMs: key.durationMs
+                }))
+            }));
+        }
+        else
+        {
+            this.sendError(requestId, resultObj.error || 'Unknown error');
         }
     }
 
     /**
      * Tool: get_keyhold_status
-     * Get status of a key hold job by ID
      */
-    handleGetKeyHoldStatus(requestId, args)
+    async handleGetKeyHoldStatus(requestId, args)
     {
-        console.log(`DevelopmentToolHandler: handleGetKeyHoldStatus - args:`, args);
-
-        // Validate required parameters
         if (typeof args.jobId !== 'number' || args.jobId < 1)
         {
             this.sendError(requestId, 'Invalid jobId: must be number >= 1');
             return;
         }
 
-        try
-        {
-            const resultObj = this.game.getKeyHoldStatus(args.jobId);
+        const resultObj = await this._submitCommand('game.get_key_hold_status', {
+            jobId: args.jobId
+        });
 
-            if (resultObj.success)
-            {
-                console.log(`DevelopmentToolHandler: Got key hold status - jobId=${args.jobId}, status=${resultObj.status}`);
-                kadi.sendToolResult(requestId, JSON.stringify(resultObj));
-            }
-            else
-            {
-                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
-            }
-        }
-        catch (error)
+        if (resultObj.success)
         {
-            console.log(`DevelopmentToolHandler: ERROR - get_keyhold_status failed:`, error);
-            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+            console.log(`DevelopmentToolHandler: Got key hold status - jobId=${args.jobId}, status=${resultObj.status}`);
+            kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+        }
+        else
+        {
+            this.sendError(requestId, resultObj.error || 'Unknown error');
         }
     }
 
     /**
      * Tool: cancel_keyhold
-     * Cancel an active key hold job by ID
      */
-    handleCancelKeyHold(requestId, args)
+    async handleCancelKeyHold(requestId, args)
     {
-        console.log(`DevelopmentToolHandler: handleCancelKeyHold - args:`, args);
-
-        // Validate required parameters
         if (typeof args.jobId !== 'number' || args.jobId < 1)
         {
             this.sendError(requestId, 'Invalid jobId: must be number >= 1');
             return;
         }
 
-        try
-        {
-            const resultObj = this.game.cancelKeyHold(args.jobId);
+        const resultObj = await this._submitCommand('game.cancel_key_hold', {
+            jobId: args.jobId
+        });
 
-            if (resultObj.success)
-            {
-                console.log(`DevelopmentToolHandler: Cancelled key hold - jobId=${args.jobId}, cancelled=${resultObj.cancelled}`);
-                kadi.sendToolResult(requestId, JSON.stringify(resultObj));
-            }
-            else
-            {
-                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
-            }
-        }
-        catch (error)
+        if (resultObj.success)
         {
-            console.log(`DevelopmentToolHandler: ERROR - cancel_keyhold failed:`, error);
-            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+            console.log(`DevelopmentToolHandler: Cancelled key hold - jobId=${args.jobId}, cancelled=${resultObj.cancelled}`);
+            kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+        }
+        else
+        {
+            this.sendError(requestId, resultObj.error || 'Unknown error');
         }
     }
 
     /**
      * Tool: list_active_keyholds
-     * List all active key hold jobs
      */
-    handleListActiveKeyHolds(requestId, args)
+    async handleListActiveKeyHolds(requestId, args)
     {
-        console.log(`DevelopmentToolHandler: handleListActiveKeyHolds - args:`, args);
+        const resultObj = await this._submitCommand('game.list_active_key_holds', {});
 
-        try
+        if (resultObj.success)
         {
-            const resultObj = this.game.listActiveKeyHolds();
-
-            if (resultObj.success)
-            {
-                console.log(`DevelopmentToolHandler: Listed active key holds - count=${resultObj.count}`);
-                kadi.sendToolResult(requestId, JSON.stringify(resultObj));
-            }
-            else
-            {
-                this.sendError(requestId, resultObj.error || 'Unknown error from C++');
-            }
+            console.log(`DevelopmentToolHandler: Listed active key holds - count=${resultObj.count}`);
+            kadi.sendToolResult(requestId, JSON.stringify(resultObj));
         }
-        catch (error)
+        else
         {
-            console.log(`DevelopmentToolHandler: ERROR - list_active_keyholds failed:`, error);
-            this.sendError(requestId, `C++ bridge error: ${error.message}`);
+            this.sendError(requestId, resultObj.error || 'Unknown error');
         }
     }
 
-    /**
-     * Tool: modify_script (Phase 6b)
-     * Fine-grained modification of existing JavaScript files
-     * Supports 5 operations: add_line, remove_line, add_function, remove_function, replace_text
-     */
-    handleModifyScript(requestId, args)
-    {
-        console.log(`DevelopmentToolHandler: handleModifyScript - args:`, args);
+    // ==========================================
+    // Screenshot Tool (async)
+    // ==========================================
 
-        // Validate required parameters
+    /**
+     * Tool: capture_screenshot
+     * Captures the current game window as PNG or JPEG
+     */
+    async handleCaptureScreenshot(requestId, args)
+    {
+        const format = args.format || 'png';
+        if (!['png', 'jpeg'].includes(format))
+        {
+            this.sendError(requestId, 'Invalid format: must be "png" or "jpeg"');
+            return;
+        }
+
+        const quality = args.quality !== undefined ? args.quality : 90;
+        if (typeof quality !== 'number' || quality < 1 || quality > 100)
+        {
+            this.sendError(requestId, 'Invalid quality: must be number 1-100');
+            return;
+        }
+
+        const payload = { format, quality };
+        if (args.filename && typeof args.filename === 'string')
+        {
+            payload.filename = args.filename;
+        }
+
+        const resultObj = await this._submitCommand('game.capture_screenshot', payload);
+
+        if (resultObj.success)
+        {
+            console.log(`DevelopmentToolHandler: Screenshot captured - ${resultObj.filePath}`);
+
+            // Build MCP-compatible CallToolResult with content array
+            // The broker is a dumb pipe — it passes this through to MCP clients unchanged
+            const content = [];
+
+            // Include image as MCP image content (base64)
+            if (resultObj.imageData)
+            {
+                content.push({
+                    type: 'image',
+                    data: resultObj.imageData,
+                    mimeType: resultObj.mimeType || 'image/png'
+                });
+            }
+
+            // Include metadata as text content
+            content.push({
+                type: 'text',
+                text: JSON.stringify({
+                    filePath: resultObj.filePath,
+                    format: resultObj.format,
+                    fileSize: resultObj.fileSize
+                })
+            });
+
+            kadi.sendToolResult(requestId, JSON.stringify({ content }));
+        }
+        else
+        {
+            this.sendError(requestId, resultObj.error || 'Screenshot capture failed');
+        }
+    }
+
+    // ==========================================
+    // modify_script Tool (async read-modify-write)
+    // ==========================================
+
+    /**
+     * Tool: modify_script
+     * Fine-grained modification of existing JavaScript files
+     */
+    async handleModifyScript(requestId, args)
+    {
         if (!args.filePath || typeof args.filePath !== 'string')
         {
             this.sendError(requestId, 'Invalid filePath: must be string');
             return;
         }
-
         if (!args.operation || typeof args.operation !== 'string')
         {
             this.sendError(requestId, 'Invalid operation: must be string');
             return;
         }
-
         if (!args.params || typeof args.params !== 'object')
         {
             this.sendError(requestId, 'Invalid params: must be object');
             return;
         }
 
-        // Route to specific operation handler
         try
         {
             let result;
             switch (args.operation)
             {
                 case 'add_line':
-                    result = this.modifyScript_AddLine(args.filePath, args.params);
+                    result = await this.modifyScript_AddLine(args.filePath, args.params);
                     break;
-
                 case 'remove_line':
-                    result = this.modifyScript_RemoveLine(args.filePath, args.params);
+                    result = await this.modifyScript_RemoveLine(args.filePath, args.params);
                     break;
-
                 case 'add_function':
-                    result = this.modifyScript_AddFunction(args.filePath, args.params);
+                    result = await this.modifyScript_AddFunction(args.filePath, args.params);
                     break;
-
                 case 'remove_function':
-                    result = this.modifyScript_RemoveFunction(args.filePath, args.params);
+                    result = await this.modifyScript_RemoveFunction(args.filePath, args.params);
                     break;
-
                 case 'replace_text':
-                    result = this.modifyScript_ReplaceText(args.filePath, args.params);
+                    result = await this.modifyScript_ReplaceText(args.filePath, args.params);
                     break;
-
                 default:
                     this.sendError(requestId, `Unknown modify_script operation: ${args.operation}`);
                     return;
             }
 
-            // Send result
             kadi.sendToolResult(requestId, JSON.stringify(result));
         }
         catch (error)
@@ -556,486 +529,391 @@ export class DevelopmentToolHandler
     }
 
     /**
-     * Operation: add_line
-     * Insert line(s) at specific position
+     * Helper: Read a script file via GenericCommand pipeline
+     * @returns {Promise<Object>} Result with {success, content, ...} or {success: false, error}
      */
-    modifyScript_AddLine(filePath, params)
+    async _readFile(filePath)
+    {
+        return await this._submitCommand('game.read_script_file', { filePath });
+    }
+
+    /**
+     * Helper: Write a script file via GenericCommand pipeline (overwrite mode)
+     * @returns {Promise<Object>} Result with {success, ...} or {success: false, error}
+     */
+    async _writeFile(filePath, content)
+    {
+        return await this._submitCommand('game.create_script_file', {
+            filePath,
+            content,
+            overwrite: true
+        });
+    }
+
+    /**
+     * Operation: add_line
+     */
+    async modifyScript_AddLine(filePath, params)
     {
         const { lineNumber, content, position } = params;
 
-        // Validate parameters
         if (typeof lineNumber !== 'number' || lineNumber < 1)
         {
             return { success: false, error: 'Invalid lineNumber: must be number >= 1' };
         }
-
         if (typeof content !== 'string')
         {
             return { success: false, error: 'Invalid content: must be string' };
         }
-
         if (!['before', 'after', 'replace'].includes(position))
         {
             return { success: false, error: 'Invalid position: must be "before", "after", or "replace"' };
         }
 
-        try
+        const readResult = await this._readFile(filePath);
+        if (!readResult.success)
         {
-            // Read file
-            const readResult = this.game.readScriptFile(filePath);
-            if (!readResult.success)
-            {
-                return { success: false, error: readResult.error || 'Failed to read file' };
-            }
-
-            // Split into lines
-            const lines = readResult.content.split('\n');
-
-            // Validate line number
-            if (lineNumber > lines.length + 1)
-            {
-                return { success: false, error: `Invalid line number ${lineNumber}: file has ${lines.length} lines` };
-            }
-
-            // Convert to 0-indexed
-            const index = lineNumber - 1;
-
-            // Insert based on position
-            let linesModified = 1;
-            switch (position)
-            {
-                case 'before':
-                    lines.splice(index, 0, content);
-                    break;
-
-                case 'after':
-                    lines.splice(index + 1, 0, content);
-                    break;
-
-                case 'replace':
-                    lines[index] = content;
-                    break;
-            }
-
-            // Handle multi-line content
-            if (content.includes('\n'))
-            {
-                const contentLines = content.split('\n');
-                linesModified = contentLines.length;
-            }
-
-            // Write back
-            const newContent = lines.join('\n');
-            const writeResult = this.game.createScriptFile(filePath, newContent, true);
-
-            if (!writeResult.success)
-            {
-                return { success: false, error: writeResult.error || 'Failed to write file' };
-            }
-
-            return {
-                success: true,
-                filePath: filePath,
-                operation: 'add_line',
-                linesModified: linesModified,
-                timestamp: Date.now()
-            };
+            return { success: false, error: readResult.error || 'Failed to read file' };
         }
-        catch (error)
+
+        const lines = readResult.content.split('\n');
+        if (lineNumber > lines.length + 1)
         {
-            return { success: false, error: `add_line exception: ${error.message}` };
+            return { success: false, error: `Invalid line number ${lineNumber}: file has ${lines.length} lines` };
         }
+
+        const index = lineNumber - 1;
+        let linesModified = 1;
+
+        switch (position)
+        {
+            case 'before':
+                lines.splice(index, 0, content);
+                break;
+            case 'after':
+                lines.splice(index + 1, 0, content);
+                break;
+            case 'replace':
+                lines[index] = content;
+                break;
+        }
+
+        if (content.includes('\n'))
+        {
+            linesModified = content.split('\n').length;
+        }
+
+        const writeResult = await this._writeFile(filePath, lines.join('\n'));
+        if (!writeResult.success)
+        {
+            return { success: false, error: writeResult.error || 'Failed to write file' };
+        }
+
+        return {
+            success: true,
+            filePath: filePath,
+            operation: 'add_line',
+            linesModified: linesModified,
+            timestamp: Date.now()
+        };
     }
 
     /**
      * Operation: remove_line
-     * Remove line(s) by line number or pattern
      */
-    modifyScript_RemoveLine(filePath, params)
+    async modifyScript_RemoveLine(filePath, params)
     {
-        try
+        const readResult = await this._readFile(filePath);
+        if (!readResult.success)
         {
-            // Read file
-            const readResult = this.game.readScriptFile(filePath);
-            if (!readResult.success)
-            {
-                return { success: false, error: readResult.error || 'Failed to read file' };
-            }
-
-            const lines = readResult.content.split('\n');
-            let linesModified = 0;
-            let newLines;
-
-            // Mode 1: Remove by line number
-            if (params.lineNumber !== undefined)
-            {
-                const { lineNumber, count = 1 } = params;
-
-                // Validate parameters
-                if (typeof lineNumber !== 'number' || lineNumber < 1 || lineNumber > lines.length)
-                {
-                    return { success: false, error: `Invalid lineNumber ${lineNumber}: file has ${lines.length} lines` };
-                }
-
-                if (typeof count !== 'number' || count < 1)
-                {
-                    return { success: false, error: 'Invalid count: must be number >= 1' };
-                }
-
-                // Convert to 0-indexed
-                const index = lineNumber - 1;
-
-                // Remove lines
-                lines.splice(index, count);
-                linesModified = count;
-                newLines = lines;
-            }
-            // Mode 2: Remove by pattern
-            else if (params.pattern !== undefined)
-            {
-                const { pattern, maxMatches = null } = params;
-
-                if (typeof pattern !== 'string')
-                {
-                    return { success: false, error: 'Invalid pattern: must be string' };
-                }
-
-                // Filter lines that don't match pattern
-                newLines = lines.filter(line => {
-                    if (maxMatches !== null && linesModified >= maxMatches)
-                    {
-                        return true; // Keep line (reached max)
-                    }
-
-                    const matches = line.includes(pattern);
-                    if (matches)
-                    {
-                        linesModified++;
-                        return false; // Remove line
-                    }
-                    return true; // Keep line
-                });
-            }
-            else
-            {
-                return { success: false, error: 'Must provide either lineNumber or pattern' };
-            }
-
-            // Write back
-            const newContent = newLines.join('\n');
-            const writeResult = this.game.createScriptFile(filePath, newContent, true);
-
-            if (!writeResult.success)
-            {
-                return { success: false, error: writeResult.error || 'Failed to write file' };
-            }
-
-            return {
-                success: true,
-                filePath: filePath,
-                operation: 'remove_line',
-                linesModified: linesModified,
-                timestamp: Date.now()
-            };
+            return { success: false, error: readResult.error || 'Failed to read file' };
         }
-        catch (error)
+
+        const lines = readResult.content.split('\n');
+        let linesModified = 0;
+        let newLines;
+
+        if (params.lineNumber !== undefined)
         {
-            return { success: false, error: `remove_line exception: ${error.message}` };
+            const { lineNumber, count = 1 } = params;
+            if (typeof lineNumber !== 'number' || lineNumber < 1 || lineNumber > lines.length)
+            {
+                return { success: false, error: `Invalid lineNumber ${lineNumber}: file has ${lines.length} lines` };
+            }
+            if (typeof count !== 'number' || count < 1)
+            {
+                return { success: false, error: 'Invalid count: must be number >= 1' };
+            }
+
+            const index = lineNumber - 1;
+            lines.splice(index, count);
+            linesModified = count;
+            newLines = lines;
         }
+        else if (params.pattern !== undefined)
+        {
+            const { pattern, maxMatches = null } = params;
+            if (typeof pattern !== 'string')
+            {
+                return { success: false, error: 'Invalid pattern: must be string' };
+            }
+
+            newLines = lines.filter(line => {
+                if (maxMatches !== null && linesModified >= maxMatches) return true;
+                if (line.includes(pattern))
+                {
+                    linesModified++;
+                    return false;
+                }
+                return true;
+            });
+        }
+        else
+        {
+            return { success: false, error: 'Must provide either lineNumber or pattern' };
+        }
+
+        const writeResult = await this._writeFile(filePath, newLines.join('\n'));
+        if (!writeResult.success)
+        {
+            return { success: false, error: writeResult.error || 'Failed to write file' };
+        }
+
+        return {
+            success: true,
+            filePath: filePath,
+            operation: 'remove_line',
+            linesModified: linesModified,
+            timestamp: Date.now()
+        };
     }
 
     /**
      * Operation: add_function
-     * Add new function or method to class/file
      */
-    modifyScript_AddFunction(filePath, params)
+    async modifyScript_AddFunction(filePath, params)
     {
         const { functionCode, insertionPoint, className } = params;
 
-        // Validate parameters
         if (typeof functionCode !== 'string')
         {
             return { success: false, error: 'Invalid functionCode: must be string' };
         }
-
         if (typeof insertionPoint !== 'string')
         {
             return { success: false, error: 'Invalid insertionPoint: must be string' };
         }
 
-        try
+        const readResult = await this._readFile(filePath);
+        if (!readResult.success)
         {
-            // Read file
-            const readResult = this.game.readScriptFile(filePath);
-            if (!readResult.success)
-            {
-                return { success: false, error: readResult.error || 'Failed to read file' };
-            }
+            return { success: false, error: readResult.error || 'Failed to read file' };
+        }
 
-            const lines = readResult.content.split('\n');
-            let insertIndex = -1;
+        const lines = readResult.content.split('\n');
+        let insertIndex = -1;
 
-            // Find insertion point
-            if (insertionPoint === 'end_of_file')
-            {
-                insertIndex = lines.length;
-            }
-            else if (insertionPoint === 'end_of_class' && className)
-            {
-                insertIndex = this.findClassEnd(lines, className);
-                if (insertIndex === -1)
-                {
-                    return { success: false, error: `Class not found: ${className}` };
-                }
-            }
-            else if (insertionPoint.startsWith('before_function:'))
-            {
-                const targetFunc = insertionPoint.split(':')[1];
-                insertIndex = this.findFunctionStart(lines, targetFunc);
-                if (insertIndex === -1)
-                {
-                    return { success: false, error: `Function not found: ${targetFunc}` };
-                }
-            }
-            else if (insertionPoint.startsWith('after_function:'))
-            {
-                const targetFunc = insertionPoint.split(':')[1];
-                const funcStart = this.findFunctionStart(lines, targetFunc);
-                if (funcStart === -1)
-                {
-                    return { success: false, error: `Function not found: ${targetFunc}` };
-                }
-                insertIndex = this.findFunctionEnd(lines, funcStart) + 1;
-            }
-            else
-            {
-                return { success: false, error: `Invalid insertion point: ${insertionPoint}` };
-            }
-
+        if (insertionPoint === 'end_of_file')
+        {
+            insertIndex = lines.length;
+        }
+        else if (insertionPoint === 'end_of_class' && className)
+        {
+            insertIndex = this.findClassEnd(lines, className);
             if (insertIndex === -1)
             {
-                return { success: false, error: `Could not find insertion point: ${insertionPoint}` };
+                return { success: false, error: `Class not found: ${className}` };
             }
-
-            // Insert function (with blank lines for formatting)
-            lines.splice(insertIndex, 0, '', functionCode, '');
-
-            // Write back
-            const newContent = lines.join('\n');
-            const writeResult = this.game.createScriptFile(filePath, newContent, true);
-
-            if (!writeResult.success)
-            {
-                return { success: false, error: writeResult.error || 'Failed to write file' };
-            }
-
-            const linesModified = functionCode.split('\n').length;
-
-            return {
-                success: true,
-                filePath: filePath,
-                operation: 'add_function',
-                linesModified: linesModified,
-                timestamp: Date.now()
-            };
         }
-        catch (error)
+        else if (insertionPoint.startsWith('before_function:'))
         {
-            return { success: false, error: `add_function exception: ${error.message}` };
+            const targetFunc = insertionPoint.split(':')[1];
+            insertIndex = this.findFunctionStart(lines, targetFunc);
+            if (insertIndex === -1)
+            {
+                return { success: false, error: `Function not found: ${targetFunc}` };
+            }
         }
+        else if (insertionPoint.startsWith('after_function:'))
+        {
+            const targetFunc = insertionPoint.split(':')[1];
+            const funcStart = this.findFunctionStart(lines, targetFunc);
+            if (funcStart === -1)
+            {
+                return { success: false, error: `Function not found: ${targetFunc}` };
+            }
+            insertIndex = this.findFunctionEnd(lines, funcStart) + 1;
+        }
+        else
+        {
+            return { success: false, error: `Invalid insertion point: ${insertionPoint}` };
+        }
+
+        if (insertIndex === -1)
+        {
+            return { success: false, error: `Could not find insertion point: ${insertionPoint}` };
+        }
+
+        lines.splice(insertIndex, 0, '', functionCode, '');
+
+        const writeResult = await this._writeFile(filePath, lines.join('\n'));
+        if (!writeResult.success)
+        {
+            return { success: false, error: writeResult.error || 'Failed to write file' };
+        }
+
+        return {
+            success: true,
+            filePath: filePath,
+            operation: 'add_function',
+            linesModified: functionCode.split('\n').length,
+            timestamp: Date.now()
+        };
     }
 
     /**
      * Operation: remove_function
-     * Delete function or method by name
      */
-    modifyScript_RemoveFunction(filePath, params)
+    async modifyScript_RemoveFunction(filePath, params)
     {
         const { functionName, className } = params;
 
-        // Validate parameters
         if (typeof functionName !== 'string')
         {
             return { success: false, error: 'Invalid functionName: must be string' };
         }
 
-        try
+        const readResult = await this._readFile(filePath);
+        if (!readResult.success)
         {
-            // Read file
-            const readResult = this.game.readScriptFile(filePath);
-            if (!readResult.success)
-            {
-                return { success: false, error: readResult.error || 'Failed to read file' };
-            }
-
-            const lines = readResult.content.split('\n');
-
-            // Find function
-            const funcStart = this.findFunctionStart(lines, functionName, className);
-            if (funcStart === -1)
-            {
-                return { success: false, error: `Function not found: ${functionName}` };
-            }
-
-            // Find function end
-            const funcEnd = this.findFunctionEnd(lines, funcStart);
-            if (funcEnd === -1)
-            {
-                return { success: false, error: `Could not find function end: ${functionName}` };
-            }
-
-            // Remove function lines
-            const removedCount = funcEnd - funcStart + 1;
-            lines.splice(funcStart, removedCount);
-
-            // Write back
-            const newContent = lines.join('\n');
-            const writeResult = this.game.createScriptFile(filePath, newContent, true);
-
-            if (!writeResult.success)
-            {
-                return { success: false, error: writeResult.error || 'Failed to write file' };
-            }
-
-            return {
-                success: true,
-                filePath: filePath,
-                operation: 'remove_function',
-                linesModified: removedCount,
-                timestamp: Date.now()
-            };
+            return { success: false, error: readResult.error || 'Failed to read file' };
         }
-        catch (error)
+
+        const lines = readResult.content.split('\n');
+        const funcStart = this.findFunctionStart(lines, functionName, className);
+        if (funcStart === -1)
         {
-            return { success: false, error: `remove_function exception: ${error.message}` };
+            return { success: false, error: `Function not found: ${functionName}` };
         }
+
+        const funcEnd = this.findFunctionEnd(lines, funcStart);
+        if (funcEnd === -1)
+        {
+            return { success: false, error: `Could not find function end: ${functionName}` };
+        }
+
+        const removedCount = funcEnd - funcStart + 1;
+        lines.splice(funcStart, removedCount);
+
+        const writeResult = await this._writeFile(filePath, lines.join('\n'));
+        if (!writeResult.success)
+        {
+            return { success: false, error: writeResult.error || 'Failed to write file' };
+        }
+
+        return {
+            success: true,
+            filePath: filePath,
+            operation: 'remove_function',
+            linesModified: removedCount,
+            timestamp: Date.now()
+        };
     }
 
     /**
      * Operation: replace_text
-     * Find and replace text patterns (literal or regex)
      */
-    modifyScript_ReplaceText(filePath, params)
+    async modifyScript_ReplaceText(filePath, params)
     {
         const { search, replace, isRegex = false, maxReplacements = null } = params;
 
-        // Validate parameters
         if (typeof search !== 'string')
         {
             return { success: false, error: 'Invalid search: must be string' };
         }
-
         if (typeof replace !== 'string')
         {
             return { success: false, error: 'Invalid replace: must be string' };
         }
 
-        try
+        const readResult = await this._readFile(filePath);
+        if (!readResult.success)
         {
-            // Read file
-            const readResult = this.game.readScriptFile(filePath);
-            if (!readResult.success)
+            return { success: false, error: readResult.error || 'Failed to read file' };
+        }
+
+        let fileContent = readResult.content;
+        let replacementCount = 0;
+
+        if (isRegex)
+        {
+            try
             {
-                return { success: false, error: readResult.error || 'Failed to read file' };
+                const regex = new RegExp(search, 'g');
+                fileContent = fileContent.replace(regex, (match) => {
+                    if (maxReplacements !== null && replacementCount >= maxReplacements) return match;
+                    replacementCount++;
+                    return replace;
+                });
             }
-
-            let fileContent = readResult.content;
-            let replacementCount = 0;
-
-            if (isRegex)
+            catch (error)
             {
-                // Regex mode
-                try
+                return { success: false, error: `Invalid regex pattern: ${error.message}` };
+            }
+        }
+        else
+        {
+            if (maxReplacements === null)
+            {
+                const beforeLength = fileContent.length;
+                fileContent = fileContent.replaceAll(search, replace);
+                const afterLength = fileContent.length;
+                const replaceLengthDiff = replace.length - search.length;
+                if (replaceLengthDiff !== 0 && search.length > 0)
                 {
-                    const regex = new RegExp(search, 'g');
-                    fileContent = fileContent.replace(regex, (match) => {
-                        if (maxReplacements !== null && replacementCount >= maxReplacements)
-                        {
-                            return match; // Don't replace
-                        }
-                        replacementCount++;
-                        return replace;
-                    });
+                    replacementCount = Math.abs(Math.floor((afterLength - beforeLength) / replaceLengthDiff));
                 }
-                catch (error)
+                else if (search.length > 0)
                 {
-                    return { success: false, error: `Invalid regex pattern: ${error.message}` };
+                    replacementCount = (beforeLength - fileContent.replace(new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '').length) / search.length;
                 }
             }
             else
             {
-                // Literal mode
-                if (maxReplacements === null)
+                let remaining = maxReplacements;
+                while (remaining > 0 && fileContent.includes(search))
                 {
-                    // Replace all
-                    const beforeLength = fileContent.length;
-                    fileContent = fileContent.replaceAll(search, replace);
-
-                    // Estimate replacement count
-                    if (search.length > 0)
-                    {
-                        const afterLength = fileContent.length;
-                        const lengthDiff = afterLength - beforeLength;
-                        const replaceLengthDiff = replace.length - search.length;
-                        if (replaceLengthDiff !== 0)
-                        {
-                            replacementCount = Math.abs(Math.floor(lengthDiff / replaceLengthDiff));
-                        }
-                        else
-                        {
-                            // Same length replacement - count occurrences
-                            replacementCount = (beforeLength - fileContent.replace(new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '').length) / search.length;
-                        }
-                    }
-                }
-                else
-                {
-                    // Replace with limit
-                    let remaining = maxReplacements;
-                    while (remaining > 0 && fileContent.includes(search))
-                    {
-                        fileContent = fileContent.replace(search, replace);
-                        replacementCount++;
-                        remaining--;
-                    }
+                    fileContent = fileContent.replace(search, replace);
+                    replacementCount++;
+                    remaining--;
                 }
             }
-
-            // Write back
-            const writeResult = this.game.createScriptFile(filePath, fileContent, true);
-
-            if (!writeResult.success)
-            {
-                return { success: false, error: writeResult.error || 'Failed to write file' };
-            }
-
-            return {
-                success: true,
-                filePath: filePath,
-                operation: 'replace_text',
-                linesModified: replacementCount,
-                timestamp: Date.now()
-            };
         }
-        catch (error)
+
+        const writeResult = await this._writeFile(filePath, fileContent);
+        if (!writeResult.success)
         {
-            return { success: false, error: `replace_text exception: ${error.message}` };
+            return { success: false, error: writeResult.error || 'Failed to write file' };
         }
+
+        return {
+            success: true,
+            filePath: filePath,
+            operation: 'replace_text',
+            linesModified: replacementCount,
+            timestamp: Date.now()
+        };
     }
 
     // ==========================================
     // Helper Methods for Pattern Matching
     // ==========================================
 
-    /**
-     * Find the closing brace of a class
-     */
     findClassEnd(lines, className)
     {
         let classStart = -1;
         let braceDepth = 0;
 
-        // Find class start
         for (let i = 0; i < lines.length; i++)
         {
             if (lines[i].match(new RegExp(`class\\s+${className}`)))
@@ -1047,7 +925,6 @@ export class DevelopmentToolHandler
 
         if (classStart === -1) return -1;
 
-        // Find matching closing brace
         for (let i = classStart; i < lines.length; i++)
         {
             const line = lines[i];
@@ -1056,19 +933,15 @@ export class DevelopmentToolHandler
 
             if (braceDepth === 0 && i > classStart)
             {
-                return i; // Found closing brace
+                return i;
             }
         }
 
         return -1;
     }
 
-    /**
-     * Find the start of a function
-     */
     findFunctionStart(lines, functionName, className = null)
     {
-        // If className specified, first find class boundaries
         let searchStart = 0;
         let searchEnd = lines.length;
 
@@ -1083,19 +956,15 @@ export class DevelopmentToolHandler
                     break;
                 }
             }
-
             if (searchStart === -1) return -1;
 
             searchEnd = this.findClassEnd(lines, className);
             if (searchEnd === -1) return -1;
         }
 
-        // Search for function within bounds
         for (let i = searchStart; i < searchEnd; i++)
         {
-            const line = lines[i];
-            // Match: function functionName( or functionName( or functionName()
-            if (line.match(new RegExp(`(function\\s+)?${functionName}\\s*\\(`)))
+            if (lines[i].match(new RegExp(`(function\\s+)?${functionName}\\s*\\(`)))
             {
                 return i;
             }
@@ -1104,9 +973,6 @@ export class DevelopmentToolHandler
         return -1;
     }
 
-    /**
-     * Find the closing brace of a function
-     */
     findFunctionEnd(lines, startIndex)
     {
         let braceDepth = 0;
@@ -1122,7 +988,7 @@ export class DevelopmentToolHandler
 
             if (inFunction && braceDepth === 0)
             {
-                return i; // Found closing brace
+                return i;
             }
         }
 

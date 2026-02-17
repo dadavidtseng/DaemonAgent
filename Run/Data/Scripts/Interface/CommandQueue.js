@@ -97,8 +97,9 @@ export class CommandQueue
      * @param {number} callbackId - Callback ID from C++
      * @param {number} resultId - Result identifier (0 if failed)
      * @param {string} errorMessage - Error message (empty string if success)
+     * @param {string} resultJson - Rich JSON result payload (empty if not provided)
      */
-    handleCallback(callbackId, resultId, errorMessage)
+    handleCallback(callbackId, resultId, errorMessage, resultJson)
     {
         const callback = this.callbackRegistry.get(callbackId);
 
@@ -117,6 +118,20 @@ export class CommandQueue
             {
                 console.log(`CommandQueue: Callback ${callbackId} failed: ${errorMessage}`);
                 callback({ success: false, error: errorMessage, resultId: 0 });
+            }
+            else if (resultJson && resultJson.length > 0)
+            {
+                // Rich JSON result from GENERIC handler — parse and deliver directly
+                try
+                {
+                    const parsed = JSON.parse(resultJson);
+                    callback(parsed);
+                }
+                catch (parseError)
+                {
+                    console.log(`CommandQueue: Failed to parse resultJson for callback ${callbackId}: ${parseError.message}`);
+                    callback({ success: true, error: '', resultId: resultId });
+                }
             }
             else
             {

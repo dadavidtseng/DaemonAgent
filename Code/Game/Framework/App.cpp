@@ -10,7 +10,6 @@
 #include "Game/Framework/App.hpp"
 //----------------------------------------------------------------------------------------------------
 #include "Game/Framework/GameCommon.hpp"
-#include "Game/Framework/GameScriptInterface.hpp"
 #include "Game/Framework/JSGameLogicJob.hpp"
 #include "Game/Framework/RenderResourceManager.hpp"
 #include "Game/Gameplay/Game.hpp"
@@ -23,7 +22,7 @@
 #include "Engine/Core/CallbackQueue.hpp"
 #include "Engine/Core/CallbackQueueScriptInterface.hpp"
 #include "Engine/Core/Clock.hpp"
-#include "Engine/Core/ClockScriptInterface.hpp"
+
 #include "Engine/Core/DevConsole.hpp"
 #include "Engine/Core/Engine.hpp"
 #include "Engine/Core/EngineCommon.hpp"
@@ -37,13 +36,11 @@
 #include "Engine/Input/InputScriptInterface.hpp"
 #include "Engine/Input/InputSystem.hpp"
 #include "Engine/Network/KADIScriptInterface.hpp"
+#include "Engine/Network/KADIAuthenticationUtility.hpp"
 #include "Engine/Platform/Window.hpp"
 #include "Engine/Renderer/Camera.hpp"
 #include "Engine/Renderer/CameraAPI.hpp"
 #include "Engine/Renderer/CameraStateBuffer.hpp"
-#include "Engine/Renderer/DebugRenderAPI.hpp"
-#include "Engine/Renderer/DebugRenderStateBuffer.hpp"
-#include "Engine/Renderer/DebugRenderSystem.hpp"
 #include "Engine/Renderer/Renderer.hpp"
 #include "Engine/Renderer/VertexUtils.hpp"
 #include "Engine/Resource/ResourceSubsystem.hpp"
@@ -51,12 +48,66 @@
 #include "Engine/Script/GenericCommandScriptInterface.hpp"
 #include "Engine/UI/ImGuiSubsystem.hpp"
 #include "ThirdParty/json/json.hpp"
+#include <filesystem>
 #include <fstream>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+
+#include "Engine/Renderer/DebugRenderSystem.hpp"
 
 
 //----------------------------------------------------------------------------------------------------
 App*  g_app  = nullptr;       // Created and owned by Main_Windows.cpp
 Game* g_game = nullptr;       // Created and owned by the App
+
+//----------------------------------------------------------------------------------------------------
+// Helper: Escape special characters in JSON strings (shared with GenericCommand handlers)
+//----------------------------------------------------------------------------------------------------
+static std::string EscapeJsonString(std::string const& input)
+{
+    std::string escaped;
+    escaped.reserve(static_cast<size_t>(input.length() * 1.2));
+    for (char c : input)
+    {
+        switch (c)
+        {
+        case '\\': escaped += "\\\\"; break;
+        case '\"': escaped += "\\\""; break;
+        case '\n': escaped += "\\n";  break;
+        case '\r': escaped += "\\r";  break;
+        case '\t': escaped += "\\t";  break;
+        case '\b': escaped += "\\b";  break;
+        case '\f': escaped += "\\f";  break;
+        default:   escaped += c;      break;
+        }
+    }
+    return escaped;
+}
+
+//----------------------------------------------------------------------------------------------------
+// Helper: Validate .js file path for security (shared by file operation handlers)
+// Returns empty string on success, or error JSON string on failure.
+//----------------------------------------------------------------------------------------------------
+static std::string ValidateJsFilePath(std::string const& filePath)
+{
+    if (filePath.empty())
+        return R"({"success":false,"error":"Invalid file path: cannot be empty"})";
+
+    if (filePath.find("..") != std::string::npos)
+        return R"({"success":false,"error":"Invalid file path: directory traversal not allowed"})";
+
+    if (filePath.length() < 3 || filePath.substr(filePath.length() - 3) != ".js")
+        return R"({"success":false,"error":"Invalid file extension: must end with .js"})";
+
+    size_t      lastSlash = filePath.find_last_of("/\\");
+    std::string filename  = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
+    if (!filename.empty() && filename[0] == '.')
+        return R"json({"success":false,"error":"Invalid filename: cannot start with dot (hidden files not allowed)"})json";
+
+    return {};  // Valid
+}
 
 //----------------------------------------------------------------------------------------------------
 App::App()
@@ -124,7 +175,6 @@ void App::Startup()
     m_cameraStateBuffer = new CameraStateBuffer();
     m_cameraStateBuffer->EnableDirtyTracking(true);
 
-    // m_debugRenderStateBuffer = new DebugRenderStateBuffer();
     // m_debugRenderStateBuffer->EnableDirtyTracking(true);
 
     m_audioStateBuffer = new AudioStateBuffer();
@@ -1603,6 +1653,548 @@ void App::Startup()
                                                   return HandlerResult::Success();
                                               });
 
+    //------------------------------------------------------------------------------------------------
+    // GameScriptInterface Migration: File Operations, Input Injection, FileWatcher Management
+    // These handlers replace the synchronous GameScriptInterface methods with async GenericCommand
+    // pipeline. Results are delivered via CallbackData.resultJson → CommandQueue.handleCallback.
+    //------------------------------------------------------------------------------------------------
+
+    // game.app_request_quit — Request application quit
+    m_genericCommandExecutor->RegisterHandler("game.app_request_quit",
+                                              [](std::any const& /*payload*/) -> HandlerResult
+                                              {
+                                                  App::RequestQuit();
+                                                  return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":true})"))}});
+                                              });
+
+    // game.execute_command — Execute JavaScript command string
+    m_genericCommandExecutor->RegisterHandler("game.execute_command",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  String command = json.value("command", "");
+                                                  if (command.empty()) return HandlerResult::Error("Missing 'command' field");
+
+                                                  if (g_game) g_game->ExecuteJavaScriptCommand(command);
+                                                  std::string resultJson = R"({"success":true,"command":")" + EscapeJsonString(command) + R"("})";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson)}});
+                                              });
+
+    // game.execute_file — Execute JavaScript file
+    m_genericCommandExecutor->RegisterHandler("game.execute_file",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  String filename = json.value("filename", "");
+                                                  if (filename.empty()) return HandlerResult::Error("Missing 'filename' field");
+
+                                                  if (g_game) g_game->ExecuteJavaScriptFile(filename);
+                                                  std::string resultJson = R"({"success":true,"filename":")" + EscapeJsonString(filename) + R"("})";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson)}});
+                                              });
+
+    // game.create_script_file — Create/overwrite a .js file in Scripts directory
+    m_genericCommandExecutor->RegisterHandler("game.create_script_file",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  std::string filePath  = json.value("filePath", "");
+                                                  std::string content   = json.value("content", "");
+                                                  bool        overwrite = json.value("overwrite", false);
+
+                                                  std::string validationErr = ValidateJsFilePath(filePath);
+                                                  if (!validationErr.empty())
+                                                      return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
+
+                                                  try
+                                                  {
+                                                      namespace fs = std::filesystem;
+                                                      fs::path scriptsDir = fs::current_path() / "Data" / "Scripts";
+                                                      fs::path fullPath   = scriptsDir / filePath;
+
+                                                      if (fs::exists(fullPath) && !overwrite)
+                                                      {
+                                                          std::string r = R"({"success":false,"error":"File already exists and overwrite=false: )" + EscapeJsonString(filePath) + R"("})";
+                                                          return HandlerResult::Success({{"resultJson", std::any(r)}});
+                                                      }
+
+                                                      fs::path parentDir = fullPath.parent_path();
+                                                      if (!fs::exists(parentDir)) fs::create_directories(parentDir);
+
+                                                      std::ofstream outFile(fullPath, std::ios::out | std::ios::trunc);
+                                                      if (!outFile.is_open())
+                                                      {
+                                                          std::string r = R"({"success":false,"error":"Failed to open file for writing: )" + EscapeJsonString(filePath) + R"("})";
+                                                          return HandlerResult::Success({{"resultJson", std::any(r)}});
+                                                      }
+
+                                                      outFile << content;
+                                                      outFile.close();
+
+                                                      std::ostringstream resultJson;
+                                                      resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(fullPath.string())
+                                                                 << R"(","bytesWritten":)" << content.length() << "}";
+                                                      return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                                  }
+                                                  catch (std::exception const& e)
+                                                  {
+                                                      std::string r = R"({"success":false,"error":"Create script file exception: )" + EscapeJsonString(e.what()) + R"("})";
+                                                      return HandlerResult::Success({{"resultJson", std::any(r)}});
+                                                  }
+                                              });
+
+    // game.read_script_file — Read a .js file from Scripts directory
+    m_genericCommandExecutor->RegisterHandler("game.read_script_file",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  std::string filePath = json.value("filePath", "");
+
+                                                  std::string validationErr = ValidateJsFilePath(filePath);
+                                                  if (!validationErr.empty())
+                                                      return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
+
+                                                  try
+                                                  {
+                                                      namespace fs = std::filesystem;
+                                                      fs::path scriptsDir = fs::current_path() / "Data" / "Scripts";
+                                                      fs::path fullPath   = scriptsDir / filePath;
+
+                                                      if (!fs::exists(fullPath))
+                                                      {
+                                                          std::string r = R"({"success":false,"error":"File not found: )" + EscapeJsonString(filePath) + R"("})";
+                                                          return HandlerResult::Success({{"resultJson", std::any(r)}});
+                                                      }
+
+                                                      std::ifstream inFile(fullPath, std::ios::in);
+                                                      if (!inFile.is_open())
+                                                      {
+                                                          std::string r = R"({"success":false,"error":"Failed to open file for reading: )" + EscapeJsonString(filePath) + R"("})";
+                                                          return HandlerResult::Success({{"resultJson", std::any(r)}});
+                                                      }
+
+                                                      std::stringstream buffer;
+                                                      buffer << inFile.rdbuf();
+                                                      inFile.close();
+
+                                                      std::string content   = buffer.str();
+                                                      size_t      lineCount = std::count(content.begin(), content.end(), '\n') + 1;
+                                                      size_t      byteSize  = content.length();
+
+                                                      std::ostringstream resultJson;
+                                                      resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(fullPath.string())
+                                                                 << R"(","content":")" << EscapeJsonString(content)
+                                                                 << R"(","lineCount":)" << lineCount
+                                                                 << R"(,"byteSize":)" << byteSize << "}";
+                                                      return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                                  }
+                                                  catch (std::exception const& e)
+                                                  {
+                                                      std::string r = R"({"success":false,"error":"Read script file exception: )" + EscapeJsonString(e.what()) + R"("})";
+                                                      return HandlerResult::Success({{"resultJson", std::any(r)}});
+                                                  }
+                                              });
+
+    // game.delete_script_file — Delete a .js file from Scripts directory
+    m_genericCommandExecutor->RegisterHandler("game.delete_script_file",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  std::string filePath = json.value("filePath", "");
+
+                                                  std::string validationErr = ValidateJsFilePath(filePath);
+                                                  if (!validationErr.empty())
+                                                      return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
+
+                                                  // Protected files list
+                                                  static const std::vector<std::string> protectedFiles = {
+                                                      "JSEngine.js", "JSGame.js", "InputSystem.js", "main.js",
+                                                      "kadi/KADIGameControl.js", "kadi/GameControlHandler.js",
+                                                      "kadi/GameControlTools.js", "kadi/DevelopmentToolHandler.js",
+                                                      "kadi/DevelopmentTools.js", "core/Subsystem.js",
+                                                      "components/RendererSystem.js", "components/Prop.js"
+                                                  };
+
+                                                  std::string normalizedPath = filePath;
+                                                  std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
+
+                                                  for (auto const& pf : protectedFiles)
+                                                  {
+                                                      if (normalizedPath == pf || normalizedPath.find(pf) != std::string::npos)
+                                                      {
+                                                          std::string r = R"({"success":false,"error":"Cannot delete protected file: )" + EscapeJsonString(filePath) + R"("})";
+                                                          return HandlerResult::Success({{"resultJson", std::any(r)}});
+                                                      }
+                                                  }
+
+                                                  try
+                                                  {
+                                                      namespace fs = std::filesystem;
+                                                      fs::path scriptsDir = fs::current_path() / "Data" / "Scripts";
+                                                      fs::path fullPath   = scriptsDir / filePath;
+
+                                                      bool existed = fs::exists(fullPath);
+                                                      if (existed) fs::remove(fullPath);
+
+                                                      std::ostringstream resultJson;
+                                                      resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(fullPath.string())
+                                                                 << R"(","existed":)" << (existed ? "true" : "false") << "}";
+                                                      return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                                  }
+                                                  catch (std::exception const& e)
+                                                  {
+                                                      std::string r = R"({"success":false,"error":"Delete script file exception: )" + EscapeJsonString(e.what()) + R"("})";
+                                                      return HandlerResult::Success({{"resultJson", std::any(r)}});
+                                                  }
+                                              });
+
+    // game.inject_key_press — Inject a single key press with duration
+    m_genericCommandExecutor->RegisterHandler("game.inject_key_press",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  int keyCode    = json.value("keyCode", -1);
+                                                  int durationMs = json.value("durationMs", -1);
+
+                                                  if (keyCode < 0 || keyCode > 255)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"Invalid keyCode: must be 0-255"})"))}});
+                                                  }
+                                                  if (durationMs < 0)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"Invalid durationMs: must be >= 0"})"))}});
+                                                  }
+                                                  if (!g_input)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"InputSystem not available"})"))}});
+                                                  }
+
+                                                  g_input->InjectKeyPress(static_cast<unsigned char>(keyCode), durationMs);
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"keyCode":)" << keyCode << R"(,"durationMs":)" << durationMs << "}";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.inject_key_hold — Inject multi-key sequence with timing control
+    m_genericCommandExecutor->RegisterHandler("game.inject_key_hold",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  if (!json.contains("keySequence") || !json["keySequence"].is_array())
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"Missing or invalid 'keySequence' array"})"))}});
+                                                  }
+
+                                                  if (!g_input)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"InputSystem not available"})"))}});
+                                                  }
+
+                                                  try
+                                                  {
+                                                      std::vector<sKeySequenceItem> keySequence;
+                                                      for (auto const& keyItem : json["keySequence"])
+                                                      {
+                                                          sKeySequenceItem item;
+                                                          item.keyCode    = static_cast<unsigned char>(keyItem.value("keyCode", 0));
+                                                          item.delayMs    = keyItem.value("delayMs", 0);
+                                                          item.durationMs = keyItem.value("durationMs", 0);
+                                                          keySequence.push_back(item);
+                                                      }
+
+                                                      if (keySequence.empty())
+                                                      {
+                                                          return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"keySequence cannot be empty"})"))}});
+                                                      }
+
+                                                      uint32_t primaryJobId = g_input->InjectKeySequence(keySequence);
+                                                      if (primaryJobId == 0)
+                                                      {
+                                                          return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"Failed to inject key sequence"})"))}});
+                                                      }
+
+                                                      std::ostringstream resultJson;
+                                                      resultJson << R"({"success":true,"primaryJobId":)" << primaryJobId
+                                                                 << R"(,"keyCount":)" << keySequence.size() << "}";
+                                                      return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                                  }
+                                                  catch (std::exception const& e)
+                                                  {
+                                                      std::string r = R"({"success":false,"error":"Inject key hold exception: )" + EscapeJsonString(e.what()) + R"("})";
+                                                      return HandlerResult::Success({{"resultJson", std::any(r)}});
+                                                  }
+                                              });
+
+    // game.get_key_hold_status — Get status of a key hold job
+    m_genericCommandExecutor->RegisterHandler("game.get_key_hold_status",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  uint32_t jobId = json.value("jobId", 0u);
+                                                  if (!g_input)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"InputSystem not available"})"))}});
+                                                  }
+
+                                                  sToolJobStatus status = g_input->GetKeyHoldStatus(jobId);
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"jobId":)" << status.jobId
+                                                             << R"(,"toolType":")" << status.toolType
+                                                             << R"(","status":")" << static_cast<int>(status.status)
+                                                             << R"(","metadata":{)";
+
+                                                  bool first = true;
+                                                  for (auto const& [key, value] : status.metadata)
+                                                  {
+                                                      if (!first) resultJson << ",";
+                                                      resultJson << "\"" << key << "\":\"" << value << "\"";
+                                                      first = false;
+                                                  }
+                                                  resultJson << "}}";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.cancel_key_hold — Cancel an active key hold job
+    m_genericCommandExecutor->RegisterHandler("game.cancel_key_hold",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  uint32_t jobId = json.value("jobId", 0u);
+                                                  if (!g_input)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"InputSystem not available"})"))}});
+                                                  }
+
+                                                  bool cancelled = g_input->CancelKeyHold(jobId);
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"jobId":)" << jobId
+                                                             << R"(,"cancelled":)" << (cancelled ? "true" : "false") << "}";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.list_active_key_holds — List all active key hold jobs
+    m_genericCommandExecutor->RegisterHandler("game.list_active_key_holds",
+                                              [](std::any const& /*payload*/) -> HandlerResult
+                                              {
+                                                  if (!g_input)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"InputSystem not available"})"))}});
+                                                  }
+
+                                                  std::vector<sToolJobStatus> activeJobs = g_input->ListActiveKeyHolds();
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"count":)" << activeJobs.size() << R"(,"jobs":[)";
+
+                                                  for (size_t i = 0; i < activeJobs.size(); ++i)
+                                                  {
+                                                      auto const& job = activeJobs[i];
+                                                      resultJson << R"({"jobId":)" << job.jobId
+                                                                 << R"(,"toolType":")" << job.toolType
+                                                                 << R"(","status":")" << static_cast<int>(job.status)
+                                                                 << R"(","metadata":{)";
+
+                                                      bool first = true;
+                                                      for (auto const& [key, value] : job.metadata)
+                                                      {
+                                                          if (!first) resultJson << ",";
+                                                          resultJson << "\"" << key << "\":\"" << value << "\"";
+                                                          first = false;
+                                                      }
+                                                      resultJson << "}}";
+                                                      if (i < activeJobs.size() - 1) resultJson << ",";
+                                                  }
+                                                  resultJson << "]}";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.add_watched_file — Add a .js file to hot-reload file watcher
+    m_genericCommandExecutor->RegisterHandler("game.add_watched_file",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  std::string filePath = json.value("filePath", "");
+
+                                                  std::string validationErr = ValidateJsFilePath(filePath);
+                                                  if (!validationErr.empty())
+                                                      return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
+
+                                                  if (!g_scriptSubsystem)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"ScriptSubsystem not available"})"))}});
+                                                  }
+
+                                                  std::string relativePath = "Data/Scripts/" + filePath;
+                                                  g_scriptSubsystem->AddWatchedFile(relativePath);
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(filePath)
+                                                             << R"(","relativePath":")" << EscapeJsonString(relativePath) << R"("})";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.remove_watched_file — Remove a .js file from hot-reload file watcher
+    m_genericCommandExecutor->RegisterHandler("game.remove_watched_file",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  std::string filePath = json.value("filePath", "");
+
+                                                  if (filePath.empty())
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"Invalid file path: cannot be empty"})"))}});
+                                                  }
+                                                  if (filePath.find("..") != std::string::npos)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"Invalid file path: directory traversal not allowed"})"))}});
+                                                  }
+                                                  if (!g_scriptSubsystem)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"ScriptSubsystem not available"})"))}});
+                                                  }
+
+                                                  std::string relativePath = "Data/Scripts/" + filePath;
+                                                  g_scriptSubsystem->RemoveWatchedFile(relativePath);
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(filePath)
+                                                             << R"(","relativePath":")" << EscapeJsonString(relativePath) << R"("})";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.get_watched_files — Get list of all watched .js files
+    m_genericCommandExecutor->RegisterHandler("game.get_watched_files",
+                                              [](std::any const& /*payload*/) -> HandlerResult
+                                              {
+                                                  if (!g_scriptSubsystem)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"ScriptSubsystem not available"})"))}});
+                                                  }
+
+                                                  std::vector<std::string> watchedFiles = g_scriptSubsystem->GetWatchedFiles();
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"count":)" << watchedFiles.size() << R"(,"files":[)";
+
+                                                  for (size_t i = 0; i < watchedFiles.size(); ++i)
+                                                  {
+                                                      resultJson << "\"" << EscapeJsonString(watchedFiles[i]) << "\"";
+                                                      if (i < watchedFiles.size() - 1) resultJson << ",";
+                                                  }
+                                                  resultJson << "]}";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.capture_screenshot — Capture current frame as PNG or JPEG
+    m_genericCommandExecutor->RegisterHandler("game.capture_screenshot",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  std::string format  = json.value("format", "png");
+                                                  int         quality = json.value("quality", 90);
+                                                  std::string name    = json.value("filename", "");
+
+                                                  // Auto-generate filename if not provided
+                                                  if (name.empty())
+                                                  {
+                                                      auto        now       = std::chrono::system_clock::now();
+                                                      std::time_t nowTime   = std::chrono::system_clock::to_time_t(now);
+                                                      std::tm     localTime = {};
+                                                      localtime_s(&localTime, &nowTime);
+
+                                                      auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                    now.time_since_epoch()) % 1000;
+
+                                                      std::ostringstream oss;
+                                                      oss << "screenshot_"
+                                                          << std::put_time(&localTime, "%Y-%m-%d_%H%M%S")
+                                                          << "_" << std::setfill('0') << std::setw(3) << ms.count();
+                                                      name = oss.str();
+                                                  }
+
+                                                  // Output directory: Run/Screenshots/
+                                                  namespace fs       = std::filesystem;
+                                                  fs::path outputDir = fs::current_path() / "Screenshots";
+
+                                                  std::string outFilePath;
+                                                  bool        success = g_renderer->CaptureScreenshot(
+                                                      outputDir.string(), name, format, quality, outFilePath);
+
+                                                  if (!success)
+                                                  {
+                                                      std::string r = R"({"success":false,"error":"Screenshot capture failed"})";
+                                                      return HandlerResult::Success({{"resultJson", std::any(r)}});
+                                                  }
+
+                                                  // Get file size and read file as binary for base64 encoding
+                                                  uintmax_t fileSize = 0;
+                                                  std::string imageBase64;
+                                                  if (fs::exists(outFilePath))
+                                                  {
+                                                      fileSize = fs::file_size(outFilePath);
+
+                                                      // Read file into binary buffer
+                                                      std::ifstream file(outFilePath, std::ios::binary);
+                                                      if (file)
+                                                      {
+                                                          std::vector<unsigned char> fileData(
+                                                              (std::istreambuf_iterator<char>(file)),
+                                                              std::istreambuf_iterator<char>());
+                                                          imageBase64 = KADIAuthenticationUtility::Base64Encode(fileData);
+                                                      }
+                                                  }
+
+                                                  std::string mimeType = (format == "jpeg" || format == "jpg")
+                                                                             ? "image/jpeg" : "image/png";
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(outFilePath)
+                                                             << R"(","format":")" << format
+                                                             << R"(","fileSize":)" << fileSize
+                                                             << R"(,"mimeType":")" << mimeType
+                                                             << R"(","imageData":")" << imageBase64 << R"("})";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
     DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - Async architecture initialized");
 
     g_game = new Game();
@@ -1940,14 +2532,9 @@ void App::SetupScriptingBindings()
     }
 
     // Register core script interfaces
-    m_gameScriptInterface = std::make_shared<GameScriptInterface>(g_game);
-    g_scriptSubsystem->RegisterScriptableObject("game", m_gameScriptInterface);
-
+    // NOTE: GameScriptInterface removed — all methods migrated to GenericCommand handlers (game.*)
     m_inputScriptInterface = std::make_shared<InputScriptInterface>(g_input);
     g_scriptSubsystem->RegisterScriptableObject("input", m_inputScriptInterface);
-
-    m_clockScriptInterface = std::make_shared<ClockScriptInterface>();
-    g_scriptSubsystem->RegisterScriptableObject("clock", m_clockScriptInterface);
 
     // Register KADI broker integration
     if (g_kadiSubsystem)
