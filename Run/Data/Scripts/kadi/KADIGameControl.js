@@ -7,6 +7,7 @@ import {Subsystem} from '../Core/Subsystem.js';
 import {GameControlHandler} from './GameControlHandler.js';
 import {GameControlTools} from './GameControlTools.js';
 import {DevelopmentToolHandler} from './DevelopmentToolHandler.js';
+import {CommandQueue} from '../Interface/CommandQueue.js';
 import {DevelopmentTools} from './DevelopmentTools.js';
 
 /**
@@ -33,7 +34,9 @@ export class KADIGameControl extends Subsystem
 
         this.jsGame = jsGame;
         this.gameControlHandler = new GameControlHandler(jsGame);
-        this.developmentToolHandler = new DevelopmentToolHandler(game);  // Pass global C++ game interface
+        // Use CommandQueue singleton for async GenericCommand pipeline
+        const commandQueue = new CommandQueue();
+        this.developmentToolHandler = new DevelopmentToolHandler(commandQueue);
         this.toolsRegistered = false;
         this.connectionInitiated = false;
 
@@ -155,7 +158,28 @@ export class KADIGameControl extends Subsystem
     }
 
     /**
-     * Update (lazy KADI initialization + no-op)
+     * Publish game.ready event to notify external agents (e.g. agent-builder)
+     * that DaemonAgent has connected and registered all tools.
+     */
+    publishGameReadyEvent()
+    {
+        try
+        {
+            const allTools = [...GameControlTools, ...DevelopmentTools];
+            kadi.publishEvent('game.ready', JSON.stringify({
+                agentName: 'DaemonAgent',
+                toolCount: allTools.length,
+                timestamp: Date.now()
+            }));
+            console.log('KADIGameControl: Published game.ready event');
+        } catch (error)
+        {
+            console.log('KADIGameControl: WARNING - Failed to publish game.ready event:', error);
+        }
+    }
+
+    /**
+     * Update (lazy KADI initialization + deferred game.ready publish)
      */
     update(deltaTime)
     {
@@ -180,9 +204,24 @@ export class KADIGameControl extends Subsystem
             this.setupKADITools();
             this.kadiInitialized = true;
             console.log('KADIGameControl: Initialization complete');
+
+            // Step 3: Schedule game.ready event after delay (broker processes
+            // register and publish concurrently, so we need to wait for
+            // registration to complete before publishing)
+            this.gameReadyDelayRemaining = 3.0; // seconds
         }
 
-        // No update logic needed - KADI is callback-driven
+        // Deferred game.ready publish — count down via update loop
+        // (V8 runtime has no setTimeout)
+        if (this.gameReadyDelayRemaining !== undefined && this.gameReadyDelayRemaining > 0)
+        {
+            this.gameReadyDelayRemaining -= deltaTime;
+            if (this.gameReadyDelayRemaining <= 0)
+            {
+                this.gameReadyDelayRemaining = undefined;
+                this.publishGameReadyEvent();
+            }
+        }
     }
 
     /**
