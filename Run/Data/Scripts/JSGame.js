@@ -590,12 +590,12 @@ export class JSGame
 
 
                 // P: Pause game clock
-                if (input.wasKeyJustPressed(KEYCODE_P))
+                if (globalThis.inputState && globalThis.inputState.justPressed[KEYCODE_P])
                 {
                     this.engine.setSystemEnabled('gameRender', false);
                 }
 
-                if (input.wasKeyJustPressed(KEYCODE_O))
+                if (globalThis.inputState && globalThis.inputState.justPressed[KEYCODE_O])
                 {
                     this.engine.setSystemEnabled('gameRender', true);
                 }

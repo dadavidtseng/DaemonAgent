@@ -1,77 +1,31 @@
 //----------------------------------------------------------------------------------------------------
 // InputInterface.js
-// Wrapper for C++ input interface (globalThis.input)
+// Wrapper over globalThis.inputState (FrameEventQueue-driven local input state)
 // Part of the interface wrapper layer for C++/JavaScript bridge
 //----------------------------------------------------------------------------------------------------
 
 /**
- * InputInterface - Clean abstraction over C++ input system
+ * InputInterface - Clean abstraction over the JS-local InputState
  *
- * This wrapper provides a JavaScript-friendly interface to the C++ input system,
- * abstracting direct globalThis access and providing safe fallbacks.
+ * After the FrameEventQueue refactor, keyboard/mouse state is maintained locally
+ * in globalThis.inputState (populated by InputSystem draining FrameEventQueue).
+ * This wrapper provides the same API surface that KeyboardInputComponent and
+ * other consumers relied on, now backed by the race-free local state.
  *
- * Design Principles:
- * - Single Responsibility: Only wraps C++ input interface
- * - Safe Fallbacks: Returns sensible defaults if C++ interface unavailable
- * - Type Safety: Clear return types and parameter documentation
- * - Testability: Can be mocked for unit testing
- *
- * C++ Interface Methods (exposed via globalThis.input):
- * - wasKeyJustPressed(keyCode): boolean
- * - wasKeyJustReleased(keyCode): boolean
- * - isKeyDown(keyCode): boolean
- * - getMousePosition(): {x, y}
- * - getCursorClientDelta(): {x, y}
- * - isMouseButtonDown(button): boolean
- * - isControllerConnected(index): boolean
- * - isControllerButtonPressed(index, button): boolean
- * - getControllerAxis(index, axis): number
- *
- * Xbox Controller Button Mapping:
- * - A = 0, B = 1, X = 2, Y = 3
- * - LSHOULDER = 4, RSHOULDER = 5
- * - BACK = 6, START = 7
- * - LTHUMB = 8, RTHUMB = 9
- * - DPAD_UP = 10, DPAD_DOWN = 11, DPAD_LEFT = 12, DPAD_RIGHT = 13
- *
- * Xbox Controller Axis Mapping:
- * - LEFT_STICK_X = 0, LEFT_STICK_Y = 1
- * - RIGHT_STICK_X = 2, RIGHT_STICK_Y = 3
- * - LEFT_TRIGGER = 4, RIGHT_TRIGGER = 5
- *
- * Usage Example:
- * ```javascript
- * const inputInterface = new InputInterface();
- * if (inputInterface.wasKeyJustPressed(KEYCODE_SPACE)) {
- *     // Handle spacebar press
- * }
- * const controller = inputInterface.getController(0);
- * if (controller.isButtonDown('A')) {
- *     // Handle A button press
- * }
- * ```
+ * Controller input is not yet routed through FrameEventQueue and returns defaults.
  */
 export class InputInterface
 {
     constructor()
     {
-        this.cppInput = globalThis.input; // C++ input interface reference
-
-        if (!this.cppInput)
-        {
-            console.log('InputInterface: C++ input interface (globalThis.input) not available');
-        }
-        else
-        {
-            console.log('InputInterface: Successfully connected to C++ input interface');
-        }
-
-        // Create controller wrapper cache
+        // Create controller wrapper cache (stubs until controller events are added)
         this.controllerCache = [];
         for (let i = 0; i < 4; i++)
         {
             this.controllerCache[i] = new XboxController(this, i);
         }
+
+        console.log('InputInterface: Connected to globalThis.inputState (FrameEventQueue)');
     }
 
     // === KEYBOARD INPUT ===
@@ -83,11 +37,8 @@ export class InputInterface
      */
     wasKeyJustPressed(keyCode)
     {
-        if (!this.cppInput)
-        {
-            return false;
-        }
-        return this.cppInput.wasKeyJustPressed(keyCode) ?? false;
+        const state = globalThis.inputState;
+        return state ? !!state.justPressed[keyCode] : false;
     }
 
     /**
@@ -97,11 +48,8 @@ export class InputInterface
      */
     wasKeyJustReleased(keyCode)
     {
-        if (!this.cppInput)
-        {
-            return false;
-        }
-        return this.cppInput.wasKeyJustReleased(keyCode) ?? false;
+        const state = globalThis.inputState;
+        return state ? !!state.justReleased[keyCode] : false;
     }
 
     /**
@@ -111,11 +59,8 @@ export class InputInterface
      */
     isKeyDown(keyCode)
     {
-        if (!this.cppInput)
-        {
-            return false;
-        }
-        return this.cppInput.isKeyDown(keyCode) ?? false;
+        const state = globalThis.inputState;
+        return state ? !!state.keys[keyCode] : false;
     }
 
     // === MOUSE INPUT ===
@@ -126,11 +71,8 @@ export class InputInterface
      */
     getMousePosition()
     {
-        if (!this.cppInput || !this.cppInput.getMousePosition)
-        {
-            return {x: 0, y: 0};
-        }
-        return this.cppInput.getMousePosition() ?? {x: 0, y: 0};
+        const state = globalThis.inputState;
+        return state ? {x: state.cursorX, y: state.cursorY} : {x: 0, y: 0};
     }
 
     /**
@@ -139,47 +81,29 @@ export class InputInterface
      */
     getCursorClientDelta()
     {
-        if (!this.cppInput || !this.cppInput.getCursorClientDelta)
-        {
-            return {x: 0, y: 0};
-        }
-
-        // C++ returns a string like "{ x: 1.5, y: -2.3 }", need to parse it
-        const deltaStr = this.cppInput.getCursorClientDelta();
-
-        if (!deltaStr || typeof deltaStr !== 'string')
-        {
-            return {x: 0, y: 0};
-        }
-
-        try
-        {
-            // Parse C++ Vec2 string format: "{ x: 1.5, y: -2.3 }"
-            // Using eval is safe here since the string comes directly from C++ engine
-            return eval('(' + deltaStr + ')');
-        }
-        catch (error)
-        {
-            console.log('InputInterface: Failed to parse getCursorClientDelta:', deltaStr, error);
-            return {x: 0, y: 0};
-        }
+        const state = globalThis.inputState;
+        return state ? {x: state.cursorDX, y: state.cursorDY} : {x: 0, y: 0};
     }
 
     /**
      * Check if a mouse button is currently down
+     * Mouse buttons are tracked via mouseButtonDown/mouseButtonUp events in InputState.
      * @param {number} button - Mouse button index (0=left, 1=right, 2=middle)
      * @returns {boolean} True if button is down
      */
     isMouseButtonDown(button)
     {
-        if (!this.cppInput || !this.cppInput.isMouseButtonDown)
-        {
-            return false;
-        }
-        return this.cppInput.isMouseButtonDown(button) ?? false;
+        // Mouse buttons share the keys[] array via keyCode from C++ FrameEvent
+        // C++ maps mouse buttons to virtual key codes (VK_LBUTTON=1, VK_RBUTTON=2, VK_MBUTTON=4)
+        const state = globalThis.inputState;
+        if (!state) return false;
+        // Map button index to Windows VK codes: 0→1(VK_LBUTTON), 1→2(VK_RBUTTON), 2→4(VK_MBUTTON)
+        const vkMap = [1, 2, 4];
+        const vk = vkMap[button];
+        return vk !== undefined ? !!state.keys[vk] : false;
     }
 
-    // === CONTROLLER INPUT ===
+    // === CONTROLLER INPUT (stubs — not yet routed through FrameEventQueue) ===
 
     /**
      * Get Xbox controller wrapper for a specific controller index
@@ -191,64 +115,47 @@ export class InputInterface
         if (index < 0 || index >= 4)
         {
             console.log(`InputInterface: Invalid controller index ${index} (must be 0-3)`);
-            return this.controllerCache[0]; // Return controller 0 as fallback
+            return this.controllerCache[0];
         }
         return this.controllerCache[index];
     }
 
     /**
      * Check if controller is connected
-     * @param {number} index - Controller index (0-3)
-     * @returns {boolean} True if controller is connected
+     * TODO: Route controller events through FrameEventQueue
      */
     isControllerConnected(index)
     {
-        if (!this.cppInput || !this.cppInput.isControllerConnected)
-        {
-            return false;
-        }
-        return this.cppInput.isControllerConnected(index) ?? false;
+        return false;
     }
 
     /**
      * Check if controller button is pressed
-     * @param {number} controllerIndex - Controller index (0-3)
-     * @param {number} buttonIndex - Button index (0-13)
-     * @returns {boolean} True if button is pressed
+     * TODO: Route controller events through FrameEventQueue
      */
     isControllerButtonPressed(controllerIndex, buttonIndex)
     {
-        if (!this.cppInput || !this.cppInput.isControllerButtonPressed)
-        {
-            return false;
-        }
-        return this.cppInput.isControllerButtonPressed(controllerIndex, buttonIndex) ?? false;
+        return false;
     }
 
     /**
      * Get controller axis value
-     * @param {number} controllerIndex - Controller index (0-3)
-     * @param {number} axisIndex - Axis index (0-5)
-     * @returns {number} Axis value (-1.0 to 1.0 for sticks, 0.0 to 1.0 for triggers)
+     * TODO: Route controller events through FrameEventQueue
      */
     getControllerAxis(controllerIndex, axisIndex)
     {
-        if (!this.cppInput || !this.cppInput.getControllerAxis)
-        {
-            return 0.0;
-        }
-        return this.cppInput.getControllerAxis(controllerIndex, axisIndex) ?? 0.0;
+        return 0.0;
     }
 
     // === INTERFACE STATUS ===
 
     /**
-     * Check if C++ input interface is available
-     * @returns {boolean} True if C++ interface is connected
+     * Check if input state is available
+     * @returns {boolean} True if globalThis.inputState exists
      */
     isAvailable()
     {
-        return this.cppInput !== undefined && this.cppInput !== null;
+        return globalThis.inputState !== undefined && globalThis.inputState !== null;
     }
 
     /**
@@ -258,15 +165,8 @@ export class InputInterface
     {
         return {
             available: this.isAvailable(),
-            cppInterfaceType: typeof this.cppInput,
-            hasMethods: this.cppInput ? {
-                wasKeyJustPressed: typeof this.cppInput.wasKeyJustPressed === 'function',
-                wasKeyJustReleased: typeof this.cppInput.wasKeyJustReleased === 'function',
-                isKeyDown: typeof this.cppInput.isKeyDown === 'function',
-                isControllerConnected: typeof this.cppInput.isControllerConnected === 'function',
-                isControllerButtonPressed: typeof this.cppInput.isControllerButtonPressed === 'function',
-                getControllerAxis: typeof this.cppInput.getControllerAxis === 'function'
-            } : null
+            backend: 'FrameEventQueue (inputState)',
+            controllerSupport: false
         };
     }
 }
@@ -398,4 +298,4 @@ export default InputInterface;
 // Export to globalThis for hot-reload detection
 globalThis.InputInterface = InputInterface;
 
-console.log('InputInterface: Wrapper loaded (Interface Layer with Xbox Controller support)');
+console.log('InputInterface: Wrapper loaded (FrameEventQueue backend with Xbox Controller stubs)');
