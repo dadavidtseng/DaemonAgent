@@ -27,13 +27,14 @@
 #include "Engine/Core/Engine.hpp"
 #include "Engine/Core/EngineCommon.hpp"
 #include "Engine/Core/ErrorWarningAssert.hpp"
+#include "Engine/Core/FrameEventQueue.hpp"
+#include "Engine/Core/FrameEventQueueScriptInterface.hpp"
 #include "Engine/Core/GenericCommandExecutor.hpp"
 #include "Engine/Core/GenericCommandQueue.hpp"
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/Core/LogSubsystem.hpp"
 #include "Engine/Entity/EntityAPI.hpp"
 #include "Engine/Entity/EntityStateBuffer.hpp"
-#include "Engine/Input/InputScriptInterface.hpp"
 #include "Engine/Input/InputSystem.hpp"
 #include "Engine/Network/KADIScriptInterface.hpp"
 #include "Engine/Network/KADIAuthenticationUtility.hpp"
@@ -131,6 +132,10 @@ void App::Startup()
 
     // Initialize async architecture infrastructure
     m_callbackQueue      = new CallbackQueue();
+    m_frameEventQueue    = new FrameEventQueue();
+
+    // Connect FrameEventQueue to InputSystem (C++ → JS event channel)
+    g_input->SetFrameEventQueue(m_frameEventQueue);
 
     // Load GenericCommand configuration from JSON (optional — uses defaults if file missing)
     size_t   gcQueueCapacity     = 500;    // GenericCommandQueue::DEFAULT_CAPACITY
@@ -2195,7 +2200,26 @@ void App::Startup()
                                                   return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                               });
 
-    DAEMON_LOG(LogApp, eLogVerbosity::Display, "App::Startup - Async architecture initialized");
+    // input.set_cursor_mode — Set cursor mode (POINTER=0, FPS=1)
+    // Migrated from InputScriptInterface to GenericCommand pipeline
+    m_genericCommandExecutor->RegisterHandler("input.set_cursor_mode",
+                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = parseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  int mode = json.value("mode", -1);
+                                                  if (mode < 0 || mode > 1)
+                                                  {
+                                                      return HandlerResult::Error("Invalid cursor mode (0=POINTER, 1=FPS)");
+                                                  }
+
+                                                  g_input->SetCursorMode(static_cast<eCursorMode>(mode));
+                                                  return HandlerResult::Success({});
+                                              });
+
+    DAEMON_LOG(LogApp, eLogVerbosity::Display, "XXXXXApp::Startup - Async architecture initialized");
 
     g_game = new Game();
     SetupScriptingBindings();
@@ -2284,6 +2308,14 @@ void App::Shutdown()
 
     delete m_callbackQueue;
     m_callbackQueue = nullptr;
+
+    // Disconnect FrameEventQueue from InputSystem before deletion
+    if (g_input)
+    {
+        g_input->SetFrameEventQueue(nullptr);
+    }
+    delete m_frameEventQueue;
+    m_frameEventQueue = nullptr;
 
     GEngine::Get().Shutdown();
 }
@@ -2532,9 +2564,15 @@ void App::SetupScriptingBindings()
     }
 
     // Register core script interfaces
+    // NOTE: InputScriptInterface removed — replaced by FrameEventQueue (event-driven input)
     // NOTE: GameScriptInterface removed — all methods migrated to GenericCommand handlers (game.*)
-    m_inputScriptInterface = std::make_shared<InputScriptInterface>(g_input);
-    g_scriptSubsystem->RegisterScriptableObject("input", m_inputScriptInterface);
+
+    // Register FrameEventQueue script interface (replaces InputScriptInterface)
+    if (m_frameEventQueue)
+    {
+        m_frameEventQueueScriptInterface = std::make_shared<FrameEventQueueScriptInterface>(m_frameEventQueue);
+        g_scriptSubsystem->RegisterScriptableObject("frameEvents", m_frameEventQueueScriptInterface);
+    }
 
     // Register KADI broker integration
     if (g_kadiSubsystem)

@@ -15,10 +15,11 @@
 class CameraStateBuffer;
 class CallbackQueue;
 class CallbackQueueScriptInterface;
+class FrameEventQueue;
+class FrameEventQueueScriptInterface;
 class GenericCommandExecutor;
 class GenericCommandQueue;
 class GenericCommandScriptInterface;
-class InputScriptInterface;
 class JSGameLogicJob;
 class KADIScriptInterface;
 class RenderResourceManager;
@@ -62,7 +63,7 @@ private:
     //------------------------------------------------------------------------------------------------
     // Script Interfaces
     //------------------------------------------------------------------------------------------------
-    std::shared_ptr<InputScriptInterface>             m_inputScriptInterface;
+    std::shared_ptr<FrameEventQueueScriptInterface>   m_frameEventQueueScriptInterface;
     std::shared_ptr<KADIScriptInterface>              m_kadiScriptInterface;
     std::shared_ptr<CallbackQueueScriptInterface>     m_callbackQueueScriptInterface;
     std::shared_ptr<GenericCommandScriptInterface>    m_genericCommandScriptInterface;
@@ -71,6 +72,7 @@ private:
     // Async Architecture Infrastructure
     //------------------------------------------------------------------------------------------------
     CallbackQueue*          m_callbackQueue          = nullptr;
+    FrameEventQueue*        m_frameEventQueue        = nullptr;
     GenericCommandQueue*    m_genericCommandQueue    = nullptr;
     GenericCommandExecutor* m_genericCommandExecutor = nullptr;
     JSGameLogicJob*         m_jsGameLogicJob         = nullptr;
