@@ -9,20 +9,16 @@
 
 #include "Game/Framework/App.hpp"
 //----------------------------------------------------------------------------------------------------
+#include "Engine/Resource/MeshCache.hpp"
 #include "Game/Framework/GameCommon.hpp"
 #include "Game/Framework/JSGameLogicJob.hpp"
-#include "Game/Framework/RenderResourceManager.hpp"
 #include "Game/Gameplay/Game.hpp"
 //----------------------------------------------------------------------------------------------------
-#include "Engine/Audio/AudioAPI.hpp"
-#include "Engine/Audio/AudioCommand.hpp"
-#include "Engine/Audio/AudioCommandQueue.hpp"
 #include "Engine/Audio/AudioStateBuffer.hpp"
 #include "Engine/Audio/AudioSystem.hpp"
 #include "Engine/Core/CallbackQueue.hpp"
 #include "Engine/Core/CallbackQueueScriptInterface.hpp"
 #include "Engine/Core/Clock.hpp"
-
 #include "Engine/Core/DevConsole.hpp"
 #include "Engine/Core/Engine.hpp"
 #include "Engine/Core/EngineCommon.hpp"
@@ -33,30 +29,24 @@
 #include "Engine/Core/GenericCommandQueue.hpp"
 #include "Engine/Core/JobSystem.hpp"
 #include "Engine/Core/LogSubsystem.hpp"
-#include "Engine/Entity/EntityAPI.hpp"
 #include "Engine/Entity/EntityStateBuffer.hpp"
 #include "Engine/Input/InputSystem.hpp"
-#include "Engine/Network/KADIScriptInterface.hpp"
 #include "Engine/Network/KADIAuthenticationUtility.hpp"
+#include "Engine/Network/KADIScriptInterface.hpp"
 #include "Engine/Platform/Window.hpp"
 #include "Engine/Renderer/Camera.hpp"
-#include "Engine/Renderer/CameraAPI.hpp"
 #include "Engine/Renderer/CameraStateBuffer.hpp"
+#include "Engine/Renderer/DebugRenderSystem.hpp"
 #include "Engine/Renderer/Renderer.hpp"
+#include "Engine/Renderer/Texture.hpp"
 #include "Engine/Renderer/VertexUtils.hpp"
 #include "Engine/Resource/ResourceSubsystem.hpp"
-#include "Engine/Script/ScriptSubsystem.hpp"
 #include "Engine/Script/GenericCommandScriptInterface.hpp"
+#include "Engine/Script/ScriptSubsystem.hpp"
 #include "Engine/UI/ImGuiSubsystem.hpp"
 #include "ThirdParty/json/json.hpp"
-#include <filesystem>
-#include <fstream>
-#include <chrono>
-#include <ctime>
-#include <iomanip>
-#include <sstream>
 
-#include "Engine/Renderer/DebugRenderSystem.hpp"
+#include <optional>
 
 
 //----------------------------------------------------------------------------------------------------
@@ -74,14 +64,22 @@ static std::string EscapeJsonString(std::string const& input)
     {
         switch (c)
         {
-        case '\\': escaped += "\\\\"; break;
-        case '\"': escaped += "\\\""; break;
-        case '\n': escaped += "\\n";  break;
-        case '\r': escaped += "\\r";  break;
-        case '\t': escaped += "\\t";  break;
-        case '\b': escaped += "\\b";  break;
-        case '\f': escaped += "\\f";  break;
-        default:   escaped += c;      break;
+        case '\\': escaped += "\\\\";
+            break;
+        case '\"': escaped += "\\\"";
+            break;
+        case '\n': escaped += "\\n";
+            break;
+        case '\r': escaped += "\\r";
+            break;
+        case '\t': escaped += "\\t";
+            break;
+        case '\b': escaped += "\\b";
+            break;
+        case '\f': escaped += "\\f";
+            break;
+        default: escaped += c;
+            break;
         }
     }
     return escaped;
@@ -93,21 +91,85 @@ static std::string EscapeJsonString(std::string const& input)
 //----------------------------------------------------------------------------------------------------
 static std::string ValidateJsFilePath(std::string const& filePath)
 {
-    if (filePath.empty())
-        return R"({"success":false,"error":"Invalid file path: cannot be empty"})";
+    if (filePath.empty()) return R"({"success":false,"error":"Invalid file path: cannot be empty"})";
 
-    if (filePath.find("..") != std::string::npos)
-        return R"({"success":false,"error":"Invalid file path: directory traversal not allowed"})";
+    if (filePath.find("..") != std::string::npos) return R"({"success":false,"error":"Invalid file path: directory traversal not allowed"})";
 
-    if (filePath.length() < 3 || filePath.substr(filePath.length() - 3) != ".js")
-        return R"({"success":false,"error":"Invalid file extension: must end with .js"})";
+    if (filePath.length() < 3 || filePath.substr(filePath.length() - 3) != ".js") return R"({"success":false,"error":"Invalid file extension: must end with .js"})";
 
     size_t      lastSlash = filePath.find_last_of("/\\");
     std::string filename  = (lastSlash != std::string::npos) ? filePath.substr(lastSlash + 1) : filePath;
-    if (!filename.empty() && filename[0] == '.')
-        return R"json({"success":false,"error":"Invalid filename: cannot start with dot (hidden files not allowed)"})json";
+    if (!filename.empty() && filename[0] == '.') return R"json({"success":false,"error":"Invalid filename: cannot start with dot (hidden files not allowed)"})json";
 
     return {};  // Valid
+}
+
+//----------------------------------------------------------------------------------------------------
+// Helper: Parse JSON payload from GenericCommand std::any (shared by all command handlers)
+//----------------------------------------------------------------------------------------------------
+static String ParseJsonPayload(std::any const& payload, nlohmann::json& outJson)
+{
+    String payloadStr;
+    try { payloadStr = std::any_cast<String>(payload); }
+    catch (std::bad_any_cast const&) { return "ERR_INVALID_PAYLOAD: expected JSON string"; }
+    try { outJson = nlohmann::json::parse(payloadStr); }
+    catch (nlohmann::json::exception const& e) { return Stringf("ERR_JSON_PARSE: %s", e.what()); }
+    return "";
+}
+
+//----------------------------------------------------------------------------------------------------
+// Helper: Parse Vec3 from JSON key holding [x, y, z] array
+//----------------------------------------------------------------------------------------------------
+static Vec3 ParseVec3(nlohmann::json const& json, char const* key, Vec3 const& defaultVal = Vec3::ZERO)
+{
+    auto arr = json.value(key, std::vector<double>{(double)defaultVal.x, (double)defaultVal.y, (double)defaultVal.z});
+    return Vec3(
+        static_cast<float>(arr.size() > 0 ? arr[0] : defaultVal.x),
+        static_cast<float>(arr.size() > 1 ? arr[1] : defaultVal.y),
+        static_cast<float>(arr.size() > 2 ? arr[2] : defaultVal.z)
+    );
+}
+
+//----------------------------------------------------------------------------------------------------
+// Helper: Parse Rgba8 from JSON with component keys r, g, b, a
+//----------------------------------------------------------------------------------------------------
+static Rgba8 ParseRgba8(nlohmann::json const& json, Rgba8 const& defaultVal = Rgba8::WHITE)
+{
+    return Rgba8(
+        static_cast<unsigned char>(json.value("r", (int)defaultVal.r)),
+        static_cast<unsigned char>(json.value("g", (int)defaultVal.g)),
+        static_cast<unsigned char>(json.value("b", (int)defaultVal.b)),
+        static_cast<unsigned char>(json.value("a", (int)defaultVal.a))
+    );
+}
+
+//----------------------------------------------------------------------------------------------------
+// Helper: Require entityId field from JSON, return nullopt if missing
+//----------------------------------------------------------------------------------------------------
+static std::optional<uint64_t> RequireEntityId(nlohmann::json const& json)
+{
+    if (!json.contains("entityId")) return std::nullopt;
+    return json.value("entityId", static_cast<uint64_t>(0));
+}
+
+//----------------------------------------------------------------------------------------------------
+// Helper: Configure orthographic screen camera state
+//----------------------------------------------------------------------------------------------------
+static void ConfigureScreenCamera(CameraState& state)
+{
+    Vec2 dims = Vec2(1600.f, 800.f);
+    if (Window::s_mainWindow)
+    {
+        dims = Window::s_mainWindow->GetViewportDimensions();
+    }
+    state.mode        = Camera::eMode_Orthographic;
+    state.orthoLeft   = 0.0f;
+    state.orthoBottom = 0.0f;
+    state.orthoRight  = dims.x;
+    state.orthoTop    = dims.y;
+    state.orthoNear   = 0.0f;
+    state.orthoFar    = 1.0f;
+    state.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -131,8 +193,8 @@ void App::Startup()
     g_eventSystem->SubscribeEventCallbackFunction("quit", OnCloseButtonClicked);
 
     // Initialize async architecture infrastructure
-    m_callbackQueue      = new CallbackQueue();
-    m_frameEventQueue    = new FrameEventQueue();
+    m_callbackQueue   = new CallbackQueue();
+    m_frameEventQueue = new FrameEventQueue();
 
     // Connect FrameEventQueue to InputSystem (C++ → JS event channel)
     g_input->SetFrameEventQueue(m_frameEventQueue);
@@ -176,17 +238,13 @@ void App::Startup()
     // Initialize state buffers with dirty tracking for O(d) swap optimization
     m_entityStateBuffer = new EntityStateBuffer();
     m_entityStateBuffer->EnableDirtyTracking(true);
-
     m_cameraStateBuffer = new CameraStateBuffer();
     m_cameraStateBuffer->EnableDirtyTracking(true);
-
-    // m_debugRenderStateBuffer->EnableDirtyTracking(true);
-
     m_audioStateBuffer = new AudioStateBuffer();
     m_audioStateBuffer->EnableDirtyTracking(true);
 
-    // Initialize render resource manager
-    m_renderResourceManager = new RenderResourceManager();
+    // Initialize mesh cache
+    m_meshCache = new MeshCache();
 
     // === GenericCommand handler: "create_mesh" (Task 8.3 — EntityScriptInterface migration) ===
     // Replaces EntityScriptInterface::ExecuteCreateMesh with GenericCommand pipeline.
@@ -195,36 +253,14 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("create_mesh",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  // Parse JSON payload from JavaScript
-                                                  String payloadStr;
-                                                  try
-                                                  {
-                                                      payloadStr = std::any_cast<String>(payload);
-                                                  }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try
-                                                  {
-                                                      json = nlohmann::json::parse(payloadStr);
-                                                  }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   // Extract fields with defaults matching EntityAPI.js validation
                                                   String meshType = json.value("meshType", "cube");
 
-                                                  auto posArr = json.value("position", std::vector<double>{0.0, 0.0, 0.0});
-                                                  Vec3 position(
-                                                      static_cast<float>(posArr.size() > 0 ? posArr[0] : 0.0),
-                                                      static_cast<float>(posArr.size() > 1 ? posArr[1] : 0.0),
-                                                      static_cast<float>(posArr.size() > 2 ? posArr[2] : 0.0)
-                                                  );
+                                                  Vec3 position = ParseVec3(json, "position");
 
                                                   float scale = json.value("scale", 1.0f);
 
@@ -240,16 +276,8 @@ void App::Startup()
                                                   static std::atomic<EntityID> s_nextEntityId{1};
                                                   EntityID                     entityId = s_nextEntityId++;
 
-                                                  // Register entity with RenderResourceManager (creates vertex buffer)
-                                                  int vbHandle = m_renderResourceManager->RegisterEntity(entityId, meshType, scale, color);
-                                                  if (vbHandle == 0)
-                                                  {
-                                                      DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                                                                 Stringf("GenericCommand [create_mesh]: RegisterEntity failed for entity %llu", entityId));
-                                                      return HandlerResult::Error("ERR_REGISTER_FAILED: could not create render resource");
-                                                  }
-
                                                   // Write directly to EntityStateBuffer (Audio pattern — no RenderCommandQueue hop)
+                                                  // Vertex data is created lazily by MeshCache on first render.
                                                   EntityState state;
                                                   state.position    = position;
                                                   state.orientation = EulerAngles::ZERO;
@@ -258,6 +286,7 @@ void App::Startup()
                                                   state.meshType    = meshType;
                                                   state.isActive    = true;
                                                   state.cameraType  = "world";
+                                                  state.textureId   = json.value("textureId", static_cast<uint64_t>(0));
 
                                                   auto* backBuffer        = m_entityStateBuffer->GetBackBuffer();
                                                   (*backBuffer)[entityId] = state;
@@ -278,35 +307,16 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("create_camera",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   // Extract position [x, y, z] — default [0, 0, 0]
-                                                  auto posArr = json.value("position", std::vector<double>{0.0, 0.0, 0.0});
-                                                  Vec3 position(
-                                                      static_cast<float>(posArr.size() > 0 ? posArr[0] : 0.0),
-                                                      static_cast<float>(posArr.size() > 1 ? posArr[1] : 0.0),
-                                                      static_cast<float>(posArr.size() > 2 ? posArr[2] : 0.0)
-                                                  );
+                                                  Vec3 position = ParseVec3(json, "position");
 
                                                   // Extract orientation [yaw, pitch, roll] — default [0, 0, 0]
-                                                  auto        oriArr = json.value("orientation", std::vector<double>{0.0, 0.0, 0.0});
-                                                  EulerAngles orientation(
-                                                      static_cast<float>(oriArr.size() > 0 ? oriArr[0] : 0.0),
-                                                      static_cast<float>(oriArr.size() > 1 ? oriArr[1] : 0.0),
-                                                      static_cast<float>(oriArr.size() > 2 ? oriArr[2] : 0.0)
-                                                  );
+                                                  Vec3        oriVec = ParseVec3(json, "orientation");
+                                                  EulerAngles orientation(oriVec.x, oriVec.y, oriVec.z);
 
                                                   String type = json.value("type", "world");
 
@@ -333,20 +343,7 @@ void App::Startup()
                                                   }
                                                   else if (type == "screen")
                                                   {
-                                                      Vec2 viewportDimensions = Vec2(1600.f, 800.f);
-                                                      if (Window::s_mainWindow)
-                                                      {
-                                                          viewportDimensions = Window::s_mainWindow->GetViewportDimensions();
-                                                      }
-
-                                                      state.mode        = Camera::eMode_Orthographic;
-                                                      state.orthoLeft   = 0.0f;
-                                                      state.orthoBottom = 0.0f;
-                                                      state.orthoRight  = viewportDimensions.x;
-                                                      state.orthoTop    = viewportDimensions.y;
-                                                      state.orthoNear   = 0.0f;
-                                                      state.orthoFar    = 1.0f;
-                                                      state.viewport    = AABB2(Vec2::ZERO, Vec2::ONE);
+                                                      ConfigureScreenCamera(state);
                                                   }
 
                                                   auto* backBuffer        = m_cameraStateBuffer->GetBackBuffer();
@@ -366,19 +363,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("set_active_camera",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   EntityID cameraId = json.value("cameraId", static_cast<uint64_t>(0));
                                                   if (cameraId == 0)
@@ -401,19 +388,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("update_camera_type",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   EntityID cameraId = json.value("cameraId", static_cast<uint64_t>(0));
                                                   if (cameraId == 0)
@@ -448,19 +425,7 @@ void App::Startup()
                                                   }
                                                   else if (type == "screen")
                                                   {
-                                                      Vec2 clientDimensions = Vec2(1600.f, 800.f);
-                                                      if (Window::s_mainWindow)
-                                                      {
-                                                          clientDimensions = Window::s_mainWindow->GetClientDimensions();
-                                                      }
-
-                                                      it->second.mode        = Camera::eMode_Orthographic;
-                                                      it->second.orthoLeft   = 0.0f;
-                                                      it->second.orthoBottom = 0.0f;
-                                                      it->second.orthoRight  = clientDimensions.x;
-                                                      it->second.orthoTop    = clientDimensions.y;
-                                                      it->second.orthoNear   = 0.0f;
-                                                      it->second.orthoFar    = 1.0f;
+                                                      ConfigureScreenCamera(it->second);
                                                   }
 
                                                   m_cameraStateBuffer->MarkDirty(cameraId);
@@ -477,19 +442,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("destroy_camera",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   EntityID cameraId = json.value("cameraId", static_cast<uint64_t>(0));
                                                   if (cameraId == 0)
@@ -518,19 +473,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("load_sound",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   String soundPath = json.value("soundPath", "");
                                                   if (soundPath.empty())
@@ -580,19 +525,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("play_sound",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   if (!json.contains("soundId"))
                                                   {
@@ -619,12 +554,7 @@ void App::Startup()
 
                                                   if (has3DPosition)
                                                   {
-                                                      auto posArr = json.value("position", std::vector<double>{0.0, 0.0, 0.0});
-                                                      Vec3 position(
-                                                          static_cast<float>(posArr.size() > 0 ? posArr[0] : 0.0),
-                                                          static_cast<float>(posArr.size() > 1 ? posArr[1] : 0.0),
-                                                          static_cast<float>(posArr.size() > 2 ? posArr[2] : 0.0)
-                                                      );
+                                                      Vec3 position       = ParseVec3(json, "position");
                                                       it->second.position = position;
                                                       playbackId          = g_audio->StartSoundAt(soundId, position, looped, volume);
                                                   }
@@ -653,19 +583,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("stop_sound",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   if (!json.contains("soundId"))
                                                   {
@@ -694,19 +614,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("set_volume",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   if (!json.contains("soundId"))
                                                   {
@@ -737,19 +647,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("update_3d_position",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   if (!json.contains("soundId"))
                                                   {
@@ -757,12 +657,7 @@ void App::Startup()
                                                   }
                                                   SoundID soundId = json.value("soundId", static_cast<uint64_t>(0));
 
-                                                  auto posArr = json.value("position", std::vector<double>{0.0, 0.0, 0.0});
-                                                  Vec3 position(
-                                                      static_cast<float>(posArr.size() > 0 ? posArr[0] : 0.0),
-                                                      static_cast<float>(posArr.size() > 1 ? posArr[1] : 0.0),
-                                                      static_cast<float>(posArr.size() > 2 ? posArr[2] : 0.0)
-                                                  );
+                                                  Vec3 position = ParseVec3(json, "position");
 
                                                   auto* backBuffer = m_audioStateBuffer->GetBackBuffer();
                                                   auto  it         = backBuffer->find(soundId);
@@ -788,19 +683,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("load_texture",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   String path = json.value("path", "");
                                                   if (path.empty())
@@ -836,19 +721,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("load_model",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   String path = json.value("path", "");
                                                   if (path.empty())
@@ -870,19 +745,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("load_shader",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   String path = json.value("path", "");
                                                   if (path.empty())
@@ -918,26 +783,14 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("entity.update_position",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   // Extract entityId (required)
-                                                  if (!json.contains("entityId"))
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
-                                                  }
-                                                  uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
+                                                  auto entityIdOpt = RequireEntityId(json);
+                                                  if (!entityIdOpt) return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
+                                                  uint64_t entityId = *entityIdOpt;
 
                                                   // Extract position components (required)
                                                   double x = json.value("x", 0.0);
@@ -966,26 +819,14 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("entity.move_by",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   // Extract entityId (required)
-                                                  if (!json.contains("entityId"))
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
-                                                  }
-                                                  uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
+                                                  auto entityIdOpt = RequireEntityId(json);
+                                                  if (!entityIdOpt) return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
+                                                  uint64_t entityId = *entityIdOpt;
 
                                                   // Extract delta components
                                                   double dx = json.value("dx", 0.0);
@@ -1013,25 +854,13 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("entity.update_orientation",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
-                                                  if (!json.contains("entityId"))
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
-                                                  }
-                                                  uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
+                                                  auto entityIdOpt = RequireEntityId(json);
+                                                  if (!entityIdOpt) return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
+                                                  uint64_t entityId = *entityIdOpt;
 
                                                   double yaw   = json.value("yaw", 0.0);
                                                   double pitch = json.value("pitch", 0.0);
@@ -1056,35 +885,15 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("entity.update_color",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
-                                                  if (!json.contains("entityId"))
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
-                                                  }
-                                                  uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
+                                                  auto entityIdOpt = RequireEntityId(json);
+                                                  if (!entityIdOpt) return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
+                                                  uint64_t entityId = *entityIdOpt;
 
-                                                  int r = json.value("r", 255);
-                                                  int g = json.value("g", 255);
-                                                  int b = json.value("b", 255);
-                                                  int a = json.value("a", 255);
-
-                                                  Rgba8 color(static_cast<unsigned char>(r),
-                                                              static_cast<unsigned char>(g),
-                                                              static_cast<unsigned char>(b),
-                                                              static_cast<unsigned char>(a));
+                                                  Rgba8 color = ParseRgba8(json);
 
                                                   // Write directly to EntityStateBuffer (Audio pattern — no RenderCommandQueue hop)
                                                   auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
@@ -1098,30 +907,44 @@ void App::Startup()
                                                   return HandlerResult::Success();
                                               });
 
+    // === GenericCommand handler: "entity.set_texture" ===
+    // Fire-and-forget: binds an opaque texture handle (from resource.loadTexture) to an entity.
+    // textureId=0 resets to default white texture.
+    m_genericCommandExecutor->RegisterHandler("entity.set_texture",
+                                              [this](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  auto entityIdOpt = RequireEntityId(json);
+                                                  if (!entityIdOpt) return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
+                                                  uint64_t entityId  = *entityIdOpt;
+                                                  uint64_t textureId = json.value("textureId", static_cast<uint64_t>(0));
+
+                                                  auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+                                                  auto  it         = backBuffer->find(entityId);
+                                                  if (it != backBuffer->end())
+                                                  {
+                                                      it->second.textureId = textureId;
+                                                      m_entityStateBuffer->MarkDirty(entityId);
+                                                  }
+
+                                                  return HandlerResult::Success();
+                                              });
+
     // === GenericCommand handler: "entity.destroy" (Task 9.1.5) ===
     // Lifecycle operation with optional callback for confirmation.
     m_genericCommandExecutor->RegisterHandler("entity.destroy",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
-                                                  if (!json.contains("entityId"))
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
-                                                  }
-                                                  uint64_t entityId = json.value("entityId", static_cast<uint64_t>(0));
+                                                  auto entityIdOpt = RequireEntityId(json);
+                                                  if (!entityIdOpt) return HandlerResult::Error("ERR_INVALID_PARAM: entityId is required");
+                                                  uint64_t entityId = *entityIdOpt;
 
                                                   // Write directly to EntityStateBuffer (Audio pattern — no RenderCommandQueue hop)
                                                   auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
@@ -1143,19 +966,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("camera.update",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   if (!json.contains("cameraId"))
                                                   {
@@ -1189,19 +1002,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("camera.update_position",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   if (!json.contains("cameraId"))
                                                   {
@@ -1231,19 +1034,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("camera.update_orientation",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   if (!json.contains("cameraId"))
                                                   {
@@ -1272,19 +1065,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("camera.move_by",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   if (!json.contains("cameraId"))
                                                   {
@@ -1314,19 +1097,9 @@ void App::Startup()
     m_genericCommandExecutor->RegisterHandler("camera.look_at",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
-                                                  String payloadStr;
-                                                  try { payloadStr = std::any_cast<String>(payload); }
-                                                  catch (std::bad_any_cast const&)
-                                                  {
-                                                      return HandlerResult::Error("ERR_INVALID_PAYLOAD: expected JSON string");
-                                                  }
-
                                                   nlohmann::json json;
-                                                  try { json = nlohmann::json::parse(payloadStr); }
-                                                  catch (nlohmann::json::exception const& e)
-                                                  {
-                                                      return HandlerResult::Error(Stringf("ERR_JSON_PARSE: %s", e.what()));
-                                                  }
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
 
                                                   if (!json.contains("cameraId"))
                                                   {
@@ -1361,31 +1134,14 @@ void App::Startup()
         return eDebugRenderMode::USE_DEPTH;
     };
 
-    auto parseJsonPayload = [](std::any const& payload, nlohmann::json& outJson) -> String
-    {
-        String payloadStr;
-        try { payloadStr = std::any_cast<String>(payload); }
-        catch (std::bad_any_cast const&)
-        {
-            return "ERR_INVALID_PAYLOAD: expected JSON string";
-        }
-
-        try { outJson = nlohmann::json::parse(payloadStr); }
-        catch (nlohmann::json::exception const& e)
-        {
-            return Stringf("ERR_JSON_PARSE: %s", e.what());
-        }
-
-        return ""; // empty = success
-    };
 
     // --- Control handlers ---
 
     m_genericCommandExecutor->RegisterHandler("debug_render.set_visible",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   DebugRenderSetVisible();
@@ -1393,10 +1149,10 @@ void App::Startup()
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.set_hidden",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   DebugRenderSetHidden();
@@ -1404,10 +1160,10 @@ void App::Startup()
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.clear",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   DebugRenderClear();
@@ -1415,10 +1171,10 @@ void App::Startup()
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.clear_all",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   DebugRenderClear();
@@ -1428,126 +1184,108 @@ void App::Startup()
     // --- World-space geometry handlers ---
 
     m_genericCommandExecutor->RegisterHandler("debug_render.add_world_point",
-                                              [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+                                              [parseDebugRenderMode](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
-                                                  Vec3  pos(json.value("x", 0.0f), json.value("y", 0.0f), json.value("z", 0.0f));
-                                                  float radius   = json.value("radius", 0.1f);
-                                                  float duration = json.value("duration", 0.0f);
-                                                  Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
-                                                              static_cast<unsigned char>(json.value("g", 255)),
-                                                              static_cast<unsigned char>(json.value("b", 255)),
-                                                              static_cast<unsigned char>(json.value("a", 255)));
-                                                  eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+                                                  Vec3             pos(json.value("x", 0.0f), json.value("y", 0.0f), json.value("z", 0.0f));
+                                                  float            radius   = json.value("radius", 0.1f);
+                                                  float            duration = json.value("duration", 0.0f);
+                                                  Rgba8            color    = ParseRgba8(json);
+                                                  eDebugRenderMode mode     = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
 
                                                   DebugAddWorldPoint(pos, radius, duration, color, color, mode);
                                                   return HandlerResult::Success();
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.add_world_line",
-                                              [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+                                              [parseDebugRenderMode](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
-                                                  Vec3  start(json.value("x1", 0.0f), json.value("y1", 0.0f), json.value("z1", 0.0f));
-                                                  Vec3  end(json.value("x2", 0.0f), json.value("y2", 0.0f), json.value("z2", 0.0f));
-                                                  float radius   = json.value("radius", 0.02f);
-                                                  float duration = json.value("duration", 0.0f);
-                                                  Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
-                                                              static_cast<unsigned char>(json.value("g", 255)),
-                                                              static_cast<unsigned char>(json.value("b", 255)),
-                                                              static_cast<unsigned char>(json.value("a", 255)));
-                                                  eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+                                                  Vec3             start(json.value("x1", 0.0f), json.value("y1", 0.0f), json.value("z1", 0.0f));
+                                                  Vec3             end(json.value("x2", 0.0f), json.value("y2", 0.0f), json.value("z2", 0.0f));
+                                                  float            radius   = json.value("radius", 0.02f);
+                                                  float            duration = json.value("duration", 0.0f);
+                                                  Rgba8            color    = ParseRgba8(json);
+                                                  eDebugRenderMode mode     = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
 
                                                   DebugAddWorldLine(start, end, radius, duration, color, color, mode);
                                                   return HandlerResult::Success();
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.add_world_cylinder",
-                                              [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+                                              [parseDebugRenderMode](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
-                                                  Vec3  base(json.value("baseX", 0.0f), json.value("baseY", 0.0f), json.value("baseZ", 0.0f));
-                                                  Vec3  top(json.value("topX", 0.0f), json.value("topY", 0.0f), json.value("topZ", 0.0f));
-                                                  float radius      = json.value("radius", 0.5f);
-                                                  float duration    = json.value("duration", 0.0f);
-                                                  bool  isWireframe = json.value("isWireframe", false);
-                                                  Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
-                                                              static_cast<unsigned char>(json.value("g", 255)),
-                                                              static_cast<unsigned char>(json.value("b", 255)),
-                                                              static_cast<unsigned char>(json.value("a", 255)));
-                                                  eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+                                                  Vec3             base(json.value("baseX", 0.0f), json.value("baseY", 0.0f), json.value("baseZ", 0.0f));
+                                                  Vec3             top(json.value("topX", 0.0f), json.value("topY", 0.0f), json.value("topZ", 0.0f));
+                                                  float            radius      = json.value("radius", 0.5f);
+                                                  float            duration    = json.value("duration", 0.0f);
+                                                  bool             isWireframe = json.value("isWireframe", false);
+                                                  Rgba8            color       = ParseRgba8(json);
+                                                  eDebugRenderMode mode        = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
 
                                                   DebugAddWorldCylinder(base, top, radius, duration, isWireframe, color, color, mode);
                                                   return HandlerResult::Success();
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.add_world_wire_sphere",
-                                              [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+                                              [parseDebugRenderMode](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
-                                                  Vec3  center(json.value("x", 0.0f), json.value("y", 0.0f), json.value("z", 0.0f));
-                                                  float radius   = json.value("radius", 0.5f);
-                                                  float duration = json.value("duration", 0.0f);
-                                                  Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
-                                                              static_cast<unsigned char>(json.value("g", 255)),
-                                                              static_cast<unsigned char>(json.value("b", 255)),
-                                                              static_cast<unsigned char>(json.value("a", 255)));
-                                                  eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+                                                  Vec3             center(json.value("x", 0.0f), json.value("y", 0.0f), json.value("z", 0.0f));
+                                                  float            radius   = json.value("radius", 0.5f);
+                                                  float            duration = json.value("duration", 0.0f);
+                                                  Rgba8            color    = ParseRgba8(json);
+                                                  eDebugRenderMode mode     = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
 
                                                   DebugAddWorldWireSphere(center, radius, duration, color, color, mode);
                                                   return HandlerResult::Success();
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.add_world_arrow",
-                                              [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+                                              [parseDebugRenderMode](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
-                                                  Vec3  start(json.value("x1", 0.0f), json.value("y1", 0.0f), json.value("z1", 0.0f));
-                                                  Vec3  end(json.value("x2", 0.0f), json.value("y2", 0.0f), json.value("z2", 0.0f));
-                                                  float radius   = json.value("radius", 0.02f);
-                                                  float duration = json.value("duration", 0.0f);
-                                                  Rgba8 color(static_cast<unsigned char>(json.value("r", 255)),
-                                                              static_cast<unsigned char>(json.value("g", 255)),
-                                                              static_cast<unsigned char>(json.value("b", 255)),
-                                                              static_cast<unsigned char>(json.value("a", 255)));
-                                                  eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+                                                  Vec3             start(json.value("x1", 0.0f), json.value("y1", 0.0f), json.value("z1", 0.0f));
+                                                  Vec3             end(json.value("x2", 0.0f), json.value("y2", 0.0f), json.value("z2", 0.0f));
+                                                  float            radius   = json.value("radius", 0.02f);
+                                                  float            duration = json.value("duration", 0.0f);
+                                                  Rgba8            color    = ParseRgba8(json);
+                                                  eDebugRenderMode mode     = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
 
                                                   DebugAddWorldArrow(start, end, radius, duration, color, color, mode);
                                                   return HandlerResult::Success();
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.add_world_text",
-                                              [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+                                              [parseDebugRenderMode](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
-                                                  String text       = json.value("text", "");
-                                                  float  textHeight = json.value("textHeight", 1.0f);
-                                                  float  alignX     = json.value("alignX", 0.5f);
-                                                  float  alignY     = json.value("alignY", 0.5f);
-                                                  float  duration   = json.value("duration", 0.0f);
-                                                  Rgba8  color(static_cast<unsigned char>(json.value("r", 255)),
-                                                               static_cast<unsigned char>(json.value("g", 255)),
-                                                               static_cast<unsigned char>(json.value("b", 255)),
-                                                               static_cast<unsigned char>(json.value("a", 255)));
-                                                  eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+                                                  String           text       = json.value("text", "");
+                                                  float            textHeight = json.value("textHeight", 1.0f);
+                                                  float            alignX     = json.value("alignX", 0.5f);
+                                                  float            alignY     = json.value("alignY", 0.5f);
+                                                  float            duration   = json.value("duration", 0.0f);
+                                                  Rgba8            color      = ParseRgba8(json);
+                                                  eDebugRenderMode mode       = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
 
                                                   // Build transform from 16-element array (or identity if not provided)
                                                   Mat44 transform;
@@ -1567,33 +1305,30 @@ void App::Startup()
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.add_billboard_text",
-                                              [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+                                              [parseDebugRenderMode](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
-                                                  String text = json.value("text", "");
-                                                  Vec3   origin(json.value("x", 0.0f), json.value("y", 0.0f), json.value("z", 0.0f));
-                                                  float  textHeight = json.value("textHeight", 1.0f);
-                                                  float  alignX     = json.value("alignX", 0.5f);
-                                                  float  alignY     = json.value("alignY", 0.5f);
-                                                  float  duration   = json.value("duration", 0.0f);
-                                                  Rgba8  color(static_cast<unsigned char>(json.value("r", 255)),
-                                                               static_cast<unsigned char>(json.value("g", 255)),
-                                                               static_cast<unsigned char>(json.value("b", 255)),
-                                                               static_cast<unsigned char>(json.value("a", 255)));
-                                                  eDebugRenderMode mode = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
+                                                  String           text = json.value("text", "");
+                                                  Vec3             origin(json.value("x", 0.0f), json.value("y", 0.0f), json.value("z", 0.0f));
+                                                  float            textHeight = json.value("textHeight", 1.0f);
+                                                  float            alignX     = json.value("alignX", 0.5f);
+                                                  float            alignY     = json.value("alignY", 0.5f);
+                                                  float            duration   = json.value("duration", 0.0f);
+                                                  Rgba8            color      = ParseRgba8(json);
+                                                  eDebugRenderMode mode       = parseDebugRenderMode(json.value("mode", "USE_DEPTH"));
 
                                                   DebugAddBillboardText(text, origin, textHeight, Vec2(alignX, alignY), duration, color, color, mode);
                                                   return HandlerResult::Success();
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.add_world_basis",
-                                              [parseJsonPayload, parseDebugRenderMode](std::any const& payload) -> HandlerResult
+                                              [parseDebugRenderMode](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   float            duration = json.value("duration", 0.0f);
@@ -1619,10 +1354,10 @@ void App::Startup()
     // --- Screen-space geometry handlers ---
 
     m_genericCommandExecutor->RegisterHandler("debug_render.add_screen_text",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   String text = json.value("text", "");
@@ -1631,28 +1366,22 @@ void App::Startup()
                                                   float  alignX   = json.value("alignX", 0.0f);
                                                   float  alignY   = json.value("alignY", 0.0f);
                                                   float  duration = json.value("duration", 0.0f);
-                                                  Rgba8  color(static_cast<unsigned char>(json.value("r", 255)),
-                                                               static_cast<unsigned char>(json.value("g", 255)),
-                                                               static_cast<unsigned char>(json.value("b", 255)),
-                                                               static_cast<unsigned char>(json.value("a", 255)));
+                                                  Rgba8  color    = ParseRgba8(json);
 
                                                   DebugAddScreenText(text, pos, size, Vec2(alignX, alignY), duration, color, color);
                                                   return HandlerResult::Success();
                                               });
 
     m_genericCommandExecutor->RegisterHandler("debug_render.add_message",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   String text     = json.value("text", "");
                                                   float  duration = json.value("duration", 0.0f);
-                                                  Rgba8  color(static_cast<unsigned char>(json.value("r", 255)),
-                                                               static_cast<unsigned char>(json.value("g", 255)),
-                                                               static_cast<unsigned char>(json.value("b", 255)),
-                                                               static_cast<unsigned char>(json.value("a", 255)));
+                                                  Rgba8  color    = ParseRgba8(json);
 
                                                   DebugAddMessage(text, duration, color, color);
                                                   return HandlerResult::Success();
@@ -1674,10 +1403,10 @@ void App::Startup()
 
     // game.execute_command — Execute JavaScript command string
     m_genericCommandExecutor->RegisterHandler("game.execute_command",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   String command = json.value("command", "");
@@ -1690,10 +1419,10 @@ void App::Startup()
 
     // game.execute_file — Execute JavaScript file
     m_genericCommandExecutor->RegisterHandler("game.execute_file",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   String filename = json.value("filename", "");
@@ -1706,10 +1435,10 @@ void App::Startup()
 
     // game.create_script_file — Create/overwrite a .js file in Scripts directory
     m_genericCommandExecutor->RegisterHandler("game.create_script_file",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   std::string filePath  = json.value("filePath", "");
@@ -1717,8 +1446,7 @@ void App::Startup()
                                                   bool        overwrite = json.value("overwrite", false);
 
                                                   std::string validationErr = ValidateJsFilePath(filePath);
-                                                  if (!validationErr.empty())
-                                                      return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
+                                                  if (!validationErr.empty()) return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
 
                                                   try
                                                   {
@@ -1747,7 +1475,7 @@ void App::Startup()
 
                                                       std::ostringstream resultJson;
                                                       resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(fullPath.string())
-                                                                 << R"(","bytesWritten":)" << content.length() << "}";
+                                                          << R"(","bytesWritten":)" << content.length() << "}";
                                                       return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                                   }
                                                   catch (std::exception const& e)
@@ -1759,17 +1487,16 @@ void App::Startup()
 
     // game.read_script_file — Read a .js file from Scripts directory
     m_genericCommandExecutor->RegisterHandler("game.read_script_file",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   std::string filePath = json.value("filePath", "");
 
                                                   std::string validationErr = ValidateJsFilePath(filePath);
-                                                  if (!validationErr.empty())
-                                                      return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
+                                                  if (!validationErr.empty()) return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
 
                                                   try
                                                   {
@@ -1800,9 +1527,9 @@ void App::Startup()
 
                                                       std::ostringstream resultJson;
                                                       resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(fullPath.string())
-                                                                 << R"(","content":")" << EscapeJsonString(content)
-                                                                 << R"(","lineCount":)" << lineCount
-                                                                 << R"(,"byteSize":)" << byteSize << "}";
+                                                          << R"(","content":")" << EscapeJsonString(content)
+                                                          << R"(","lineCount":)" << lineCount
+                                                          << R"(,"byteSize":)" << byteSize << "}";
                                                       return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                                   }
                                                   catch (std::exception const& e)
@@ -1814,17 +1541,16 @@ void App::Startup()
 
     // game.delete_script_file — Delete a .js file from Scripts directory
     m_genericCommandExecutor->RegisterHandler("game.delete_script_file",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   std::string filePath = json.value("filePath", "");
 
                                                   std::string validationErr = ValidateJsFilePath(filePath);
-                                                  if (!validationErr.empty())
-                                                      return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
+                                                  if (!validationErr.empty()) return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
 
                                                   // Protected files list
                                                   static const std::vector<std::string> protectedFiles = {
@@ -1858,7 +1584,7 @@ void App::Startup()
 
                                                       std::ostringstream resultJson;
                                                       resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(fullPath.string())
-                                                                 << R"(","existed":)" << (existed ? "true" : "false") << "}";
+                                                          << R"(","existed":)" << (existed ? "true" : "false") << "}";
                                                       return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                                   }
                                                   catch (std::exception const& e)
@@ -1870,10 +1596,10 @@ void App::Startup()
 
     // game.inject_key_press — Inject a single key press with duration
     m_genericCommandExecutor->RegisterHandler("game.inject_key_press",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   int keyCode    = json.value("keyCode", -1);
@@ -1901,10 +1627,10 @@ void App::Startup()
 
     // game.inject_key_hold — Inject multi-key sequence with timing control
     m_genericCommandExecutor->RegisterHandler("game.inject_key_hold",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   if (!json.contains("keySequence") || !json["keySequence"].is_array())
@@ -1942,7 +1668,7 @@ void App::Startup()
 
                                                       std::ostringstream resultJson;
                                                       resultJson << R"({"success":true,"primaryJobId":)" << primaryJobId
-                                                                 << R"(,"keyCount":)" << keySequence.size() << "}";
+                                                          << R"(,"keyCount":)" << keySequence.size() << "}";
                                                       return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                                   }
                                                   catch (std::exception const& e)
@@ -1954,10 +1680,10 @@ void App::Startup()
 
     // game.get_key_hold_status — Get status of a key hold job
     m_genericCommandExecutor->RegisterHandler("game.get_key_hold_status",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   uint32_t jobId = json.value("jobId", 0u);
@@ -1970,9 +1696,9 @@ void App::Startup()
 
                                                   std::ostringstream resultJson;
                                                   resultJson << R"({"success":true,"jobId":)" << status.jobId
-                                                             << R"(,"toolType":")" << status.toolType
-                                                             << R"(","status":")" << static_cast<int>(status.status)
-                                                             << R"(","metadata":{)";
+                                                      << R"(,"toolType":")" << status.toolType
+                                                      << R"(","status":")" << static_cast<int>(status.status)
+                                                      << R"(","metadata":{)";
 
                                                   bool first = true;
                                                   for (auto const& [key, value] : status.metadata)
@@ -1987,10 +1713,10 @@ void App::Startup()
 
     // game.cancel_key_hold — Cancel an active key hold job
     m_genericCommandExecutor->RegisterHandler("game.cancel_key_hold",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   uint32_t jobId = json.value("jobId", 0u);
@@ -2003,7 +1729,7 @@ void App::Startup()
 
                                                   std::ostringstream resultJson;
                                                   resultJson << R"({"success":true,"jobId":)" << jobId
-                                                             << R"(,"cancelled":)" << (cancelled ? "true" : "false") << "}";
+                                                      << R"(,"cancelled":)" << (cancelled ? "true" : "false") << "}";
                                                   return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                               });
 
@@ -2025,9 +1751,9 @@ void App::Startup()
                                                   {
                                                       auto const& job = activeJobs[i];
                                                       resultJson << R"({"jobId":)" << job.jobId
-                                                                 << R"(,"toolType":")" << job.toolType
-                                                                 << R"(","status":")" << static_cast<int>(job.status)
-                                                                 << R"(","metadata":{)";
+                                                          << R"(,"toolType":")" << job.toolType
+                                                          << R"(","status":")" << static_cast<int>(job.status)
+                                                          << R"(","metadata":{)";
 
                                                       bool first = true;
                                                       for (auto const& [key, value] : job.metadata)
@@ -2045,17 +1771,16 @@ void App::Startup()
 
     // game.add_watched_file — Add a .js file to hot-reload file watcher
     m_genericCommandExecutor->RegisterHandler("game.add_watched_file",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   std::string filePath = json.value("filePath", "");
 
                                                   std::string validationErr = ValidateJsFilePath(filePath);
-                                                  if (!validationErr.empty())
-                                                      return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
+                                                  if (!validationErr.empty()) return HandlerResult::Success({{"resultJson", std::any(validationErr)}});
 
                                                   if (!g_scriptSubsystem)
                                                   {
@@ -2067,16 +1792,16 @@ void App::Startup()
 
                                                   std::ostringstream resultJson;
                                                   resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(filePath)
-                                                             << R"(","relativePath":")" << EscapeJsonString(relativePath) << R"("})";
+                                                      << R"(","relativePath":")" << EscapeJsonString(relativePath) << R"("})";
                                                   return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                               });
 
     // game.remove_watched_file — Remove a .js file from hot-reload file watcher
     m_genericCommandExecutor->RegisterHandler("game.remove_watched_file",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   std::string filePath = json.value("filePath", "");
@@ -2099,7 +1824,7 @@ void App::Startup()
 
                                                   std::ostringstream resultJson;
                                                   resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(filePath)
-                                                             << R"(","relativePath":")" << EscapeJsonString(relativePath) << R"("})";
+                                                      << R"(","relativePath":")" << EscapeJsonString(relativePath) << R"("})";
                                                   return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                               });
 
@@ -2128,10 +1853,10 @@ void App::Startup()
 
     // game.capture_screenshot — Capture current frame as PNG or JPEG
     m_genericCommandExecutor->RegisterHandler("game.capture_screenshot",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   std::string format  = json.value("format", "png");
@@ -2147,7 +1872,7 @@ void App::Startup()
                                                       localtime_s(&localTime, &nowTime);
 
                                                       auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                                    now.time_since_epoch()) % 1000;
+                                                          now.time_since_epoch()) % 1000;
 
                                                       std::ostringstream oss;
                                                       oss << "screenshot_"
@@ -2157,7 +1882,7 @@ void App::Startup()
                                                   }
 
                                                   // Output directory: Run/Screenshots/
-                                                  namespace fs       = std::filesystem;
+                                                  namespace fs = std::filesystem;
                                                   fs::path outputDir = fs::current_path() / "Screenshots";
 
                                                   std::string outFilePath;
@@ -2171,7 +1896,7 @@ void App::Startup()
                                                   }
 
                                                   // Get file size and read file as binary for base64 encoding
-                                                  uintmax_t fileSize = 0;
+                                                  uintmax_t   fileSize = 0;
                                                   std::string imageBase64;
                                                   if (fs::exists(outFilePath))
                                                   {
@@ -2189,24 +1914,25 @@ void App::Startup()
                                                   }
 
                                                   std::string mimeType = (format == "jpeg" || format == "jpg")
-                                                                             ? "image/jpeg" : "image/png";
+                                                                             ? "image/jpeg"
+                                                                             : "image/png";
 
                                                   std::ostringstream resultJson;
                                                   resultJson << R"({"success":true,"filePath":")" << EscapeJsonString(outFilePath)
-                                                             << R"(","format":")" << format
-                                                             << R"(","fileSize":)" << fileSize
-                                                             << R"(,"mimeType":")" << mimeType
-                                                             << R"(","imageData":")" << imageBase64 << R"("})";
+                                                      << R"(","format":")" << format
+                                                      << R"(","fileSize":)" << fileSize
+                                                      << R"(,"mimeType":")" << mimeType
+                                                      << R"(","imageData":")" << imageBase64 << R"("})";
                                                   return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                               });
 
     // input.set_cursor_mode — Set cursor mode (POINTER=0, FPS=1)
     // Migrated from InputScriptInterface to GenericCommand pipeline
     m_genericCommandExecutor->RegisterHandler("input.set_cursor_mode",
-                                              [parseJsonPayload](std::any const& payload) -> HandlerResult
+                                              [](std::any const& payload) -> HandlerResult
                                               {
                                                   nlohmann::json json;
-                                                  String         err = parseJsonPayload(payload, json);
+                                                  String         err = ParseJsonPayload(payload, json);
                                                   if (!err.empty()) return HandlerResult::Error(err);
 
                                                   int mode = json.value("mode", -1);
@@ -2283,8 +2009,8 @@ void App::Shutdown()
     // Cleanup APIs (before state buffers)
 
 
-    delete m_renderResourceManager;
-    m_renderResourceManager = nullptr;
+    delete m_meshCache;
+    m_meshCache = nullptr;
 
     // Cleanup state buffers
     delete m_entityStateBuffer;
@@ -2292,7 +2018,6 @@ void App::Shutdown()
 
     delete m_cameraStateBuffer;
     m_cameraStateBuffer = nullptr;
-
 
 
     delete m_audioStateBuffer;
@@ -2415,7 +2140,7 @@ void App::Update()
 //----------------------------------------------------------------------------------------------------
 void App::Render() const
 {
-    g_renderer->ClearScreen(Rgba8::GREY, Rgba8::BLACK);
+    g_renderer->ClearScreen(Rgba8::BLACK, Rgba8::BLACK);
 
     // Render entities only in GAME mode
     if (g_game && !g_game->IsAttractMode())
@@ -2663,7 +2388,8 @@ void App::RenderEntities() const
         if (!state.isActive) continue;
         if (state.cameraType != "world") continue;
 
-        VertexList_PCU const* verts = m_renderResourceManager->GetVerticesForEntity(entityId);
+        // Always cache meshes with WHITE vertices — per-entity color is applied via SetModelConstants tint
+        VertexList_PCU const* verts = m_meshCache->GetOrCreate(state.meshType, state.radius, Rgba8::WHITE);
         if (!verts || verts->empty()) continue;
 
         Mat44 modelMatrix;
@@ -2671,7 +2397,10 @@ void App::RenderEntities() const
         modelMatrix.Append(state.orientation.GetAsMatrix_IFwd_JLeft_KUp());
 
         g_renderer->SetModelConstants(modelMatrix, state.color);
-        g_renderer->BindTexture(nullptr);
+        Texture* tex = (state.textureId != 0)
+                           ? reinterpret_cast<Texture*>(state.textureId)
+                           : nullptr;  // nullptr → Renderer binds default white
+        g_renderer->BindTexture(tex);
         g_renderer->DrawVertexArray(static_cast<int>(verts->size()), verts->data());
     }
 

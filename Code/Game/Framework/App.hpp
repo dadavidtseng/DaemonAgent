@@ -22,7 +22,7 @@ class GenericCommandQueue;
 class GenericCommandScriptInterface;
 class JSGameLogicJob;
 class KADIScriptInterface;
-class RenderResourceManager;
+class MeshCache;
 
 //----------------------------------------------------------------------------------------------------
 class App
@@ -63,10 +63,10 @@ private:
     //------------------------------------------------------------------------------------------------
     // Script Interfaces
     //------------------------------------------------------------------------------------------------
-    std::shared_ptr<FrameEventQueueScriptInterface>   m_frameEventQueueScriptInterface;
-    std::shared_ptr<KADIScriptInterface>              m_kadiScriptInterface;
-    std::shared_ptr<CallbackQueueScriptInterface>     m_callbackQueueScriptInterface;
-    std::shared_ptr<GenericCommandScriptInterface>    m_genericCommandScriptInterface;
+    std::shared_ptr<FrameEventQueueScriptInterface> m_frameEventQueueScriptInterface;
+    std::shared_ptr<KADIScriptInterface>            m_kadiScriptInterface;
+    std::shared_ptr<CallbackQueueScriptInterface>   m_callbackQueueScriptInterface;
+    std::shared_ptr<GenericCommandScriptInterface>  m_genericCommandScriptInterface;
 
     //------------------------------------------------------------------------------------------------
     // Async Architecture Infrastructure
@@ -80,12 +80,12 @@ private:
     //------------------------------------------------------------------------------------------------
     // State Buffers (Double-buffered for async updates)
     //------------------------------------------------------------------------------------------------
-    EntityStateBuffer*      m_entityStateBuffer      = nullptr;
-    CameraStateBuffer*      m_cameraStateBuffer      = nullptr;
-    AudioStateBuffer*       m_audioStateBuffer       = nullptr;
+    EntityStateBuffer* m_entityStateBuffer = nullptr;
+    CameraStateBuffer* m_cameraStateBuffer = nullptr;
+    AudioStateBuffer*  m_audioStateBuffer  = nullptr;
 
     //------------------------------------------------------------------------------------------------
     // APIs (Direct management interfaces)
     //------------------------------------------------------------------------------------------------
-    RenderResourceManager* m_renderResourceManager = nullptr;
+    MeshCache* m_meshCache = nullptr;
 };

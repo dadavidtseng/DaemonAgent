@@ -11,12 +11,12 @@
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
     </Filter>
-    <Filter Include="Documentation">
-      <UniqueIdentifier>{8f6262e8-8950-43f3-a0f7-ee09a9ca5217}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Gameplay">
       <UniqueIdentifier>{960b6e9d-ce87-4f51-97f1-2e293af9bfc3}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Docs">
+      <UniqueIdentifier>{8f6262e8-8950-43f3-a0f7-ee09a9ca5217}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
@@ -38,9 +38,6 @@
     <ClCompile Include="Gameplay\Game.cpp">
       <Filter>Gameplay</Filter>
     </ClCompile>
-    <ClCompile Include="Framework\RenderResourceManager.cpp">
-      <Filter>Framework</Filter>
-    </ClCompile>
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
   <!-- Header File -->
@@ -61,16 +58,13 @@
     <ClInclude Include="Gameplay\Game.hpp">
       <Filter>Gameplay</Filter>
     </ClInclude>
-    <ClInclude Include="Framework\RenderResourceManager.hpp">
-      <Filter>Framework</Filter>
-    </ClInclude>
   </ItemGroup>
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
   <!-- Documentation File -->
   <!-- //////////////////////////////////////////////////////////////////////////////////////////////// -->
   <ItemGroup>
     <None Include="../../Docs/README.md">
-      <Filter>Documentation</Filter>
+      <Filter>Docs</Filter>
     </None>
   </ItemGroup>
 </Project>
