@@ -13,6 +13,7 @@ import {Player} from './Object/Player.js';
 import {Prop} from './Object/Prop.js';
 import {hotReloadRegistry} from './core/HotReloadRegistry.js';
 import {CameraAPI} from './Interface/CameraAPI.js';  // Phase 2b: Screen camera creation
+import {ResourceAPI} from './Interface/ResourceAPI.js';  // Texture loading for per-entity binding
 import {Clock} from './Component/Clock.js';
 // import {NewFeatureSystem} from './components/NewFeatureSystem.js';
 
@@ -261,7 +262,7 @@ export class JSGame
         try
         {
             // Prop 0: Rotating cube at (2, 2, 0) - pitch+roll += 30°/s (Phase 2)
-            const prop0 = new Prop('cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll');
+            const prop0 = new Prop('cube', {x: 2, y: 2, z: 0}, 'rotate-pitch-roll',{r: 255, g: 0, b: 0, a: 255});
             this.propGameObjects.push(prop0);
             console.log('JSGame: Prop 0 created successfully');
         } catch (error)
@@ -272,7 +273,7 @@ export class JSGame
         try
         {
             // Prop 1: Pulsing color cube at (-2, -2, 0) - sin wave color (Phase 2)
-            const prop1 = new Prop('cube', {x: -2, y: -2, z: 0}, 'pulse-color');
+            const prop1 = new Prop('cube', {x: -2, y: -2, z: 0}, 'pulse-color',{r: 0, g: 255, b: 0, a: 255});
             this.propGameObjects.push(prop1);
             console.log('JSGame: Prop 1 created successfully');
         } catch (error)
@@ -283,12 +284,22 @@ export class JSGame
         try
         {
             // Prop 2: Rotating sphere at (10, -5, 1) - yaw += 45°/s (Phase 2)
-            const prop2 = new Prop('sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw');
-            this.propGameObjects.push(prop2);
-            console.log('JSGame: Prop 2 created successfully');
+            // Load texture first, then create sphere with textureId from first frame
+            ResourceAPI.loadTexture('Data/Images/TestUV.png', (textureId) => {
+                try
+                {
+                    const prop2 = new Prop('sphere', {x: 10, y: -5, z: 1}, 'rotate-yaw',
+                        {r: 255, g: 255, b: 255, a: 255}, 1.0, {textureId: textureId});
+                    this.propGameObjects.push(prop2);
+                    console.log(`JSGame: Prop 2 (sphere) created with TestUV.png texture (id=${textureId})`);
+                } catch (error)
+                {
+                    console.log('JSGame: ERROR creating Prop 2:', error);
+                }
+            });
         } catch (error)
         {
-            console.log('JSGame: ERROR creating Prop 2:', error);
+            console.log('JSGame: ERROR loading texture for Prop 2:', error);
         }
 
         try

@@ -45,6 +45,7 @@ export class Prop extends GameObject
      * @param {Object} options - Additional options
      * @param {boolean} options.enablePhysics - Enable bounce physics (default: false)
      * @param {Object} options.physicsConfig - Physics configuration (gravity, bounciness, mass)
+     * @param {number} options.textureId - Opaque texture handle from ResourceAPI.loadTexture (default: 0 = white)
      */
     constructor(meshType, position, behaviorType, color = {r: 255, g: 255, b: 255, a: 255}, scale = 1.0, options = {})
     {
@@ -61,7 +62,8 @@ export class Prop extends GameObject
         this.physicsConfig = options.physicsConfig || {};
 
         // Component composition: MeshComponent (Phase 2 - no rendererSystem needed)
-        this.mesh = new MeshComponent(meshType, color, scale);
+        const textureId = options.textureId || 0;
+        this.mesh = new MeshComponent(meshType, color, scale, textureId);
         this.addComponent(this.mesh);
 
         // Component composition: BehaviorComponent

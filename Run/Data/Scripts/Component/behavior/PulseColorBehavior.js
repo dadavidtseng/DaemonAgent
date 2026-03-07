@@ -41,13 +41,18 @@ export class PulseColorBehavior extends BehaviorComponent
     {
         super.initialize(gameObject);
 
-        // Find MeshComponent on GameObject
+        // Find MeshComponent to control color
         this.meshComponent = this.gameObject.getComponent('mesh');
 
         if (!this.meshComponent)
         {
             console.log('PulseColorBehavior: No MeshComponent found on GameObject!');
         }
+
+        // Store initial color as pulse base (defaults to white if not set)
+        this.baseColor = this.meshComponent
+            ? { ...this.meshComponent.color }
+            : {r: 255, g: 255, b: 255, a: 255};
     }
 
     /**
@@ -65,17 +70,16 @@ export class PulseColorBehavior extends BehaviorComponent
         const currentTime = Date.now() / 1000.0;
         const elapsedTime = currentTime - this.startTime;
 
-        // Pulsing color calculation (from PropEntity line 103-106)
-        // C++ code: float const colorValue = (sinf(time) + 1.0f) * 0.5f * 255.0f;
-        const colorValue = (Math.sin(elapsedTime) + 1.0) * 0.5 * 255.0;
-        const colorInt = Math.floor(colorValue);
+        // Pulsing color calculation — modulate base color by sin wave
+        const colorValue = (Math.sin(elapsedTime) + 1.0) * 0.5;
+        const colorInt = Math.floor(colorValue * 255.0);
 
-        // Set mesh color
+        // Scale each channel of the base color by the pulse factor
         this.meshComponent.setColor({
-            r: colorInt,
-            g: colorInt,
-            b: colorInt,
-            a: 255
+            r: Math.floor(this.baseColor.r * colorValue),
+            g: Math.floor(this.baseColor.g * colorValue),
+            b: Math.floor(this.baseColor.b * colorValue),
+            a: this.baseColor.a
         });
     }
 }

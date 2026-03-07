@@ -81,6 +81,7 @@ export class EntityAPI
      * @param {Array<number>} properties.position - [x, y, z] position
      * @param {number} properties.scale - Uniform scale factor
      * @param {Array<number>} properties.color - [r, g, b, a] color (0-255)
+     * @param {number} [properties.textureId] - Opaque texture handle from ResourceAPI.loadTexture (0 = default white)
      * @param {Function} callback - Callback function(entityId) called when mesh is created
      * @returns {number} callbackId (0 if submission failed)
      */
@@ -102,14 +103,15 @@ export class EntityAPI
             return 0;
         }
 
-        const position = (properties && properties.position) || [0, 0, 0];
-        const scale    = (properties && properties.scale) || 1.0;
-        const color    = (properties && properties.color) || [255, 255, 255, 255];
+        const position  = (properties && properties.position) || [0, 0, 0];
+        const scale     = (properties && properties.scale) || 1.0;
+        const color     = (properties && properties.color) || [255, 255, 255, 255];
+        const textureId = (properties && properties.textureId) || 0;
 
         // Submit via GenericCommand pipeline
         const callbackId = commandQueue.submit(
             'create_mesh',
-            { meshType, position, scale, color },
+            { meshType, position, scale, color, textureId },
             'entity-api',
             (result) =>
             {

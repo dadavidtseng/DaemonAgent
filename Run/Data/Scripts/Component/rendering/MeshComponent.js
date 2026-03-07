@@ -46,20 +46,22 @@ export class MeshComponent extends Component
      * @param {string} meshType - Geometry type ('cube', 'sphere', 'grid', 'plane')
      * @param {Object} color - Initial color {r, g, b, a} (default: white)
      * @param {number} scale - Uniform scale factor (default: 1.0)
+     * @param {number} textureId - Opaque texture handle from ResourceAPI.loadTexture (default: 0 = white)
      */
-    constructor(meshType, color = {r: 255, g: 255, b: 255, a: 255}, scale = 1.0)
+    constructor(meshType, color = {r: 255, g: 255, b: 255, a: 255}, scale = 1.0, textureId = 0)
     {
         super('mesh');
 
         this.meshType = meshType;
         this.color = color;
         this.scale = scale;
+        this.textureId = textureId;
         this.entityId = null;           // C++ entity ID (null = not created yet)
         this.entityAPI = new EntityAPI();
         this.entityAPIVersion = EntityAPI.version; // Track version for hot-reload
         this.isCreating = false;        // Track async creation state
 
-        console.log(`MeshComponent: Created with meshType=${meshType}, scale=${scale} (Phase 2)`);
+        console.log(`MeshComponent: Created with meshType=${meshType}, scale=${scale}, textureId=${textureId} (Phase 2)`);
     }
 
     /**
@@ -132,7 +134,8 @@ export class MeshComponent extends Component
                 this.color.g,
                 this.color.b,
                 this.color.a
-            ]
+            ],
+            textureId: this.textureId
         };
 
         console.log(`MeshComponent: Calling entityAPI.createMesh with meshType=${this.meshType}, properties=`, properties);
