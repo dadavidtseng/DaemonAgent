@@ -1,311 +1,217 @@
-# FirstV8 - Dual-Language Game Engine with V8 JavaScript Integration
+<a id="readme-top"></a>
 
-**Part of the "First" Series** - Advanced Game Development Research Projects
+<!-- PROJECT SHIELDS -->
+[![Contributors][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![Apache 2.0 License][license-shield]][license-url]
+[![LinkedIn][linkedin-shield]][linkedin-url]
 
-A sophisticated C++ game engine demonstrating cutting-edge dual-language architecture through seamless integration of **V8 JavaScript Engine** and **Chrome DevTools** with the **DaemonEngine** foundation. This project represents the next evolution in modern game development methodologies, enabling unprecedented flexibility between performance-critical C++ systems and rapid JavaScript prototyping.
+<!-- PROJECT TITLE -->
+<div align="center">
+  <h1>DaemonAgent</h1>
+  <p>Dual-language game engine bridging C++ performance with JavaScript flexibility through V8 integration</p>
+</div>
 
-## 🚀 Project Overview
+<!-- TECH STACK BADGES -->
+![C++](https://img.shields.io/badge/C%2B%2B-20-00599C?style=for-the-badge&logo=cplusplus&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
+![DirectX](https://img.shields.io/badge/DirectX-11-107C10?style=for-the-badge&logo=xbox&logoColor=white)
+![V8](https://img.shields.io/badge/V8-13.0-4285F4?style=for-the-badge&logo=v8&logoColor=white)
 
-FirstV8 is a groundbreaking research project that bridges the gap between traditional C++ game engine performance and modern JavaScript development workflows. As part of the "First" series of experimental game development frameworks, this project demonstrates how to achieve enterprise-grade dual-language architecture while maintaining the performance characteristics required for production game development.
+## Table of Contents
 
-### 🎯 Core Innovation
+- [Overview](#overview)
+- [Features](#features)
+- [How to Install](#how-to-install)
+- [How to Use](#how-to-use)
+- [Project Structure](#project-structure)
+- [Future Roadmap](#future-roadmap)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
+- [Contact](#contact)
 
-- **Dual-Language Architecture**: C++ for engine performance, JavaScript for game logic flexibility
-- **Real-Time Hot Reloading**: JavaScript changes without C++ recompilation
-- **Chrome DevTools Integration**: Full debugging support for JavaScript game logic
-- **DaemonEngine Foundation**: Built upon proven engine architecture patterns
-- **Academic Research Quality**: Suitable for computer science research and education
+---
 
-## ✨ Key Features
+## Overview
 
-### 🔥 V8 JavaScript Integration
-- **Google V8 Engine v13.0.245.25**: Latest JavaScript runtime with optimal performance
-- **Bidirectional Communication**: Seamless C++ ↔ JavaScript interoperability
-- **Chrome DevTools Support**: Professional debugging environment through ChromeDevToolsServer
-- **Memory Management**: RAII patterns with automatic JavaScript garbage collection
-- **Error Isolation**: JavaScript errors don't crash the C++ engine
+DaemonAgent (originally ProtogameJS3D / FirstV8) is a research project exploring dual-language game engine architecture. It embeds the Google V8 JavaScript engine into a C++ game engine foundation ([DaemonEngine](https://github.com/dadavidtseng/Engine)), allowing game logic to be written in JavaScript while performance-critical systems — rendering, audio, entity management — remain in C++.
 
-### 🏗️ Engine Architecture
-- **Modular Subsystem Design**: Core, Math, Renderer, Audio, Input, Resource, Network, Scripting
-- **Entity-Component System**: Flexible game object architecture with dual-language support
-- **Hot-Reload Development**: FileWatcher and ScriptReloader for rapid iteration
-- **Production-Ready Build System**: Enterprise-grade MSBuild configuration
-- **Cross-Platform Support**: Windows x64 with comprehensive compatibility
+The key architectural challenge is thread isolation: JavaScript game logic runs on a dedicated worker thread via `JSGameLogicJob`, while C++ rendering maintains a stable 60 FPS on the main thread. Communication between the two happens through double-buffered state buffers (`EntityStateBuffer`, `CameraStateBuffer`, `AudioStateBuffer`) with dirty tracking for O(d) swap optimization. JavaScript errors are fully isolated — a crash in the scripting layer never takes down the engine.
 
-### 🛠️ Development Experience
-- **Visual Studio 2022 Integration**: Complete debugging support for C++ and JavaScript
-- **Academic Documentation**: Research-grade documentation and architectural specifications
-- **Professional Build Pipeline**: Automated V8 runtime deployment and asset management
-- **Industry Standards**: SOLID principles, modern C++20, and professional coding practices
+The project also integrates the KĀDI protocol for AI agent communication, enabling external agents (Python, TypeScript) to interact with the running game through WebSocket-based tool invocation. This supports automated testing, AI-driven gameplay, and development tooling workflows.
 
-## 🏭 Architecture Overview
+## Features
 
-### Dual-Language Integration Flow
-```
-Windows Application Entry
-├── DaemonEngine Foundation
-│   ├── Core Subsystems (C++)
-│   ├── Rendering Pipeline (C++)
-│   └── Resource Management (C++)
-├── V8 JavaScript Engine
-│   ├── Game Logic Layer (JS)
-│   ├── Chrome DevTools (Debug)
-│   └── Hot-Reload System (JS)
-└── GameScriptInterface
-    ├── C++ → JavaScript Bindings
-    └── JavaScript → C++ Callbacks
-```
+- [Async Dual-Thread Architecture](#async-dual-thread-architecture)
+- [V8 JavaScript Integration with Hot Reload](#v8-javascript-integration-with-hot-reload)
+- [GenericCommand Pipeline](#genericcommand-pipeline)
+- [KĀDI Agent Protocol](#kādi-agent-protocol)
 
-### Runtime Execution Model
-```
-C++ Main Loop:
-├── BeginFrame()
-├── Update() ──→ V8::Execute(JSEngine.update()) ──→ JSGame.update()
-├── Render() ──→ V8::Execute(JSEngine.render()) ──→ JSGame.render()
-└── EndFrame()
-```
+---
 
-## 📁 Project Structure
+### Async Dual-Thread Architecture
 
-```
-FirstV8/
-├── Code/
-│   └── Game/                          # Game Application (.exe)
-│       ├── Game.cpp/hpp               # Main game class and state management
-│       ├── Entity.cpp/hpp             # Base entity system
-│       ├── Player.cpp/hpp             # Player entity with input handling
-│       ├── Prop.cpp/hpp               # Interactive game objects
-│       ├── Framework/                 # Application infrastructure
-│       │   ├── App.cpp/hpp            # Application lifecycle and main loop
-│       │   ├── GameScriptInterface.*  # C++ ↔ JavaScript bindings
-│       │   ├── FileWatcher.*          # Hot-reload file monitoring
-│       │   ├── ScriptReloader.*       # JavaScript hot-reload system
-│       │   └── GameCommon.hpp         # Shared definitions and globals
-│       ├── Subsystem/                 # Game-specific subsystems
-│       │   └── Light/                 # Lighting subsystem example
-│       └── EngineBuildPreferences.hpp # Engine compilation configuration
-├── Run/                               # Execution Environment
-│   ├── Data/                          # Game Assets
-│   │   ├── Scripts/                   # JavaScript game logic
-│   │   │   ├── JSEngine.js            # JavaScript engine framework
-│   │   │   ├── JSGame.js              # Game logic implementation
-│   │   │   └── test_scripts.js        # Development and testing scripts
-│   │   ├── Shaders/                   # HLSL rendering shaders
-│   │   ├── Models/                    # 3D assets (.obj, .fbx)
-│   │   ├── Textures/                  # Image assets and materials
-│   │   ├── Audio/                     # FMOD audio assets
-│   │   └── GameConfig.xml             # Runtime configuration
-│   ├── FirstV8_Debug_x64.exe          # Debug application build
-│   ├── FirstV8_Release_x64.exe        # Release application build
-│   └── *.dll                          # V8 and FMOD runtime libraries
-├── Engine/                            # DaemonEngine Integration (External)
-│   └── Code/Engine/                   # Engine static library
-│       ├── Core/                      # Engine foundation systems
-│       ├── Scripting/                 # V8Subsystem and Chrome DevTools
-│       ├── Renderer/                  # DirectX graphics pipeline
-│       ├── Audio/                     # FMOD audio integration
-│       └── [Additional Subsystems]    # Math, Input, Resource, Network
-├── Docs/                              # Project Documentation
-│   ├── README.md                      # This file
-│   └── [Academic Papers]              # Research documentation
-└── FirstV8.sln                       # Visual Studio 2022 Solution
+The engine separates C++ rendering (main thread) from JavaScript game logic (worker thread) through `JSGameLogicJob`, a continuous worker that integrates with the engine's `JobSystem`. Each frame, the main thread checks if the worker has completed its JavaScript execution. If so, it swaps the double-buffered state and triggers the next frame. If the worker is still running, the main thread skips and continues rendering with the last known state — maintaining 60 FPS regardless of JavaScript performance.
+
+```cpp
+// App::Update() — async frame synchronization
+if (m_jsGameLogicJob && m_jsGameLogicJob->IsFrameComplete())
+{
+    // Swap state buffers (copy back buffer to front buffer)
+    if (m_entityStateBuffer) m_entityStateBuffer->SwapBuffers();
+    if (m_cameraStateBuffer) m_cameraStateBuffer->SwapBuffers();
+    if (m_audioStateBuffer)  m_audioStateBuffer->SwapBuffers();
+
+    m_jsGameLogicJob->TriggerNextFrame();
+}
+// else: frame skip — worker still executing, render last state
 ```
 
-## 🚀 Getting Started
+State buffers use dirty tracking so `SwapBuffers()` only copies changed entries — O(d) instead of O(n). Three buffer types cover the full game state: entities (transforms, meshes, colors), cameras (projection, position), and audio (playback commands).
+
+### V8 JavaScript Integration with Hot Reload
+
+Game logic lives in JavaScript files executed by V8 v13.0. The `JSEngine` class provides a system registration framework where subsystems register with priority-based execution order. `JSGame` coordinates gameplay systems — input, physics, audio, debug rendering, and KĀDI control — all written in ES6+ modules.
+
+The C++ `ScriptSubsystem` monitors script files via `FileWatcher`. When a `.js` file changes on disk, the engine hot-reloads it without restarting — the `HotReloadRegistry` tracks module instances and replaces them in-place. V8 Inspector support (port 9229) enables Chrome DevTools debugging of the JavaScript layer while the engine runs.
+
+Script interfaces (`GameScriptInterface`, `IScriptableObject`) expose C++ methods to JavaScript through a reflection-like registry. Each scriptable object declares its available methods and properties, which V8 binds at initialization.
+
+### GenericCommand Pipeline
+
+The `GenericCommand` system provides a rate-limited, auditable command queue for JavaScript-to-C++ operations that require main-thread execution (e.g., mesh creation, resource loading). JavaScript submits commands via `CommandQueue.submit()`, which are queued in a lock-free SPSC ring buffer. The main thread's `GenericCommandExecutor` processes them each frame, dispatching to registered handlers.
+
+```javascript
+// JavaScript: create a mesh via GenericCommand pipeline
+const entityId = await CommandQueue.submit('create_mesh', {
+    meshType: 'cube',
+    position: [0, 2, 0],
+    scale: 1.5,
+    color: { r: 255, g: 128, b: 0, a: 255 }
+});
+```
+
+Each command type has a registered handler on the C++ side. The pipeline supports per-agent rate limiting (configurable via `GenericCommand.json`), audit logging, and async callbacks that return results to JavaScript through the `CallbackQueue`.
+
+### KĀDI Agent Protocol
+
+KĀDI (Knowledge-Augmented Development Interface) enables external AI agents to interact with the running game over WebSocket. The `KADIScriptInterface` on the C++ side manages authentication and connection lifecycle. On the JavaScript side, `KADIGameControl` registers two tool categories:
+
+- **GameControlTools** — game state queries and manipulation (spawn entities, change states, read game data)
+- **DevelopmentTools** — file operations and input injection for automated testing (create/read/delete script files, simulate key presses)
+
+Agents connect, authenticate, and invoke tools through a JSON-RPC-like protocol. This architecture supports use cases like AI playtesting, automated QA, and live development assistance.
+
+---
+
+## How to Install
 
 ### Prerequisites
 
-- **Visual Studio 2022** with C++ development workload
-- **Windows 10/11 (x64)** - Primary development platform
-- **Git** with submodule support
-- **NuGet Package Manager** (included with Visual Studio)
+- Visual Studio 2022 (v143 toolset, C++20)
+- Windows SDK 10.0+
+- [DaemonEngine](https://github.com/dadavidtseng/Engine) cloned as a sibling directory (`../Engine/`)
+- V8 v13.0 (prebuilt binaries included in `ThirdParty/`)
+- FMOD Core SDK 2.x (included in Engine `ThirdParty/`)
 
-### Quick Start
+### Installation
 
-1. **Clone the Repository:**
-   ```bash
-   git clone --recursive https://github.com/yourusername/FirstV8.git
-   cd FirstV8
-   ```
+```bash
+git clone https://github.com/dadavidtseng/DaemonAgent.git
+git clone https://github.com/dadavidtseng/Engine.git
 
-2. **Initialize DaemonEngine Submodule:**
-   ```bash
-   git submodule update --init --recursive
-   ```
-
-3. **Open Visual Studio Solution:**
-   ```bash
-   start FirstV8.sln
-   ```
-
-4. **Restore NuGet Packages:**
-   - Visual Studio will automatically restore V8 packages
-   - Manual restore: `Build → Restore NuGet Packages`
-
-5. **Build the Solution:**
-   - Select `Debug|x64` or `Release|x64` configuration
-   - `Build → Build Solution` (Ctrl+Shift+B)
-
-6. **Run the Application:**
-   ```bash
-   cd Run
-   FirstV8_Debug_x64.exe
-   ```
-
-### Development Workflow
-
-1. **C++ Engine Development**: Modify files in `Code/Game/` and `Engine/`
-2. **JavaScript Game Logic**: Edit files in `Run/Data/Scripts/`
-3. **Hot Reloading**: JavaScript changes apply automatically without rebuild
-4. **Debugging**: Use Visual Studio for C++ and Chrome DevTools for JavaScript
-5. **Asset Management**: Add resources to `Run/Data/` subdirectories
-
-## 🔧 Configuration
-
-### Game Configuration (`Run/Data/GameConfig.xml`)
-```xml
-<GameConfig>
-    <WindowClose>false</WindowClose>
-    <screenSizeX>1600</screenSizeX>
-    <screenSizeY>900</screenSizeY>
-    <screenCenterX>800</screenCenterX>
-    <screenCenterY>450</screenCenterY>
-    <enableVSync>true</enableVSync>
-    <debugMode>true</debugMode>
-</GameConfig>
+# Open the Visual Studio solution
+# DaemonAgent.sln references Engine as a sibling project
+# Build configuration: x64 Debug or Release
 ```
 
-### V8 Engine Configuration
-- **Chrome DevTools Port**: 9222 (configurable)
-- **JavaScript Runtime**: V8 v13.0.245.25
-- **Memory Management**: Automatic garbage collection with RAII cleanup
-- **Error Handling**: Non-fatal JavaScript error reporting
+## How to Use
 
-## 🎮 JavaScript Game Development
+Launch the built executable from the `Run/` directory. The engine loads `GameConfig.xml` for window settings and `EngineSubsystems.json` for subsystem configuration.
 
-### Core JavaScript APIs
-
-```javascript
-// Game lifecycle callbacks
-function update(deltaTime) {
-    // Game logic implementation
-    player.update(deltaTime);
-    entities.forEach(entity => entity.update(deltaTime));
-}
-
-function render() {
-    // Rendering commands
-    renderer.clear();
-    scene.render();
-    ui.render();
-}
-
-// C++ binding examples
-createEntity("Player", {x: 0, y: 0, z: 0});
-playSound("footstep.wav");
-setLightColor(255, 255, 255);
+```
+Run/
+├── ProtogameJS3D.exe          # Built executable
+├── Data/
+│   ├── GameConfig.xml         # Window size, screen settings
+│   ├── Config/
+│   │   ├── EngineSubsystems.json   # Enable/disable subsystems
+│   │   ├── GenericCommand.json     # Command pipeline config
+│   │   └── LogRotation.json        # Logging settings
+│   └── Scripts/
+│       ├── main.js            # V8 entry point
+│       ├── JSEngine.js        # System registration framework
+│       └── JSGame.js          # Game coordinator
 ```
 
-### Hot Reload Development
+JavaScript game logic is edited in `Run/Data/Scripts/`. With hot-reload enabled, saving a `.js` file automatically reloads it in the running engine. V8 Inspector is available at `chrome://inspect` (port 9229) when `enableInspector` is set in `EngineSubsystems.json`.
 
-1. Edit JavaScript files in `Run/Data/Scripts/`
-2. Save changes (Ctrl+S)
-3. FileWatcher automatically detects modifications
-4. ScriptReloader recompiles and reloads JavaScript
-5. Changes take effect immediately without restart
+## Project Structure
 
-## 🧪 "First" Series Context
+```
+DaemonAgent/
+├── Code/Game/
+│   └── Framework/
+│       ├── App.hpp / App.cpp          # Application entry, frame loop, subsystem wiring
+│       ├── GameScriptInterface.hpp    # C++ ↔ JS reflection registry
+│       └── JSGameLogicJob.hpp         # Worker thread for V8 execution
+├── Run/Data/
+│   ├── Config/                        # Runtime configuration (JSON/XML)
+│   ├── Scripts/
+│   │   ├── core/                      # Subsystem, Component, GameObject, HotReloadRegistry
+│   │   ├── component/                 # InputSystem, AudioSystem, PhysicsSystem, etc.
+│   │   ├── event/                     # EventBus, typed events
+│   │   ├── Interface/                 # API bridges (Entity, Camera, Audio, Resource, DebugRender)
+│   │   ├── kadi/                      # KĀDI protocol (GameControl, DevelopmentTools)
+│   │   ├── object/                    # Player, Prop game objects
+│   │   ├── JSEngine.js                # System registration framework
+│   │   ├── JSGame.js                  # Game coordinator
+│   │   └── main.js                    # V8 entry point
+│   ├── Models/                        # OBJ/FBX 3D assets
+│   ├── Shaders/                       # HLSL (Default, BlinnPhong, Bloom)
+│   └── Audio/                         # FMOD audio assets
+└── ThirdParty/                        # V8, FMOD prebuilt binaries
+```
 
-FirstV8 is part of the **"First" series** - a collection of experimental game development projects exploring cutting-edge technologies:
+## Future Roadmap
 
-- **FirstV8** (This Project): V8 JavaScript integration with DaemonEngine
-- **FirstVulkan** (Future): Modern Vulkan graphics API exploration
-- **FirstML** (Future): Machine learning integration for game AI
-- **FirstVR** (Future): Virtual reality development frameworks
+- [ ] Phase 2: JavaScript on dedicated worker thread with async C++→JS callbacks via `CallbackQueue`
+- [ ] Phase 3: Error recovery and exception handling for fault isolation
+- [ ] Phase 4: Dirty tracking optimization — reduce `SwapBuffers()` cost from O(n) to O(d)
+- [ ] Network subsystem integration (`NetworkTCPSubsystem`)
+- [ ] Extended KĀDI tool coverage for full game state introspection
 
-Each project in the "First" series pushes the boundaries of conventional game development, serving as research vehicles for next-generation game engine architecture and development methodologies.
+## Acknowledgements
 
-## 🔬 Research Applications
+- Built on [DaemonEngine](https://github.com/dadavidtseng/Engine) — custom C++ engine with DirectX 11, FMOD, and JobSystem
+- [Google V8](https://v8.dev/) — JavaScript engine for dual-language architecture
+- [FMOD](https://www.fmod.com/) — professional audio middleware
+- Developed at SMU Guildhall
 
-### Academic Use Cases
-- **Computer Science Education**: Modern game engine architecture patterns
-- **Software Engineering Research**: Dual-language application development
-- **Programming Language Integration**: Performance analysis of C++/JavaScript interop
-- **Real-Time Systems**: Development workflow optimization and hot-reloading
-- **Human-Computer Interaction**: Rapid prototyping methodologies
+## License
 
-### Research Contributions
-1. **Novel Dual-Language Integration**: Performance-critical C++ with flexible JavaScript
-2. **Real-Time Hot-Reloading**: Advanced script reloading without application restart
-3. **Chrome DevTools Integration**: Professional JavaScript debugging in game engines
-4. **Academic-Quality Codebase**: Research-grade documentation and architecture
-5. **DaemonEngine Integration**: Proven engine foundation with modern scripting
+Distributed under the Apache 2.0 License. See `LICENSE` for more information.
 
-## 📦 Dependencies
+## Contact
 
-### Core Technologies
-- **Google V8 JavaScript Engine**: v13.0.245.25 (Apache 2.0 License)
-- **DaemonEngine**: Custom game engine foundation (External submodule)
-- **FMOD Audio Engine**: Professional audio system (Commercial license)
-- **DirectX Graphics API**: Windows graphics pipeline
-- **Microsoft Visual C++ 2022**: C++20 compiler and runtime
+Yu-Wei Tseng — [dadavidtseng.info](https://dadavidtseng.info)
 
-### NuGet Packages
-- `v8-v143-x64`: V8 engine headers and libraries
-- `v8.redist-v143-x64`: V8 runtime redistribution files
+Project Link: [https://github.com/dadavidtseng/DaemonAgent](https://github.com/dadavidtseng/DaemonAgent)
 
-## 🤝 Contributing
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-### Development Guidelines
-1. **Follow SOLID Principles**: Maintain clean architecture patterns
-2. **C++20 Standards**: Use modern C++ features with full conformance
-3. **Academic Quality**: Document code for research and educational use
-4. **Dual-Language Thinking**: Consider both C++ performance and JavaScript flexibility
-5. **Professional Standards**: Industry-grade code quality and documentation
-
-### Contribution Process
-1. Fork the repository and create a feature branch
-2. Implement changes following project coding standards
-3. Test in both Debug and Release configurations
-4. Verify JavaScript hot-reloading functionality
-5. Update documentation and academic specifications
-6. Submit pull request with detailed description
-
-## 📄 License
-
-This project is licensed under the **MIT License with Academic Research Clause**.
-
-See the [LICENSE](../LICENSE) file for complete terms. Academic and research use must provide appropriate citation and acknowledgment of the original work.
-
-## 🔗 Related Projects
-
-- **DaemonEngine**: [Custom Game Engine Foundation](https://github.com/dadavidtseng/Engine)
-- **Google V8**: [JavaScript Engine](https://v8.dev/)
-- **Chrome DevTools**: [Developer Tools](https://developer.chrome.com/docs/devtools/)
-- **FMOD**: [Audio Engine](https://www.fmod.com/)
-
-## 🙏 Acknowledgments
-
-- **DaemonEngine Team**: Foundation engine architecture and systems
-- **Google V8 Team**: JavaScript engine technology and Chrome DevTools integration
-- **Firelight Technologies**: FMOD professional audio engine
-- **Microsoft**: Visual Studio development environment and C++20 compiler
-- **Academic Research Community**: Computer science education and research support
-- **Open Source Community**: Inspiration and collaborative development practices
-
----
-
-## 📊 Project Status
-
-- **Version**: 1.0.0-alpha
-- **Development Status**: Active Research Project
-- **Platforms**: Windows x64
-- **Build Status**: ✅ Passing (Debug/Release)
-- **Documentation**: 📚 Academic Grade
-- **Research Quality**: 🎓 Thesis-Level
-
-**Built with passion for advancing game development research and education** 🎮✨
-
----
-
-*Part of the "First" Series - Exploring the Future of Game Development*
+<!-- MARKDOWN LINKS & IMAGES -->
+[contributors-shield]: https://img.shields.io/github/contributors/dadavidtseng/DaemonAgent.svg?style=for-the-badge
+[contributors-url]: https://github.com/dadavidtseng/DaemonAgent/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/dadavidtseng/DaemonAgent.svg?style=for-the-badge
+[forks-url]: https://github.com/dadavidtseng/DaemonAgent/network/members
+[stars-shield]: https://img.shields.io/github/stars/dadavidtseng/DaemonAgent.svg?style=for-the-badge
+[stars-url]: https://github.com/dadavidtseng/DaemonAgent/stargazers
+[issues-shield]: https://img.shields.io/github/issues/dadavidtseng/DaemonAgent.svg?style=for-the-badge
+[issues-url]: https://github.com/dadavidtseng/DaemonAgent/issues
+[license-shield]: https://img.shields.io/github/license/dadavidtseng/DaemonAgent.svg?style=for-the-badge
+[license-url]: https://github.com/dadavidtseng/DaemonAgent/blob/main/LICENSE
+[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
+[linkedin-url]: https://linkedin.com/in/dadavidtseng
