@@ -151,6 +151,12 @@ export class InputSystem extends Subsystem
                     globalThis.eventBus.emit(EventTypes.GAME_STATE_CHANGED, event);
                     console.log('InputSystem: Emitted GameStateChangedEvent (ATTRACT → GAME)');
                 }
+
+                // ESC: Quit from attract mode
+                if (inputState.justPressed[KEYCODE_ESC])
+                {
+                    globalThis.commandQueue.submit('game.app_request_quit', '{}', 'inputSystem');
+                }
             }
 
             if (jsGameInstance.gameState === GameState.GAME)
