@@ -1,7 +1,7 @@
-# Asynchronous Architecture in ProtogameJS3D: C++/JavaScript Frame-Based Parallelism
+# Asynchronous Architecture in DaemonAgent: C++/JavaScript Frame-Based Parallelism
 
 **Technical Documentation v1.0**
-**Author**: ProtogameJS3D Development Team
+**Author**: DaemonAgent Development Team
 **Date**: December 2025
 **Status**: Production Implementation
 
@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-ProtogameJS3D implements a **production-grade asynchronous architecture** enabling true parallelism between C++ engine rendering and JavaScript game logic through a **frame N/N+1 double-buffering pattern**. This architecture achieves:
+DaemonAgent implements a **production-grade asynchronous architecture** enabling true parallelism between C++ engine rendering and JavaScript game logic through a **frame N/N+1 double-buffering pattern**. This architecture achieves:
 
 - **Stable 60 FPS rendering** independent of JavaScript execution time
 - **Lock-free performance** with < 1ms synchronization overhead
@@ -1140,13 +1140,13 @@ AudioInterface.js → AudioScriptInterface → AudioAPI → AudioCommandQueue
 
 ### 3.8 JavaScript API Exposure to KADI Broker
 
-ProtogameJS3D integrates with the **KĀDI protocol** for multi-language agent communication, exposing JavaScript APIs to external agents via WebSocket.
+DaemonAgent integrates with the **KĀDI protocol** for multi-language agent communication, exposing JavaScript APIs to external agents via WebSocket.
 
 #### Architecture Overview
 
 ```mermaid
 graph TB
-    subgraph "ProtogameJS3D C++ Engine"
+    subgraph "DaemonAgent C++ Engine"
         APP[App.cpp<br/>Main Loop]
         V8[V8 JavaScript Runtime]
         ESI[EntityScriptInterface]
@@ -1191,7 +1191,7 @@ graph TB
 **File**: `Run/Data/Scripts/kadi-client.js`
 
 ```javascript
-// KĀDI client for exposing ProtogameJS3D APIs to external agents
+// KĀDI client for exposing DaemonAgent APIs to external agents
 class KadiClient {
     constructor(brokerUrl = 'ws://localhost:3000') {
         this.ws = new WebSocket(brokerUrl);
@@ -1339,7 +1339,7 @@ async def main():
     # Connect to KĀDI broker
     client = KadiClient('ws://localhost:3000')
 
-    # Load ProtogameJS3D API (via broker routing)
+    # Load DaemonAgent API (via broker routing)
     protogame = await client.load('protogame', 'broker')
 
     # Create entity (calls JavaScript → C++ → GPU)
@@ -1386,7 +1386,7 @@ async function main() {
     // Connect to KĀDI broker
     const client = new KadiClient('ws://localhost:3000');
 
-    // Load ProtogameJS3D API
+    // Load DaemonAgent API
     const protogame = await client.load('protogame', 'broker');
 
     // Create multiple entities
@@ -1448,7 +1448,7 @@ main();
 }
 ```
 
-#### Message Flow: External Agent → ProtogameJS3D
+#### Message Flow: External Agent → DaemonAgent
 
 ```mermaid
 sequenceDiagram
@@ -1478,7 +1478,7 @@ sequenceDiagram
 
 #### Key Features of KĀDI Integration
 
-1. **Cross-Language Compatibility**: Python, TypeScript, Go, Rust agents can control ProtogameJS3D
+1. **Cross-Language Compatibility**: Python, TypeScript, Go, Rust agents can control DaemonAgent
 2. **JSON-RPC Protocol**: Standard RPC over WebSocket
 3. **Event Pub/Sub**: Agents can subscribe to game events (state changes, entity lifecycle)
 4. **Async Callbacks**: Maintains async architecture - no blocking
@@ -2511,7 +2511,7 @@ Vec3 pos = state.position;  // May read (10, 0, 0) or (10, 20, 0) - INCONSISTENT
 
 ### 8.1 Architecture Achievements
 
-The ProtogameJS3D async architecture successfully delivers:
+The DaemonAgent async architecture successfully delivers:
 
 1. **True Parallelism**: C++ rendering and JavaScript logic execute simultaneously without contention
 2. **Stable Performance**: 60 FPS rendering guaranteed, independent of JavaScript execution time
@@ -2672,9 +2672,9 @@ void App::LogPerformanceMetrics()
 
 **Document Version**: 1.0
 **Last Updated**: December 2025
-**Authors**: ProtogameJS3D Development Team
+**Authors**: DaemonAgent Development Team
 **License**: Internal Technical Documentation
 
 ---
 
-*This document represents production-ready dual-language async architecture, validated through comprehensive testing and deployed in the ProtogameJS3D research project.*
+*This document represents production-ready dual-language async architecture, validated through comprehensive testing and deployed in the DaemonAgent research project.*

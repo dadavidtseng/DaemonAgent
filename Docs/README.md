@@ -133,7 +133,7 @@ Launch the built executable from the `Run/` directory. The engine loads `GameCon
 
 ```
 Run/
-├── ProtogameJS3D.exe          # Built executable
+├── DaemonAgent.exe            # Built executable
 ├── Data/
 │   ├── GameConfig.xml         # Window size, screen settings
 │   ├── Config/

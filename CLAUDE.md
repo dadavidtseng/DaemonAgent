@@ -17,7 +17,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
 
-# ProtogameJS3D - Dual-Language Game Engine
+# DaemonAgent - Dual-Language Game Engine
 
 ## Changelog
 - **2025-10-30**: Multi-language agent architecture implementation
@@ -37,7 +37,7 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ## Project Vision
 
-ProtogameJS3D (originally FirstV8) is a cutting-edge research project demonstrating **dual-language game engine architecture** through seamless integration of the **Google V8 JavaScript Engine** with a **C++ game engine foundation (DaemonEngine)**. This project bridges high-performance C++ engine systems with flexible JavaScript game logic, enabling rapid prototyping while maintaining production-level performance.
+DaemonAgent (originally FirstV8) is a cutting-edge research project demonstrating **dual-language game engine architecture** through seamless integration of the **Google V8 JavaScript Engine** with a **C++ game engine foundation (DaemonEngine)**. This project bridges high-performance C++ engine systems with flexible JavaScript game logic, enabling rapid prototyping while maintaining production-level performance.
 
 ## Architecture Overview
 
@@ -75,7 +75,7 @@ C++ Main Loop (App.cpp):
 
 ```mermaid
 graph TD
-    A["(Root) ProtogameJS3D"] --> B["Code"];
+    A["(Root) DaemonAgent"] --> B["Code"];
     B --> C["Game"];
     C --> D["Framework"];
     C --> E["Subsystem"];
@@ -140,13 +140,13 @@ graph TD
 - NuGet Package Manager
 
 ### Quick Start
-1. **Open Solution**: `ProtogameJS3D.sln` in Visual Studio 2022
+1. **Open Solution**: `DaemonAgent.sln` in Visual Studio 2022
 2. **Build Configuration**: Select `Debug|x64` or `Release|x64`
 3. **Build Solution**: Build → Build Solution (Ctrl+Shift+B)
 4. **Run Application**:
    ```bash
    cd Run
-   ProtogameJS3D_Debug_x64.exe  # or ProtogameJS3D_Release_x64.exe
+   DaemonAgent_Debug_x64.exe  # or DaemonAgent_Release_x64.exe
    ```
 
 ### Development Workflow
@@ -207,13 +207,13 @@ graph TD
 
 ### Overview
 
-ProtogameJS3D supports a comprehensive multi-language agent system using the **KĀDI protocol**, enabling seamless communication between agents written in different programming languages (Python, TypeScript, and future languages).
+DaemonAgent supports a comprehensive multi-language agent system using the **KĀDI protocol**, enabling seamless communication between agents written in different programming languages (Python, TypeScript, and future languages).
 
 ### Agent Ecosystem
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│          ProtogameJS3D Game Engine                    │
+│          DaemonAgent Game Engine                    │
 │       (JavaScript via V8 Runtime)                     │
 └───────────────────┬──────────────────────────────────┘
                     │ KĀDI Protocol (WebSocket)

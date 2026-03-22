@@ -4,7 +4,7 @@
 
 ## Module Responsibilities
 
-The Game Assets module provides **runtime resources and configuration** for the ProtogameJS3D engine, including 3D models, HLSL shaders, textures, audio assets, and system configuration files. This module serves as the content pipeline for the dual-language game engine.
+The Game Assets module provides **runtime resources and configuration** for the DaemonAgent engine, including 3D models, HLSL shaders, textures, audio assets, and system configuration files. This module serves as the content pipeline for the dual-language game engine.
 
 ## Entry and Startup
 
