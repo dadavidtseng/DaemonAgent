@@ -70,10 +70,6 @@ export class CommandQueue
         // Callback registry for async command results
         this.callbackRegistry = new Map(); // Maps callbackId → callback function
 
-        // Schema registry for optional payload validation (task 5.3)
-        this.schemas = new Map();          // Maps command type → compiled schema definition
-        this.validationEnabled = true;     // Global toggle (disable for perf-critical paths)
-
         // Make instance globally accessible for JSEngine callback routing
         globalThis.CommandQueueAPI = this;
 
@@ -145,140 +141,6 @@ export class CommandQueue
     }
 
     //----------------------------------------------------------------------------------------------------
-    // Schema Validation (task 5.3)
-    //----------------------------------------------------------------------------------------------------
-
-    /**
-     * Register a schema for a command type. Payloads will be validated against this schema
-     * before submission to C++ (when validation is enabled).
-     *
-     * Schema definition format:
-     * ```javascript
-     * commandQueue.registerSchema('SpawnEntity', {
-     *     position: {
-     *         type: 'object',
-     *         required: true,
-     *         properties: {
-     *             x: { type: 'number', required: true },
-     *             y: { type: 'number', required: true },
-     *             z: { type: 'number', required: true }
-     *         }
-     *     },
-     *     prefabName: { type: 'string', required: true },
-     *     health:     { type: 'number', required: false, default: 100 }
-     * });
-     * ```
-     *
-     * Supported types: 'string', 'number', 'boolean', 'object', 'array'
-     *
-     * @param {string} type - Command type to associate schema with
-     * @param {Object} schemaDefinition - Field definitions with type, required, default, properties
-     */
-    registerSchema(type, schemaDefinition)
-    {
-        if (!type || typeof type !== 'string')
-        {
-            throw new TypeError('CommandQueue.registerSchema: type must be a non-empty string');
-        }
-        if (!schemaDefinition || typeof schemaDefinition !== 'object')
-        {
-            throw new TypeError('CommandQueue.registerSchema: schemaDefinition must be an object');
-        }
-
-        this.schemas.set(type, schemaDefinition);
-    }
-
-    /**
-     * Remove a registered schema for a command type.
-     * @param {string} type - Command type whose schema to remove
-     * @returns {boolean} true if a schema was removed
-     */
-    unregisterSchema(type)
-    {
-        return this.schemas.delete(type);
-    }
-
-    /**
-     * Enable or disable schema validation globally.
-     * When disabled, submit() skips validation for all command types (performance bypass).
-     * @param {boolean} enabled
-     */
-    setValidationEnabled(enabled)
-    {
-        this.validationEnabled = !!enabled;
-    }
-
-    /**
-     * Check if schema validation is currently enabled.
-     * @returns {boolean}
-     */
-    isValidationEnabled()
-    {
-        return this.validationEnabled;
-    }
-
-    /**
-     * Validate a payload against a schema definition. Applies defaults for missing optional fields.
-     * Throws TypeError with descriptive message on validation failure.
-     *
-     * @param {Object} payload - The payload to validate
-     * @param {Object} schema - Schema definition (field name → {type, required, default, properties})
-     * @param {string} path - Dot-path prefix for nested error messages
-     * @returns {Object} payload with defaults applied
-     * @throws {TypeError} if validation fails
-     */
-    _validatePayload(payload, schema, path)
-    {
-        if (payload === null || payload === undefined)
-        {
-            payload = {};
-        }
-
-        for (const [fieldName, fieldDef] of Object.entries(schema))
-        {
-            const fieldPath = path ? `${path}.${fieldName}` : fieldName;
-            const value = payload[fieldName];
-
-            // Check required fields
-            if (value === undefined || value === null)
-            {
-                if (fieldDef.required)
-                {
-                    throw new TypeError(
-                        `CommandQueue: Validation failed - required field '${fieldPath}' is missing`
-                    );
-                }
-                // Apply default if specified
-                if (fieldDef.default !== undefined)
-                {
-                    payload[fieldName] = fieldDef.default;
-                }
-                continue;
-            }
-
-            // Type check
-            if (fieldDef.type)
-            {
-                const actualType = Array.isArray(value) ? 'array' : typeof value;
-                if (actualType !== fieldDef.type)
-                {
-                    throw new TypeError(
-                        `CommandQueue: Validation failed - field '${fieldPath}' expected type '${fieldDef.type}', got '${actualType}'`
-                    );
-                }
-            }
-
-            // Recurse into nested object properties
-            if (fieldDef.type === 'object' && fieldDef.properties && typeof value === 'object')
-            {
-                this._validatePayload(value, fieldDef.properties, fieldPath);
-            }
-        }
-
-        return payload;
-    }
-
-    //----------------------------------------------------------------------------------------------------
     // Command Submission
     //----------------------------------------------------------------------------------------------------
 
@@ -329,22 +191,6 @@ export class CommandQueue
         {
             console.log('CommandQueue: ERROR - callback must be a function');
             return 0;
-        }
-
-        // Schema validation (task 5.3) — runs before C++ submission
-        if (this.validationEnabled && this.schemas.has(type))
-        {
-            try
-            {
-                payload = this._validatePayload(payload || {}, this.schemas.get(type), '');
-            }
-            catch (validationError)
-            {
-                // Schema validation failure: do NOT submit to C++
-                console.log(`CommandQueue: ${validationError.message}`);
-                if (callback) callback({ success: false, error: validationError.message, resultId: 0 });
-                return 0;
-            }
         }
 
         try
@@ -507,8 +353,6 @@ export class CommandQueue
             available: this.isAvailable(),
             cppInterfaceType: typeof this.cppCommandQueue,
             pendingCallbacks: this.callbackRegistry.size,
-            registeredSchemas: this.schemas.size,
-            validationEnabled: this.validationEnabled,
             hasMethods: this.cppCommandQueue ? {
                 submit: typeof this.cppCommandQueue.submit === 'function',
                 registerHandler: typeof this.cppCommandQueue.registerHandler === 'function',
