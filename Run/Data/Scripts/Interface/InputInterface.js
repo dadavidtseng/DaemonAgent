@@ -18,13 +18,6 @@ export class InputInterface
 {
     constructor()
     {
-        // Create controller wrapper cache (stubs until controller events are added)
-        this.controllerCache = [];
-        for (let i = 0; i < 4; i++)
-        {
-            this.controllerCache[i] = new XboxController(this, i);
-        }
-
         console.log('InputInterface: Connected to globalThis.inputState (FrameEventQueue)');
     }
 
@@ -103,50 +96,6 @@ export class InputInterface
         return vk !== undefined ? !!state.keys[vk] : false;
     }
 
-    // === CONTROLLER INPUT (stubs — not yet routed through FrameEventQueue) ===
-
-    /**
-     * Get Xbox controller wrapper for a specific controller index
-     * @param {number} index - Controller index (0-3)
-     * @returns {XboxController} Controller wrapper with button/axis methods
-     */
-    getController(index)
-    {
-        if (index < 0 || index >= 4)
-        {
-            console.log(`InputInterface: Invalid controller index ${index} (must be 0-3)`);
-            return this.controllerCache[0];
-        }
-        return this.controllerCache[index];
-    }
-
-    /**
-     * Check if controller is connected
-     * TODO: Route controller events through FrameEventQueue
-     */
-    isControllerConnected(index)
-    {
-        return false;
-    }
-
-    /**
-     * Check if controller button is pressed
-     * TODO: Route controller events through FrameEventQueue
-     */
-    isControllerButtonPressed(controllerIndex, buttonIndex)
-    {
-        return false;
-    }
-
-    /**
-     * Get controller axis value
-     * TODO: Route controller events through FrameEventQueue
-     */
-    getControllerAxis(controllerIndex, axisIndex)
-    {
-        return 0.0;
-    }
-
     // === INTERFACE STATUS ===
 
     /**
@@ -165,130 +114,8 @@ export class InputInterface
     {
         return {
             available: this.isAvailable(),
-            backend: 'FrameEventQueue (inputState)',
-            controllerSupport: false
+            backend: 'FrameEventQueue (inputState)'
         };
-    }
-}
-
-/**
- * XboxController - Helper class for Xbox controller input
- *
- * Provides convenient button name mapping and axis access for Xbox controllers.
- * Created internally by InputInterface and accessed via getController(index).
- */
-class XboxController
-{
-    constructor(inputInterface, controllerIndex)
-    {
-        this.inputInterface = inputInterface;
-        this.controllerIndex = controllerIndex;
-
-        // Button name to index mapping
-        this.buttonMap = {
-            'A': 0,
-            'B': 1,
-            'X': 2,
-            'Y': 3,
-            'LSHOULDER': 4,
-            'RSHOULDER': 5,
-            'BACK': 6,
-            'START': 7,
-            'LTHUMB': 8,
-            'RTHUMB': 9,
-            'DPAD_UP': 10,
-            'DPAD_DOWN': 11,
-            'DPAD_LEFT': 12,
-            'DPAD_RIGHT': 13
-        };
-
-        // Axis indices
-        this.axisMap = {
-            'LEFT_STICK_X': 0,
-            'LEFT_STICK_Y': 1,
-            'RIGHT_STICK_X': 2,
-            'RIGHT_STICK_Y': 3,
-            'LEFT_TRIGGER': 4,
-            'RIGHT_TRIGGER': 5
-        };
-    }
-
-    /**
-     * Check if controller is connected
-     * @returns {boolean} True if connected
-     */
-    isConnected()
-    {
-        return this.inputInterface.isControllerConnected(this.controllerIndex);
-    }
-
-    /**
-     * Check if button is currently down
-     * @param {string} buttonName - Button name (e.g., 'A', 'START', 'LSHOULDER')
-     * @returns {boolean} True if button is down
-     */
-    isButtonDown(buttonName)
-    {
-        const buttonIndex = this.buttonMap[buttonName];
-        if (buttonIndex === undefined)
-        {
-            console.log(`XboxController: Unknown button name '${buttonName}'`);
-            return false;
-        }
-
-        return this.inputInterface.isControllerButtonPressed(this.controllerIndex, buttonIndex);
-    }
-
-    /**
-     * Check if button was just pressed this frame
-     * @param {string} buttonName - Button name (e.g., 'A', 'START', 'LSHOULDER')
-     * @returns {boolean} True if button was just pressed
-     */
-    wasButtonJustPressed(buttonName)
-    {
-        // Note: InputScriptInterface doesn't have wasButtonJustPressed yet
-        // For now, use isButtonDown (same behavior as C++ until we add the method)
-        return this.isButtonDown(buttonName);
-    }
-
-    /**
-     * Get left analog stick position
-     * @returns {{x: number, y: number}} Stick position (-1.0 to 1.0)
-     */
-    getLeftStick()
-    {
-        const x = this.inputInterface.getControllerAxis(this.controllerIndex, this.axisMap.LEFT_STICK_X);
-        const y = this.inputInterface.getControllerAxis(this.controllerIndex, this.axisMap.LEFT_STICK_Y);
-        return {x, y};
-    }
-
-    /**
-     * Get right analog stick position
-     * @returns {{x: number, y: number}} Stick position (-1.0 to 1.0)
-     */
-    getRightStick()
-    {
-        const x = this.inputInterface.getControllerAxis(this.controllerIndex, this.axisMap.RIGHT_STICK_X);
-        const y = this.inputInterface.getControllerAxis(this.controllerIndex, this.axisMap.RIGHT_STICK_Y);
-        return {x, y};
-    }
-
-    /**
-     * Get left trigger value
-     * @returns {number} Trigger value (0.0 to 1.0)
-     */
-    getLeftTrigger()
-    {
-        return this.inputInterface.getControllerAxis(this.controllerIndex, this.axisMap.LEFT_TRIGGER);
-    }
-
-    /**
-     * Get right trigger value
-     * @returns {number} Trigger value (0.0 to 1.0)
-     */
-    getRightTrigger()
-    {
-        return this.inputInterface.getControllerAxis(this.controllerIndex, this.axisMap.RIGHT_TRIGGER);
     }
 }
 
@@ -298,4 +125,4 @@ export default InputInterface;
 // Export to globalThis for hot-reload detection
 globalThis.InputInterface = InputInterface;
 
-console.log('InputInterface: Wrapper loaded (FrameEventQueue backend with Xbox Controller stubs)');
+console.log('InputInterface: Wrapper loaded (FrameEventQueue backend)');
