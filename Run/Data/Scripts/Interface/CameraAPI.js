@@ -282,26 +282,7 @@ export class CameraAPI
      */
     async update(cameraId, posX, posY, posZ, yaw, pitch, roll)
     {
-        const commandQueue = globalThis.CommandQueueAPI;
-        if (!commandQueue || !commandQueue.isAvailable())
-        {
-            console.log('CameraAPI: ERROR - update requires CommandQueue');
-            return;
-        }
-
-        return new Promise((resolve, reject) =>
-        {
-            commandQueue.submit(
-                'camera.update',
-                { cameraId, posX, posY, posZ, yaw, pitch, roll },
-                'camera-api',
-                (result) =>
-                {
-                    if (result && result.success) { resolve(); }
-                    else { reject(new Error(result?.error || 'camera.update failed')); }
-                }
-            );
-        });
+        return this._submit('camera.update', { cameraId, posX, posY, posZ, yaw, pitch, roll });
     }
 
     /**
@@ -313,32 +294,13 @@ export class CameraAPI
      */
     async updatePosition(cameraId, position)
     {
-        const commandQueue = globalThis.CommandQueueAPI;
-        if (!commandQueue || !commandQueue.isAvailable())
-        {
-            console.log('CameraAPI: ERROR - updatePosition requires CommandQueue');
-            return;
-        }
-
         if (!Array.isArray(position) || position.length !== 3)
         {
             console.log('CameraAPI: ERROR - position must be [x, y, z] array');
             return;
         }
 
-        return new Promise((resolve, reject) =>
-        {
-            commandQueue.submit(
-                'camera.update_position',
-                { cameraId, x: position[0], y: position[1], z: position[2] },
-                'camera-api',
-                (result) =>
-                {
-                    if (result && result.success) { resolve(); }
-                    else { reject(new Error(result?.error || 'camera.update_position failed')); }
-                }
-            );
-        });
+        return this._submit('camera.update_position', { cameraId, x: position[0], y: position[1], z: position[2] });
     }
 
     /**
@@ -350,32 +312,13 @@ export class CameraAPI
      */
     async updateOrientation(cameraId, orientation)
     {
-        const commandQueue = globalThis.CommandQueueAPI;
-        if (!commandQueue || !commandQueue.isAvailable())
-        {
-            console.log('CameraAPI: ERROR - updateOrientation requires CommandQueue');
-            return;
-        }
-
         if (!Array.isArray(orientation) || orientation.length !== 3)
         {
             console.log('CameraAPI: ERROR - orientation must be [yaw, pitch, roll] array');
             return;
         }
 
-        return new Promise((resolve, reject) =>
-        {
-            commandQueue.submit(
-                'camera.update_orientation',
-                { cameraId, yaw: orientation[0], pitch: orientation[1], roll: orientation[2] },
-                'camera-api',
-                (result) =>
-                {
-                    if (result && result.success) { resolve(); }
-                    else { reject(new Error(result?.error || 'camera.update_orientation failed')); }
-                }
-            );
-        });
+        return this._submit('camera.update_orientation', { cameraId, yaw: orientation[0], pitch: orientation[1], roll: orientation[2] });
     }
 
     /**
@@ -387,32 +330,13 @@ export class CameraAPI
      */
     async moveBy(cameraId, delta)
     {
-        const commandQueue = globalThis.CommandQueueAPI;
-        if (!commandQueue || !commandQueue.isAvailable())
-        {
-            console.log('CameraAPI: ERROR - moveBy requires CommandQueue');
-            return;
-        }
-
         if (!Array.isArray(delta) || delta.length !== 3)
         {
             console.log('CameraAPI: ERROR - delta must be [dx, dy, dz] array');
             return;
         }
 
-        return new Promise((resolve, reject) =>
-        {
-            commandQueue.submit(
-                'camera.move_by',
-                { cameraId, dx: delta[0], dy: delta[1], dz: delta[2] },
-                'camera-api',
-                (result) =>
-                {
-                    if (result && result.success) { resolve(); }
-                    else { reject(new Error(result?.error || 'camera.move_by failed')); }
-                }
-            );
-        });
+        return this._submit('camera.move_by', { cameraId, dx: delta[0], dy: delta[1], dz: delta[2] });
     }
 
     /**
@@ -424,35 +348,51 @@ export class CameraAPI
      */
     async lookAt(cameraId, target)
     {
-        const commandQueue = globalThis.CommandQueueAPI;
-        if (!commandQueue || !commandQueue.isAvailable())
-        {
-            console.log('CameraAPI: ERROR - lookAt requires CommandQueue');
-            return;
-        }
-
         if (!Array.isArray(target) || target.length !== 3)
         {
             console.log('CameraAPI: ERROR - target must be [x, y, z] array');
             return;
         }
 
+        return this._submit('camera.look_at', { cameraId, targetX: target[0], targetY: target[1], targetZ: target[2] });
+    }
+
+    //----------------------------------------------------------------------------------------------------
+    //----------------------------------------------------------------------------------------------------
+    // Private Helper
+    //----------------------------------------------------------------------------------------------------
+
+    /**
+     * Submit a command through the GenericCommand pipeline with Promise wrapping
+     * @param {string} commandType - GenericCommand type (e.g. 'camera.update_position')
+     * @param {Object} params - Command parameters
+     * @returns {Promise<void>} Resolves on success, rejects on failure
+     * @private
+     */
+    async _submit(commandType, params)
+    {
+        const commandQueue = globalThis.CommandQueueAPI;
+        if (!commandQueue || !commandQueue.isAvailable())
+        {
+            console.log(`CameraAPI: ERROR - ${commandType} requires CommandQueue`);
+            return;
+        }
+
         return new Promise((resolve, reject) =>
         {
             commandQueue.submit(
-                'camera.look_at',
-                { cameraId, targetX: target[0], targetY: target[1], targetZ: target[2] },
+                commandType,
+                params,
                 'camera-api',
                 (result) =>
                 {
-                    if (result && result.success) { resolve(); }
-                    else { reject(new Error(result?.error || 'camera.look_at failed')); }
+                    if (result && result.success) { resolve(result.resultId); }
+                    else { reject(new Error(result?.error || `${commandType} failed`)); }
                 }
             );
         });
     }
 
-    //----------------------------------------------------------------------------------------------------
     // Utility Methods
     //----------------------------------------------------------------------------------------------------
 

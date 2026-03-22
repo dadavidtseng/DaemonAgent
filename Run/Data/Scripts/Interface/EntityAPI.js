@@ -142,32 +142,13 @@ export class EntityAPI
      */
     async updatePosition(entityId, position)
     {
-        const commandQueue = globalThis.CommandQueueAPI;
-        if (!commandQueue || !commandQueue.isAvailable())
-        {
-            console.log('EntityAPI: ERROR - updatePosition requires CommandQueue');
-            return;
-        }
-
         if (!Array.isArray(position) || position.length !== 3)
         {
             console.log('EntityAPI: ERROR - position must be [x, y, z] array');
             return;
         }
 
-        return new Promise((resolve, reject) =>
-        {
-            commandQueue.submit(
-                'entity.update_position',
-                { entityId, x: position[0], y: position[1], z: position[2] },
-                'entity-api',
-                (result) =>
-                {
-                    if (result && result.success) { resolve(); }
-                    else { reject(new Error(result?.error || 'updatePosition failed')); }
-                }
-            );
-        });
+        return this._submit('entity.update_position', { entityId, x: position[0], y: position[1], z: position[2] });
     }
 
     /**
@@ -180,32 +161,13 @@ export class EntityAPI
      */
     async moveBy(entityId, delta)
     {
-        const commandQueue = globalThis.CommandQueueAPI;
-        if (!commandQueue || !commandQueue.isAvailable())
-        {
-            console.log('EntityAPI: ERROR - moveBy requires CommandQueue');
-            return;
-        }
-
         if (!Array.isArray(delta) || delta.length !== 3)
         {
             console.log('EntityAPI: ERROR - delta must be [dx, dy, dz] array');
             return;
         }
 
-        return new Promise((resolve, reject) =>
-        {
-            commandQueue.submit(
-                'entity.move_by',
-                { entityId, dx: delta[0], dy: delta[1], dz: delta[2] },
-                'entity-api',
-                (result) =>
-                {
-                    if (result && result.success) { resolve(); }
-                    else { reject(new Error(result?.error || 'moveBy failed')); }
-                }
-            );
-        });
+        return this._submit('entity.move_by', { entityId, dx: delta[0], dy: delta[1], dz: delta[2] });
     }
 
     /**
@@ -218,32 +180,13 @@ export class EntityAPI
      */
     async updateOrientation(entityId, orientation)
     {
-        const commandQueue = globalThis.CommandQueueAPI;
-        if (!commandQueue || !commandQueue.isAvailable())
-        {
-            console.log('EntityAPI: ERROR - updateOrientation requires CommandQueue');
-            return;
-        }
-
         if (!Array.isArray(orientation) || orientation.length !== 3)
         {
             console.log('EntityAPI: ERROR - orientation must be [yaw, pitch, roll] array');
             return;
         }
 
-        return new Promise((resolve, reject) =>
-        {
-            commandQueue.submit(
-                'entity.update_orientation',
-                { entityId, yaw: orientation[0], pitch: orientation[1], roll: orientation[2] },
-                'entity-api',
-                (result) =>
-                {
-                    if (result && result.success) { resolve(); }
-                    else { reject(new Error(result?.error || 'updateOrientation failed')); }
-                }
-            );
-        });
+        return this._submit('entity.update_orientation', { entityId, yaw: orientation[0], pitch: orientation[1], roll: orientation[2] });
     }
 
     /**
@@ -256,32 +199,13 @@ export class EntityAPI
      */
     async updateColor(entityId, color)
     {
-        const commandQueue = globalThis.CommandQueueAPI;
-        if (!commandQueue || !commandQueue.isAvailable())
-        {
-            console.log('EntityAPI: ERROR - updateColor requires CommandQueue');
-            return;
-        }
-
         if (!Array.isArray(color) || color.length !== 4)
         {
             console.log('EntityAPI: ERROR - color must be [r, g, b, a] array');
             return;
         }
 
-        return new Promise((resolve, reject) =>
-        {
-            commandQueue.submit(
-                'entity.update_color',
-                { entityId, r: color[0], g: color[1], b: color[2], a: color[3] },
-                'entity-api',
-                (result) =>
-                {
-                    if (result && result.success) { resolve(); }
-                    else { reject(new Error(result?.error || 'updateColor failed')); }
-                }
-            );
-        });
+        return this._submit('entity.update_color', { entityId, r: color[0], g: color[1], b: color[2], a: color[3] });
     }
 
     /**
@@ -293,23 +217,39 @@ export class EntityAPI
      */
     async destroyEntity(entityId)
     {
+        return this._submit('entity.destroy', { entityId });
+    }
+
+    //----------------------------------------------------------------------------------------------------
+    // Private Helper
+    //----------------------------------------------------------------------------------------------------
+
+    /**
+     * Submit a command through the GenericCommand pipeline with Promise wrapping
+     * @param {string} commandType - GenericCommand type (e.g. 'entity.update_position')
+     * @param {Object} params - Command parameters
+     * @returns {Promise<void>} Resolves on success, rejects on failure
+     * @private
+     */
+    async _submit(commandType, params)
+    {
         const commandQueue = globalThis.CommandQueueAPI;
         if (!commandQueue || !commandQueue.isAvailable())
         {
-            console.log('EntityAPI: ERROR - destroyEntity requires CommandQueue');
+            console.log(`EntityAPI: ERROR - ${commandType} requires CommandQueue`);
             return;
         }
 
         return new Promise((resolve, reject) =>
         {
             commandQueue.submit(
-                'entity.destroy',
-                { entityId },
+                commandType,
+                params,
                 'entity-api',
                 (result) =>
                 {
                     if (result && result.success) { resolve(result.resultId); }
-                    else { reject(new Error(result?.error || 'destroyEntity failed')); }
+                    else { reject(new Error(result?.error || `${commandType} failed`)); }
                 }
             );
         });
