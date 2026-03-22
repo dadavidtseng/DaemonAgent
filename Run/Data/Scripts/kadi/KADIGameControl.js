@@ -71,7 +71,7 @@ export class KADIGameControl extends Subsystem
             // Connect to KADI broker (localhost:8080 from Phase 4)
             console.log('KADIGameControl: Connecting to ws://localhost:8080...');
             // kadi.connect('ws://kadi.build:8080/kadi', keyPair.publicKey, keyPair.privateKey);
-            kadi.connect('ws://localhost:8080/kadi', keyPair.publicKey, keyPair.privateKey);
+            kadi.connect('ws://172.31.9.248:8080/kadi', keyPair.publicKey, keyPair.privateKey);
             this.connectionInitiated = true;
             console.log('KADIGameControl: Connection initiated');
 
@@ -167,7 +167,7 @@ export class KADIGameControl extends Subsystem
         {
             const allTools = [...GameControlTools, ...DevelopmentTools];
             kadi.publishEvent('game.ready', JSON.stringify({
-                agentName: 'DaemonAgent',
+                agentName: 'Daemon Agent',
                 toolCount: allTools.length,
                 timestamp: Date.now()
             }));
@@ -200,12 +200,15 @@ export class KADIGameControl extends Subsystem
                 }
             }
 
-            // Step 2: Register tools (after connection is established)
+            // Step 2: Set agent display name (before tool registration sends it to broker)
+            kadi.setDisplayName('Daemon Agent');
+
+            // Step 3: Register tools (after connection is established)
             this.setupKADITools();
             this.kadiInitialized = true;
             console.log('KADIGameControl: Initialization complete');
 
-            // Step 3: Schedule game.ready event after delay (broker processes
+            // Step 4: Schedule game.ready event after delay (broker processes
             // register and publish concurrently, so we need to wait for
             // registration to complete before publishing)
             this.gameReadyDelayRemaining = 3.0; // seconds
