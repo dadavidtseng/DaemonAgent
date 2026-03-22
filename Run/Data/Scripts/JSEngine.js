@@ -71,13 +71,6 @@ export class JSEngine {
     registerSystem(id, configOrComponent = {}) {
         let system;
 
-        // Debug logging
-        console.log(`JSEngine.registerSystem: id=${id}, configOrComponent type=${typeof configOrComponent}`);
-        if (configOrComponent && typeof configOrComponent === 'object') {
-            console.log(`JSEngine.registerSystem: configOrComponent.id=${configOrComponent.id}, priority=${configOrComponent.priority}`);
-            console.log(`JSEngine.registerSystem: update type=${typeof configOrComponent.update}, render type=${typeof configOrComponent.render}`);
-        }
-
         // NEW PATTERN: Subsystem instance (Phase 3.5)
         // Detect by checking for id, priority properties and update/render methods
         const isComponentInstance = configOrComponent &&
@@ -85,8 +78,6 @@ export class JSEngine {
             configOrComponent.id &&
             typeof configOrComponent.priority === 'number' &&
             typeof configOrComponent.update === 'function';
-
-        console.log(`JSEngine.registerSystem: isComponentInstance=${isComponentInstance}`);
 
         if (isComponentInstance) {
             // Subsystem instance pattern
@@ -322,13 +313,6 @@ export class JSEngine {
                 return;
             }
 
-            // No JSON.parse needed - V8 already deserialized the JSON for us
-
-            // Skip if parsed result is empty array
-            if (!callbacks || callbacks.length === 0) {
-                return;
-            }
-
             // Process each callback
             for (const cb of callbacks) {
                 this.executeCallback(cb);
@@ -467,30 +451,6 @@ export class JSEngine {
                 }
             }
         }
-    }
-
-    /**
-     * C++ Engine interface methods - called by JSGame
-     * These bridge to the actual C++ engine functions
-     */
-    updateCppEngine(gameDeltaSeconds, systemDeltaSeconds) {
-        // if (typeof game !== 'undefined' && game.update)
-        // {
-        //     game.update(systemDeltaSeconds || 0.0);
-        //     return true;
-        // }
-        // console.log('JSEngine: C++ game.update not available');
-        // return false;
-    }
-
-    renderCppEngine() {
-        // if (typeof game !== 'undefined' && game.render)
-        // {
-        //     game.render();
-        //     return true;
-        // }
-        // console.log('JSEngine: C++ game.render not available');
-        // return false;
     }
 
     /**

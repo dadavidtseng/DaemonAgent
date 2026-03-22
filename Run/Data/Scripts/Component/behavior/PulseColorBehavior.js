@@ -72,7 +72,6 @@ export class PulseColorBehavior extends BehaviorComponent
 
         // Pulsing color calculation — modulate base color by sin wave
         const colorValue = (Math.sin(elapsedTime) + 1.0) * 0.5;
-        const colorInt = Math.floor(colorValue * 255.0);
 
         // Scale each channel of the base color by the pulse factor
         this.meshComponent.setColor({

@@ -2,7 +2,6 @@
 // JSGame.js - Game System Coordinator
 //----------------------------------------------------------------------------------------------------
 
-// import {CppBridgeSystem} from './Component/CppBridgeSystem.js';  // DISABLED: Deprecated
 import {InputSystem} from './Component/InputSystem.js';
 import {AudioSystem} from './Component/AudioSystem.js';
 import {DebugRenderSystem} from './Component/DebugRenderSystem.js';
@@ -15,7 +14,7 @@ import {hotReloadRegistry} from './core/HotReloadRegistry.js';
 import {CameraAPI} from './Interface/CameraAPI.js';  // Phase 2b: Screen camera creation
 import {ResourceAPI} from './Interface/ResourceAPI.js';  // Texture loading for per-entity binding
 import {Clock} from './Component/Clock.js';
-// import {NewFeatureSystem} from './components/NewFeatureSystem.js';
+
 
 export const GameState = Object.freeze({
     ATTRACT: 'ATTRACT',
@@ -136,21 +135,11 @@ export class JSGame
     {
         console.log('JSGame: Creating component instances...');
 
-        // Core C++ bridge (priority: 0) - DISABLED: Deprecated system
-        // this.cppBridge = new CppBridgeSystem(this.engine);
-
-        // Phase 2b: CameraSystem removed - camera management now via CameraAPI
-        // this.cameraSystem = new CameraSystem();
-
         // Audio system (priority: 5) - must create before InputSystem
         this.audioSystem = new AudioSystem();
 
         // Input system (priority: 10)
         this.inputSystem = new InputSystem();
-
-        // Phase 2: RendererSystem removed - replaced by EntityAPI
-        // === Phase 4: Renderer system (priority: 100) - must create BEFORE entities ===
-        // this.rendererSystem = new RendererSystem();
 
         // Debug Render system (priority: 95) - debug visualization
         this.debugRenderSystem = new DebugRenderSystem();
@@ -200,20 +189,6 @@ export class JSGame
 
         console.log('[ScreenCamera] createCamera() call completed (callback will fire later asynchronously)');
 
-        // === Phase 4: Game entities (matching C++ architecture) ===
-        // PlayerEntity (like C++ Player* m_player)
-        try
-        {
-            console.log('JSGame: About to create PlayerEntity...');
-            // this.playerEntity = new PlayerEntity(this);
-            console.log('JSGame: PlayerEntity created successfully');
-        } catch (error)
-        {
-            console.log('JSGame: ERROR creating PlayerEntity:', error);
-            console.log('JSGame: Error stack:', error.stack);
-            throw error;
-        }
-
         // === Phase 5: GameObject system (new component-based architecture) ===
         // Create Player GameObject (F2 toggle system)
         try
@@ -235,17 +210,12 @@ export class JSGame
             console.log('JSGame: Creating Prop GameObjects (Phase 6)...');
             this.createPropGameObjects();
             console.log('JSGame: Prop GameObjects created successfully');
-
-            // Create test physics props
-            // this.createPhysicsTestProps();
         } catch (error)
         {
             console.log('JSGame: ERROR creating Prop GameObjects:', error);
             console.log('JSGame: Error stack:', error.stack);
             throw error;
         }
-
-        // this.newFeature = new NewFeatureSystem();
 
         console.log('JSGame: All component instances created (Phase 4 with Entity structure + Phase 5 GameObject system)');
     }
@@ -314,85 +284,6 @@ export class JSGame
         }
 
         console.log(`JSGame: Created ${this.propGameObjects.length} Prop GameObjects (Phase 2)`);
-    }
-
-    /**
-     * Create test props with bounce physics enabled
-     * Experimental feature for testing physics system
-     * Spawns 100 cubes/spheres in a grid pattern with random heights
-     */
-    createPhysicsTestProps()
-    {
-        console.log('JSGame: Creating 100 physics test props...');
-
-        const numObjects = 100;
-        const gridSize = 10;  // 10x10 grid
-        const spacing = 3.0;   // 3 units between objects
-        const startX = -15.0;  // Start offset to center the grid
-        const startY = -15.0;
-
-        let createdCount = 0;
-
-        for (let i = 0; i < numObjects; i++)
-        {
-            try
-            {
-                // Calculate grid position
-                const gridX = i % gridSize;
-                const gridY = Math.floor(i / gridSize);
-
-                // World position
-                const posX = startX + (gridX * spacing);
-                const posY = startY + (gridY * spacing);
-                const posZ = 5 + Math.random() * 10;  // Random height between 5 and 15
-
-                // Alternate between cube and sphere
-                const meshType = (i % 2 === 0) ? 'cube' : 'sphere';
-
-                // Random color
-                const color = {
-                    r: Math.floor(Math.random() * 256),
-                    g: Math.floor(Math.random() * 256),
-                    b: Math.floor(Math.random() * 256),
-                    a: 255
-                };
-
-                // Random physics parameters
-                const bounciness = 0.5 + Math.random() * 0.4;  // 0.5 to 0.9
-                const scale = 0.5 + Math.random() * 0.5;       // 0.5 to 1.0
-
-                // Random initial velocity to ensure collisions
-                const velocityX = (Math.random() - 0.5) * 4.0;  // -2 to +2 m/s
-                const velocityY = (Math.random() - 0.5) * 4.0;  // -2 to +2 m/s
-                const velocityZ = (Math.random() - 0.5) * 2.0;  // -1 to +1 m/s
-
-                const physicsObject = new Prop(
-                    meshType,
-                    {x: posX, y: posY, z: posZ},
-                    'static',
-                    color,
-                    scale,
-                    {
-                        enablePhysics: true,
-                        physicsConfig: {
-                            gravity: -9.8,
-                            bounciness: bounciness,
-                            mass: 1.0,
-                            initialVelocity: [velocityX, velocityY, velocityZ]
-                        }
-                    }
-                );
-
-                this.propGameObjects.push(physicsObject);
-                createdCount++;
-
-            } catch (error)
-            {
-                console.log(`JSGame: ERROR creating physics test object ${i}:`, error);
-            }
-        }
-
-        console.log(`JSGame: Created ${createdCount} physics test props (10x10 grid pattern)`);
     }
 
     /**
@@ -510,14 +401,9 @@ export class JSGame
         console.log('(JSGame::registerGameSystems)(start) - Phase 4 Entity Structure');
 
         // Register subsystems using Subsystem pattern (null, componentInstance)
-        // DISABLED: CppBridgeSystem is deprecated - rendering now handled by C++ engine directly
-        // this.engine.registerSystem(null, this.cppBridge);       // Priority: 0
-        // Phase 2b: CameraSystem removed - camera management now via CameraAPI
-        // this.engine.registerSystem(null, this.cameraSystem);    // Priority: 3
         this.engine.registerSystem(null, this.audioSystem);     // Priority: 5
         this.engine.registerSystem(null, this.inputSystem);     // Priority: 10
         this.engine.registerSystem(null, this.kadiGameControl);  // Priority: 11
-        // this.engine.registerSystem(null, this.newFeature);     // Priority: 10
 
         // === Physics System (priority: 25) - Updates entity positions ===
         this.engine.registerSystem('physicsSystem', {
@@ -542,7 +428,7 @@ export class JSGame
             {
                 // Convert systemDelta from seconds to milliseconds
                 const deltaTimeMs = systemDelta * 1000.0;
-                // throw new Error("Phase 3.2 Test: Injected runtime error");
+
                 // === HOT-RELOAD DETECTION: Check for Player class updates ===
                 if (hotReloadRegistry.hasUpdated('Player', this.playerVersion))
                 {
@@ -610,14 +496,6 @@ export class JSGame
                 {
                     this.engine.setSystemEnabled('gameRender', true);
                 }
-
-                // if (input.wasKeyJustPressed(KEYCODE_ESC))
-                // {
-                //     if (this.gameState === GameState.ATTRACT)
-                //     {
-                //         game.appRequestQuit();
-                //     }
-                // }
             },
             render: () =>
             {
@@ -628,24 +506,16 @@ export class JSGame
         });
 
         // Game render system (priority: 90) - Renders scene with player's camera
-        let renderFrameCount = 0;  // Track render calls
         this.engine.registerSystem('gameRender', {
             update: (gameDelta, systemDelta) =>
             {
             },
             render: () =>
             {
-                renderFrameCount++;
-
-                // === DEBUG LOG: Render entry point ===
-                // console.log(`[gameRender] Frame ${renderFrameCount}: ENTERED render() - gameState = ${this.gameState}, screenCamera = ${this.screenCamera}`);
-
                 // Add game mode-specific screen text FIRST (before any early returns)
                 // This ensures text is rendered in both ATTRACT and GAME modes
                 if (this.gameState === GameState.ATTRACT)
                 {
-                    // console.log(`[gameRender] Frame ${renderFrameCount}: ATTRACT mode detected - Adding "Attract" text`);
-
                     // ATTRACT mode: Show "Attract" text
                     this.debugRenderSystem.addScreenText(
                         "AttractXXXXX",
@@ -657,13 +527,9 @@ export class JSGame
                         0,             // duration (0 = this frame only, re-added every frame)
                         255, 255, 0, 255  // Yellow color
                     );
-
-                    // console.log(`[gameRender] Frame ${renderFrameCount}: "Attract" text added to buffer`);
                 }
                 else if (this.gameState === GameState.GAME)
                 {
-                    // console.log(`[gameRender] Frame ${renderFrameCount}: GAME mode detected - Game text code is COMMENTED OUT`);
-
                     // GAME mode: Show "Game" text
                     this.debugRenderSystem.addScreenText(
                         "Game",
@@ -682,22 +548,9 @@ export class JSGame
                 //       JS only submits geometry/control commands via GenericCommand pipeline
 
                 // Only render JavaScript entities when in GAME mode
-                // (CppBridgeSystem handles ATTRACT mode rendering)
-                // console.log(`[gameRender] Frame ${renderFrameCount}: Checking if should early return - gameState = ${this.gameState}`);
-
                 if (this.gameState !== GameState.GAME)
                 {
-                    // console.log(`[gameRender] Frame ${renderFrameCount}: EARLY RETURN - Not in GAME mode (gameState = ${this.gameState})`);
                     return;
-                }
-
-                // console.log(`[gameRender] Frame ${renderFrameCount}: Continuing to world rendering - in GAME mode`);
-
-                // Check global shouldRender flag (F1 toggle functionality)
-                let shouldRenderValue = true;
-                if (typeof globalThis.shouldRender !== 'undefined')
-                {
-                    shouldRenderValue = globalThis.shouldRender;
                 }
 
                 // Use player's camera for rendering (F2 toggle: GameObject vs Entity)
@@ -753,11 +606,6 @@ export class JSGame
 
         // === Phase 4: Debug Render system (priority: 95) - debug visualization ===
         this.engine.registerSystem(null, this.debugRenderSystem);  // Priority: 95
-
-        // Phase 2: RendererSystem removed - replaced by EntityAPI
-        // === Phase 4: Renderer system (priority: 100) - renders LAST ===
-        // this.engine.registerSystem(null, this.rendererSystem);  // Priority: 100 - REMOVED
-        // this.engine.registerSystem(null, this.newFeature);
 
         console.log('(JSGame::registerGameSystems)(end) - All systems registered (Entity-based architecture)');
     }
