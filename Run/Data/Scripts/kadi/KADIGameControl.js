@@ -127,6 +127,28 @@ export class KADIGameControl extends Subsystem
             return;
         }
 
+        // Wrap kadi.sendToolResult to auto-convert results to MCP content format.
+        // MCP clients (Claude Desktop/Code) require {content: [{type, text}]} envelope.
+        // Handlers send raw JSON — this wrapper adds the envelope transparently.
+        const _origSendToolResult = kadi.sendToolResult;
+        kadi.sendToolResult = (requestId, resultJson) =>
+        {
+            try
+            {
+                const parsed = JSON.parse(resultJson);
+                if (!parsed.content || !Array.isArray(parsed.content))
+                {
+                    resultJson = JSON.stringify({ content: [{ type: 'text', text: resultJson }] });
+                }
+            }
+            catch (e)
+            {
+                resultJson = JSON.stringify({ content: [{ type: 'text', text: resultJson }] });
+            }
+            _origSendToolResult(requestId, resultJson);
+        };
+        console.log('KADIGameControl: Wrapped sendToolResult for MCP compatibility');
+
         // Register tool invocation handler
         try
         {

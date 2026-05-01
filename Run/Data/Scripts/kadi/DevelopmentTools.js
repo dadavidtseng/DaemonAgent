@@ -221,11 +221,10 @@ export const DevelopmentTools = [
             },
             required: []
         }
-    }
-];
+    },
 
-/**
- * modify_script Operation Parameter Schemas
+    /**
+     * modify_script Operation Parameter Schemas
  *
  * add_line params:
  * {
