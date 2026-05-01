@@ -18,6 +18,10 @@
 #include "Engine/Audio/AudioSystem.hpp"
 #include "Engine/Core/CallbackQueue.hpp"
 #include "Engine/Core/CallbackQueueScriptInterface.hpp"
+//----------------------------------------------------------------------------------------------------
+#include <Windows.h>
+#include <Psapi.h>
+#pragma comment(lib, "Psapi.lib")
 #include "Engine/Core/Clock.hpp"
 #include "Engine/Core/DevConsole.hpp"
 #include "Engine/Core/Engine.hpp"
@@ -1828,28 +1832,6 @@ void App::Startup()
                                                   return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                               });
 
-    // game.get_watched_files — Get list of all watched .js files
-    m_genericCommandExecutor->RegisterHandler("game.get_watched_files",
-                                              [](std::any const& /*payload*/) -> HandlerResult
-                                              {
-                                                  if (!g_scriptSubsystem)
-                                                  {
-                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(R"({"success":false,"error":"ScriptSubsystem not available"})"))}});
-                                                  }
-
-                                                  std::vector<std::string> watchedFiles = g_scriptSubsystem->GetWatchedFiles();
-
-                                                  std::ostringstream resultJson;
-                                                  resultJson << R"({"success":true,"count":)" << watchedFiles.size() << R"(,"files":[)";
-
-                                                  for (size_t i = 0; i < watchedFiles.size(); ++i)
-                                                  {
-                                                      resultJson << "\"" << EscapeJsonString(watchedFiles[i]) << "\"";
-                                                      if (i < watchedFiles.size() - 1) resultJson << ",";
-                                                  }
-                                                  resultJson << "]}";
-                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
-                                              });
 
     // game.capture_screenshot — Capture current frame as PNG or JPEG
     m_genericCommandExecutor->RegisterHandler("game.capture_screenshot",
@@ -1923,6 +1905,198 @@ void App::Startup()
                                                       << R"(","fileSize":)" << fileSize
                                                       << R"(,"mimeType":")" << mimeType
                                                       << R"(","imageData":")" << imageBase64 << R"("})";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.validate_script — Parse JS source via V8 without execution, return syntax errors
+    m_genericCommandExecutor->RegisterHandler("game.validate_script",
+                                              [](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  std::string source = json.value("source", "");
+                                                  if (source.empty())
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(
+                                                          R"({"valid":false,"errors":[{"message":"source parameter is required","line":-1,"column":-1}]})"))}});
+                                                  }
+
+                                                  std::string scriptName = json.value("name", "validate");
+
+                                                  if (!g_scriptSubsystem)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(
+                                                          R"({"valid":false,"errors":[{"message":"ScriptSubsystem not available","line":-1,"column":-1}]})"))}});
+                                                  }
+
+                                                  ScriptValidationResult result = g_scriptSubsystem->ValidateScript(source, scriptName);
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"valid":)" << (result.valid ? "true" : "false") << R"(,"errors":[)";
+                                                  for (size_t i = 0; i < result.errors.size(); ++i)
+                                                  {
+                                                      if (i > 0) resultJson << ",";
+                                                      resultJson << R"({"message":")" << EscapeJsonString(result.errors[i].message)
+                                                                 << R"(","line":)" << result.errors[i].line
+                                                                 << R"(,"column":)" << result.errors[i].column << "}";
+                                                  }
+                                                  resultJson << "]}";
+
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.run_script_test — Execute script in sandboxed V8 context with timeout
+    m_genericCommandExecutor->RegisterHandler("game.run_script_test",
+                                              [](std::any const& payload) -> HandlerResult
+                                              {
+                                                  nlohmann::json json;
+                                                  String         err = ParseJsonPayload(payload, json);
+                                                  if (!err.empty()) return HandlerResult::Error(err);
+
+                                                  std::string source = json.value("source", "");
+                                                  if (source.empty())
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(
+                                                          R"({"success":false,"output":"","errors":["source parameter is required"],"timedOut":false})"))}});
+                                                  }
+
+                                                  std::string scriptName = json.value("name", "test");
+                                                  int         timeoutMs  = json.value("timeout", 10000);
+
+                                                  if (!g_scriptSubsystem)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(
+                                                          R"({"success":false,"output":"","errors":["ScriptSubsystem not available"],"timedOut":false})"))}});
+                                                  }
+
+                                                  ScriptTestResult result = g_scriptSubsystem->RunScriptTest(source, scriptName, timeoutMs);
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":)" << (result.success ? "true" : "false")
+                                                             << R"(,"output":")" << EscapeJsonString(result.output)
+                                                             << R"(","errors":[)";
+                                                  for (size_t i = 0; i < result.errors.size(); ++i)
+                                                  {
+                                                      if (i > 0) resultJson << ",";
+                                                      resultJson << "\"" << EscapeJsonString(result.errors[i]) << "\"";
+                                                  }
+                                                  resultJson << R"(],"timedOut":)" << (result.timedOut ? "true" : "false") << "}";
+
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.get_entity_list — Enumerate all active entities with type, position, and ID
+    m_genericCommandExecutor->RegisterHandler("game.get_entity_list",
+                                              [this](std::any const&) -> HandlerResult
+                                              {
+                                                  if (!m_entityStateBuffer)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(
+                                                          R"({"success":false,"error":"EntityStateBuffer not available"})"))}});
+                                                  }
+
+                                                  EntityStateMap const* frontBuffer = m_entityStateBuffer->GetFrontBuffer();
+                                                  if (!frontBuffer)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(
+                                                          R"({"success":true,"entities":[],"count":0})"))}});
+                                                  }
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"entities":[)";
+
+                                                  int count = 0;
+                                                  int limit = 1000;
+                                                  for (auto const& [entityId, state] : *frontBuffer)
+                                                  {
+                                                      if (!state.isActive) continue;
+                                                      if (count >= limit) break;
+
+                                                      if (count > 0) resultJson << ",";
+                                                      resultJson << R"({"entityId":)" << entityId
+                                                                 << R"(,"type":")" << EscapeJsonString(state.meshType)
+                                                                 << R"(","position":[)"
+                                                                 << state.position.x << "," << state.position.y << "," << state.position.z
+                                                                 << R"(],"orientation":[)"
+                                                                 << state.orientation.m_yawDegrees << "," << state.orientation.m_pitchDegrees << "," << state.orientation.m_rollDegrees
+                                                                 << R"(],"scale":)" << state.radius
+                                                                 << R"(,"color":[)" << (int)state.color.r << "," << (int)state.color.g << "," << (int)state.color.b << "," << (int)state.color.a
+                                                                 << R"(],"cameraType":")" << EscapeJsonString(state.cameraType) << R"("})";
+                                                      ++count;
+                                                  }
+
+                                                  resultJson << R"(],"count":)" << count << "}";
+
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.get_engine_metrics — Return FPS, entity count, and memory usage
+    m_genericCommandExecutor->RegisterHandler("game.get_engine_metrics",
+                                              [this](std::any const&) -> HandlerResult
+                                              {
+                                                  // FPS from system clock
+                                                  double deltaSeconds = Clock::GetSystemClock().GetDeltaSeconds();
+                                                  double fps = (deltaSeconds > 0.0) ? (1.0 / deltaSeconds) : 0.0;
+
+                                                  // Entity count from EntityStateBuffer
+                                                  int entityCount = 0;
+                                                  if (m_entityStateBuffer)
+                                                  {
+                                                      EntityStateMap const* frontBuffer = m_entityStateBuffer->GetFrontBuffer();
+                                                      if (frontBuffer) entityCount = static_cast<int>(frontBuffer->size());
+                                                  }
+
+                                                  // Memory usage via Windows API
+                                                  double memoryMB = 0.0;
+                                                  PROCESS_MEMORY_COUNTERS pmc;
+                                                  if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+                                                  {
+                                                      memoryMB = static_cast<double>(pmc.WorkingSetSize) / (1024.0 * 1024.0);
+                                                  }
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << std::fixed << std::setprecision(1)
+                                                             << R"({"success":true,"fps":)" << fps
+                                                             << R"(,"entityCount":)" << entityCount
+                                                             << R"(,"memoryUsageMB":)" << memoryMB
+                                                             << R"(,"frameCount":)" << Clock::GetSystemClock().GetFrameCount()
+                                                             << "}";
+
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
+    // game.list_scripts — Return all loaded scripts with path, name, and active status
+    m_genericCommandExecutor->RegisterHandler("game.list_scripts",
+                                              [](std::any const&) -> HandlerResult
+                                              {
+                                                  if (!g_scriptSubsystem)
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(
+                                                          R"({"success":false,"error":"ScriptSubsystem not available"})"))}});
+                                                  }
+
+                                                  std::vector<std::string> watchedFiles = g_scriptSubsystem->GetWatchedFiles();
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"scripts":[)";
+
+                                                  for (size_t i = 0; i < watchedFiles.size(); ++i)
+                                                  {
+                                                      std::string const& path = watchedFiles[i];
+
+                                                      // Extract filename from path
+                                                      size_t      lastSlash = path.find_last_of("/\\");
+                                                      std::string name      = (lastSlash != std::string::npos) ? path.substr(lastSlash + 1) : path;
+
+                                                      if (i > 0) resultJson << ",";
+                                                      resultJson << R"({"path":")" << EscapeJsonString(path)
+                                                                 << R"(","name":")" << EscapeJsonString(name)
+                                                                 << R"(","active":true})";
+                                                  }
+
+                                                  resultJson << R"(],"count":)" << watchedFiles.size() << "}";
                                                   return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                               });
 
