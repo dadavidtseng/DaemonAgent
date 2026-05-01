@@ -283,7 +283,81 @@ export const DevelopmentTools = [
  * Complete reference: https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
  */
 
+    {
+        name: "validate_script",
+        description: "Parse JavaScript source code via V8 without executing it. Returns syntax errors with line and column numbers. Use this to check code correctness before deploying scripts.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                source: {
+                    type: "string",
+                    description: "JavaScript source code to validate"
+                },
+                name: {
+                    type: "string",
+                    default: "validate",
+                    description: "Optional script name for error messages"
+                }
+            },
+            required: ["source"]
+        }
+    },
+    {
+        name: "run_script_test",
+        description: "Execute JavaScript in a sandboxed V8 context with timeout. The sandbox has no access to game state — only console.log/warn/error are available. Returns success/failure, captured console output, and any errors.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                source: {
+                    type: "string",
+                    description: "JavaScript source code to execute in sandbox"
+                },
+                name: {
+                    type: "string",
+                    default: "test",
+                    description: "Optional script name for error messages"
+                },
+                timeout: {
+                    type: "integer",
+                    minimum: 100,
+                    maximum: 30000,
+                    default: 10000,
+                    description: "Execution timeout in milliseconds (default: 10000)"
+                }
+            },
+            required: ["source"]
+        }
+    },
+    {
+        name: "get_entity_list",
+        description: "Enumerate all active entities in the game scene with their ID, mesh type, position, orientation, scale, color, and camera type. Reads from the C++ EntityStateBuffer (authoritative render state).",
+        inputSchema: {
+            type: "object",
+            properties: {},
+            required: []
+        }
+    },
+    {
+        name: "get_engine_metrics",
+        description: "Get current engine performance metrics: FPS, entity count, process memory usage (MB), and total frame count.",
+        inputSchema: {
+            type: "object",
+            properties: {},
+            required: []
+        }
+    },
+    {
+        name: "list_scripts",
+        description: "List all loaded JavaScript scripts with their file path, display name, and active status. Returns scripts currently watched by the hot-reload system.",
+        inputSchema: {
+            type: "object",
+            properties: {},
+            required: []
+        }
+    }
+];
+
 // Export for hot-reload
 globalThis.DevelopmentTools = DevelopmentTools;
 
-console.log('DevelopmentTools: Module loaded (10 tools defined)');
+console.log(`DevelopmentTools: Module loaded (${DevelopmentTools.length} tools defined)`);

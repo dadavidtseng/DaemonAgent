@@ -122,6 +122,21 @@ export class DevelopmentToolHandler
             case 'capture_screenshot':
                 await this.handleCaptureScreenshot(requestId, parsedArgs);
                 break;
+            case 'validate_script':
+                await this.handleValidateScript(requestId, parsedArgs);
+                break;
+            case 'run_script_test':
+                await this.handleRunScriptTest(requestId, parsedArgs);
+                break;
+            case 'get_entity_list':
+                await this.handleGetEntityList(requestId);
+                break;
+            case 'get_engine_metrics':
+                await this.handleGetEngineMetrics(requestId);
+                break;
+            case 'list_scripts':
+                await this.handleListScripts(requestId);
+                break;
             default:
                 this.sendError(requestId, `Unknown tool: ${toolName}`);
         }
@@ -1005,6 +1020,59 @@ export class DevelopmentToolHandler
             success: false,
             error: errorMessage
         }));
+    }
+
+    // ==========================================
+    // M6 New Tools: Script Validation, Engine Inspection
+    // ==========================================
+
+    async handleValidateScript(requestId, args)
+    {
+        if (!args.source || typeof args.source !== 'string')
+        {
+            this.sendError(requestId, 'Invalid source: must be non-empty string');
+            return;
+        }
+
+        const payload = { source: args.source };
+        if (args.name) payload.name = args.name;
+
+        const resultObj = await this._submitCommand('game.validate_script', payload);
+        kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+    }
+
+    async handleRunScriptTest(requestId, args)
+    {
+        if (!args.source || typeof args.source !== 'string')
+        {
+            this.sendError(requestId, 'Invalid source: must be non-empty string');
+            return;
+        }
+
+        const payload = { source: args.source };
+        if (args.name) payload.name = args.name;
+        if (args.timeout) payload.timeout = args.timeout;
+
+        const resultObj = await this._submitCommand('game.run_script_test', payload);
+        kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+    }
+
+    async handleGetEntityList(requestId)
+    {
+        const resultObj = await this._submitCommand('game.get_entity_list', {});
+        kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+    }
+
+    async handleGetEngineMetrics(requestId)
+    {
+        const resultObj = await this._submitCommand('game.get_engine_metrics', {});
+        kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+    }
+
+    async handleListScripts(requestId)
+    {
+        const resultObj = await this._submitCommand('game.list_scripts', {});
+        kadi.sendToolResult(requestId, JSON.stringify(resultObj));
     }
 }
 

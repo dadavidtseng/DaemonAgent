@@ -97,4 +97,4 @@ export const GameControlTools = [
 // Export for hot-reload
 globalThis.GameControlTools = GameControlTools;
 
-console.log('GameControlTools: Module loaded (4 tools defined)');
+console.log(`GameControlTools: Module loaded (${GameControlTools.length} tools defined)`);
