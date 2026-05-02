@@ -7,8 +7,10 @@ import {Subsystem} from '../Core/Subsystem.js';
 import {GameControlHandler} from './GameControlHandler.js';
 import {GameControlTools} from './GameControlTools.js';
 import {DevelopmentToolHandler} from './DevelopmentToolHandler.js';
+import {BuildToolHandler} from './BuildToolHandler.js';
 import {CommandQueue} from '../Interface/CommandQueue.js';
 import {DevelopmentTools} from './DevelopmentTools.js';
+import {BuildTools} from './BuildTools.js';
 
 /**
  * KADIGameControl - Subsystem for KADI game control integration
@@ -37,6 +39,7 @@ export class KADIGameControl extends Subsystem
         // Use CommandQueue singleton for async GenericCommand pipeline
         const commandQueue = new CommandQueue();
         this.developmentToolHandler = new DevelopmentToolHandler(commandQueue);
+        this.buildToolHandler = new BuildToolHandler(commandQueue);
         this.toolsRegistered = false;
         this.connectionInitiated = false;
 
@@ -97,8 +100,8 @@ export class KADIGameControl extends Subsystem
             return;
         }
 
-        // Combine game control tools and development tools
-        const allTools = [...GameControlTools, ...DevelopmentTools];
+        // Combine all tool sets
+        const allTools = [...GameControlTools, ...DevelopmentTools, ...BuildTools];
 
         // Register tools with KADI
         try
@@ -108,6 +111,7 @@ export class KADIGameControl extends Subsystem
             console.log(`KADIGameControl: Registered ${allTools.length} tools total`);
             console.log(`  - ${GameControlTools.length} game control tools`);
             console.log(`  - ${DevelopmentTools.length} development tools (Phase 6a)`);
+            console.log(`  - ${BuildTools.length} build tools`);
 
             // List registered tools
             console.log('KADIGameControl: Game Control Tools:');
@@ -118,6 +122,12 @@ export class KADIGameControl extends Subsystem
 
             console.log('KADIGameControl: Development Tools (Phase 6a):');
             for (const tool of DevelopmentTools)
+            {
+                console.log(`  - ${tool.name}: ${tool.description}`);
+            }
+
+            console.log('KADIGameControl: Build Tools:');
+            for (const tool of BuildTools)
             {
                 console.log(`  - ${tool.name}: ${tool.description}`);
             }
@@ -163,6 +173,10 @@ export class KADIGameControl extends Subsystem
                 {
                     this.developmentToolHandler.handleToolInvoke(requestId, toolName, args);
                 }
+                else if (BuildTools.some(tool => tool.name === toolName))
+                {
+                    this.buildToolHandler.handleToolInvoke(requestId, toolName, args);
+                }
                 else
                 {
                     console.log(`KADIGameControl: ERROR - Unknown tool: ${toolName}`);
@@ -187,7 +201,7 @@ export class KADIGameControl extends Subsystem
     {
         try
         {
-            const allTools = [...GameControlTools, ...DevelopmentTools];
+            const allTools = [...GameControlTools, ...DevelopmentTools, ...BuildTools];
             kadi.publishEvent('game.ready', JSON.stringify({
                 agentName: 'Daemon Agent',
                 toolCount: allTools.length,
@@ -268,6 +282,7 @@ export class KADIGameControl extends Subsystem
             toolsRegistered: this.toolsRegistered,
             gameControlTools: GameControlTools.length,
             developmentTools: DevelopmentTools.length,
+            buildTools: BuildTools.length,
             spawnedCubeCount: this.gameControlHandler.spawnedCubes.size,
             entityIdCounter: this.gameControlHandler.entityIdCounter
         };

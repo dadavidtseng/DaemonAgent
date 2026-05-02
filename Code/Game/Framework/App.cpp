@@ -2100,6 +2100,30 @@ void App::Startup()
                                                   return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
                                               });
 
+    // game.get_version — Read VERSION file from repo root and return semver string
+    m_genericCommandExecutor->RegisterHandler("game.get_version",
+                                              [](std::any const&) -> HandlerResult
+                                              {
+                                                  std::ifstream file("../VERSION");
+                                                  if (!file.is_open())
+                                                  {
+                                                      return HandlerResult::Success({{"resultJson", std::any(std::string(
+                                                          R"({"success":false,"error":"VERSION file not found"})"))}});
+                                                  }
+
+                                                  std::string version;
+                                                  std::getline(file, version);
+                                                  file.close();
+
+                                                  // Trim whitespace
+                                                  while (!version.empty() && (version.back() == '\r' || version.back() == '\n' || version.back() == ' '))
+                                                      version.pop_back();
+
+                                                  std::ostringstream resultJson;
+                                                  resultJson << R"({"success":true,"version":")" << EscapeJsonString(version) << R"("})";
+                                                  return HandlerResult::Success({{"resultJson", std::any(resultJson.str())}});
+                                              });
+
     // input.set_cursor_mode — Set cursor mode (POINTER=0, FPS=1)
     // Migrated from InputScriptInterface to GenericCommand pipeline
     m_genericCommandExecutor->RegisterHandler("input.set_cursor_mode",
