@@ -32,6 +32,38 @@ const commandQueueInstance = new CommandQueue();
 globalThis.CommandQueueAPI = commandQueueInstance;
 console.log('CommandQueue: Instance created, available:', commandQueueInstance.isAvailable());
 
+// ============================================================================
+// HOT-RELOAD CLEANUP: Destroy old entities before re-creating
+// ============================================================================
+if (globalThis.jsGameInstance)
+{
+    console.log('main.js: Hot-reload detected — destroying old game objects...');
+    const oldGame = globalThis.jsGameInstance;
+
+    // Destroy all prop entities on C++ side
+    if (oldGame.propGameObjects)
+    {
+        for (const prop of oldGame.propGameObjects)
+        {
+            if (prop && prop.destroy) { prop.destroy(); }
+        }
+    }
+
+    // Destroy player entity on C++ side
+    if (oldGame.playerGameObject && oldGame.playerGameObject.destroy)
+    {
+        oldGame.playerGameObject.destroy();
+    }
+
+    // Destroy camera on C++ side
+    if (oldGame.cameraAPI && oldGame.cameraId)
+    {
+        oldGame.cameraAPI.destroy(oldGame.cameraId);
+    }
+
+    console.log('main.js: Old game objects destroyed');
+}
+
 // Create JSEngine instance
 const jsEngineInstance = new JSEngine();
 
