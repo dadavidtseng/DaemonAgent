@@ -56,6 +56,12 @@ export class BuildToolHandler
             case 'get_version':
                 await this.handleGetVersion(requestId);
                 break;
+            case 'load_model':
+                await this.handleLoadModel(requestId, parsedArgs);
+                break;
+            case 'load_texture':
+                await this.handleLoadTexture(requestId, parsedArgs);
+                break;
             default:
                 this.sendError(requestId, `Unknown tool: ${toolName}`);
         }
@@ -64,6 +70,36 @@ export class BuildToolHandler
     async handleGetVersion(requestId)
     {
         const resultObj = await this._submitCommand('game.get_version', {});
+        kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+    }
+
+    async handleLoadModel(requestId, args)
+    {
+        if (!args.path || typeof args.path !== 'string')
+        {
+            this.sendError(requestId, 'Invalid path: must be non-empty string');
+            return;
+        }
+
+        const payload = { path: args.path };
+        if (args.position) payload.position = args.position;
+        if (args.scale !== undefined) payload.scale = args.scale;
+        if (args.color) payload.color = args.color;
+        if (args.textureId !== undefined) payload.textureId = args.textureId;
+
+        const resultObj = await this._submitCommand('load_model', payload);
+        kadi.sendToolResult(requestId, JSON.stringify(resultObj));
+    }
+
+    async handleLoadTexture(requestId, args)
+    {
+        if (!args.path || typeof args.path !== 'string')
+        {
+            this.sendError(requestId, 'Invalid path: must be non-empty string');
+            return;
+        }
+
+        const resultObj = await this._submitCommand('load_texture', { path: args.path });
         kadi.sendToolResult(requestId, JSON.stringify(resultObj));
     }
 
