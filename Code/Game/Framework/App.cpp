@@ -718,10 +718,9 @@ void App::Startup()
                                                   return HandlerResult::Success({{"resultId", std::any(resourceId)}});
                                               });
 
-    // === GenericCommand handler: "load_model" (Task 8.1 — ResourceScriptInterface migration) ===
-    // Replaces ResourceScriptInterface::ExecuteLoadModel with GenericCommand pipeline.
-    // NOTE: ResourceSubsystem does not yet have CreateOrGetModelFromFile().
-    // Returns error until model loading is implemented (matches ResourceLoadJob behavior).
+    // === GenericCommand handler: "load_model" — Load OBJ model as entity ===
+    // Loads .obj file via MeshCache (lazy ObjModelLoader), creates entity in EntityStateBuffer.
+    // Rendering uses PCUTBN with indexed drawing (preserves normals for lighting).
     m_genericCommandExecutor->RegisterHandler("load_model",
                                               [this](std::any const& payload) -> HandlerResult
                                               {
@@ -735,11 +734,49 @@ void App::Startup()
                                                       return HandlerResult::Error("ERR_INVALID_PARAM: path is required");
                                                   }
 
-                                                  // Model loading via ResourceSubsystem not yet implemented
-                                                  DAEMON_LOG(LogApp, eLogVerbosity::Warning,
-                                                             Stringf("GenericCommand [load_model]: not yet implemented for '%s'", path.c_str()));
+                                                  // Construct meshType with "obj:" prefix for MeshCache dispatch
+                                                  String meshType = "obj:" + path;
 
-                                                  return HandlerResult::Error(Stringf("ERR_NOT_IMPLEMENTED: model loading not yet supported: %s", path.c_str()));
+                                                  // Verify file can be loaded (eager load into cache)
+                                                  ModelMeshData const* model = m_meshCache->GetOrCreateModel(meshType);
+                                                  if (!model || model->vertices.empty())
+                                                  {
+                                                      return HandlerResult::Error(Stringf("ERR_LOAD_FAILED: could not load OBJ: %s", path.c_str()));
+                                                  }
+
+                                                  Vec3  position = ParseVec3(json, "position");
+                                                  float scale    = json.value("scale", 1.0f);
+                                                  auto  colorArr = json.value("color", std::vector<int>{255, 255, 255, 255});
+                                                  Rgba8 color(
+                                                      static_cast<unsigned char>(colorArr.size() > 0 ? colorArr[0] : 255),
+                                                      static_cast<unsigned char>(colorArr.size() > 1 ? colorArr[1] : 255),
+                                                      static_cast<unsigned char>(colorArr.size() > 2 ? colorArr[2] : 255),
+                                                      static_cast<unsigned char>(colorArr.size() > 3 ? colorArr[3] : 255)
+                                                  );
+
+                                                  // Use high offset to avoid collision with create_mesh entity IDs
+                                                  static std::atomic<EntityID> s_nextModelEntityId{10000};
+                                                  EntityID entityId = s_nextModelEntityId++;
+
+                                                  EntityState state;
+                                                  state.position    = position;
+                                                  state.orientation = EulerAngles::ZERO;
+                                                  state.color       = color;
+                                                  state.radius      = scale;
+                                                  state.meshType    = meshType;
+                                                  state.isActive    = true;
+                                                  state.cameraType  = "world";
+                                                  state.textureId   = json.value("textureId", static_cast<uint64_t>(0));
+
+                                                  auto* backBuffer = m_entityStateBuffer->GetBackBuffer();
+                                                  (*backBuffer)[entityId] = state;
+                                                  m_entityStateBuffer->MarkDirty(entityId);
+
+                                                  DAEMON_LOG(LogApp, eLogVerbosity::Log,
+                                                             Stringf("GenericCommand [load_model]: entityId=%llu, path=%s, verts=%zu, pos=(%.1f,%.1f,%.1f), tex=%llu",
+                                                                 entityId, path.c_str(), model->vertices.size(), position.x, position.y, position.z, state.textureId));
+
+                                                  return HandlerResult::Success({{"resultId", std::any(static_cast<uint64_t>(entityId))}});
                                               });
 
     // === GenericCommand handler: "load_shader" (Task 8.1 — ResourceScriptInterface migration) ===
@@ -2586,20 +2623,40 @@ void App::RenderEntities() const
         if (!state.isActive) continue;
         if (state.cameraType != "world") continue;
 
-        // Always cache meshes with WHITE vertices — per-entity color is applied via SetModelConstants tint
-        VertexList_PCU const* verts = m_meshCache->GetOrCreate(state.meshType, state.radius, Rgba8::WHITE);
-        if (!verts || verts->empty()) continue;
-
         Mat44 modelMatrix;
         modelMatrix.SetTranslation3D(state.position);
         modelMatrix.Append(state.orientation.GetAsMatrix_IFwd_JLeft_KUp());
 
+        // Apply uniform scale for OBJ models (primitives bake scale into vertices via MeshCache)
+        if (state.meshType.size() > 4 && state.meshType.substr(0, 4) == "obj:")
+        {
+            modelMatrix.AppendScaleUniform3D(state.radius);
+        }
+
         g_renderer->SetModelConstants(modelMatrix, state.color);
         Texture* tex = (state.textureId != 0)
                            ? reinterpret_cast<Texture*>(state.textureId)
-                           : nullptr;  // nullptr → Renderer binds default white
+                           : nullptr;
         g_renderer->BindTexture(tex);
-        g_renderer->DrawVertexArray(static_cast<int>(verts->size()), verts->data());
+
+        if (state.meshType.size() > 4 && state.meshType.substr(0, 4) == "obj:")
+        {
+            // OBJ model — PCUTBN with indexed rendering (preserves normals for lighting)
+            ModelMeshData const* model = m_meshCache->GetOrCreateModel(state.meshType);
+            if (model && !model->vertices.empty())
+            {
+                g_renderer->DrawVertexArray(model->vertices, model->indices);
+            }
+        }
+        else
+        {
+            // Primitive — PCU
+            VertexList_PCU const* verts = m_meshCache->GetOrCreate(state.meshType, state.radius, Rgba8::WHITE);
+            if (verts && !verts->empty())
+            {
+                g_renderer->DrawVertexArray(static_cast<int>(verts->size()), verts->data());
+            }
+        }
     }
 
     g_renderer->EndCamera(*worldCamera);
