@@ -518,7 +518,7 @@ export class JSGame
                 {
                     // ATTRACT mode: Show "Attract" text
                     this.debugRenderSystem.addScreenText(
-                        "AttractXXXXX",
+                        "Attract",
                         10,             // x (10 pixels from left)
                         10,             // y (10 pixels from bottom)
                         30.0,           // size (larger for attract mode)
