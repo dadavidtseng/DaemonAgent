@@ -1,154 +1,139 @@
 # daemon-agent
-> Lightweight C++ game daemon agent for AGENTS multi-agent orchestration
+> DaemonAgent — dual-language game engine bridging a C++ DaemonEngine foundation with embedded V8 JavaScript game logic
 
 Overview
 --------
-`daemon-agent` is a C++-based game agent designed to run as a background daemon inside the AGENTS orchestration environment. It exposes an IPC interface for other agents, runs the core game loop, and provides hook points for AI modules, logging, and metrics. The package is intended to be managed by the platform toolchain (npm + kadi) while the core is built with CMake.
+DaemonAgent (formerly "daemon-agent") is a research-grade C++ game application that embeds the Google V8 JavaScript engine to enable a dual-language architecture: performance-critical systems (rendering, audio, entity management) live in C++ (DaemonEngine) while game logic and rapid prototyping are written in JavaScript and executed in V8. The project emphasizes hot-reloadable JavaScript logic, crash isolation between language runtimes, and a frame-based double-buffered communication pattern (EntityStateBuffer / CameraStateBuffer) to achieve stable rendering and lock-free parallelism.
 
 Quick Start
 -----------
-1. Install Node toolchain dependencies:
-- Run `npm install` in the package root.
+Prerequisites
+- Microsoft Visual Studio 2022 with the C++ development workload
+- Windows 10/11 (x64)
+- NuGet for package dependencies
 
-2. Install platform tools and registered plugins:
-- Run `kadi install` (this will read `kadi.yml` and install runtime tooling).
+Build & run
+1. Open the solution:
+   - Open `DaemonAgent.sln` in Visual Studio 2022.
+2. Choose a configuration:
+   - Select `Debug|x64` or `Release|x64`.
+3. Build the solution:
+   - Build → Build Solution (Ctrl+Shift+B).
+4. Run the application:
+   - From the IDE: Start Debugging / Start Without Debugging.
+   - Or from the Run folder:
+     - cd Run
+     - Run the produced binary (e.g., `DaemonAgent_Debug_x64.exe` or `DaemonAgent_Release_x64.exe`).
 
-3. Start the daemon under kadi supervision:
-- Run `kadi run start`
-
-Typical sequence:
-- `npm install`
-- `kadi install`
-- `kadi run start`
+If you are working on the JavaScript side:
+- Edit scripts under `Run/Data/Scripts/` — hot-reload is supported by the engine.
+- Use Chrome DevTools integration for JS debugging when running the application.
 
 Tools
 -----
-| Tool | Description |
-|------|-------------|
-| `logger` | Central logging tool that captures and routes stdout/stderr and structured logs to file and the platform log backend. Controls `logLevel` and `logPath` (see config). |
-| `ipc` | Local IPC transport (Unix domain socket / named pipe). Exposes `ipcPath` for incoming agent connections and provides message framing for JSON-RPC style commands. |
-| `game-state` | In-memory game state manager offering snapshotting and state mutation APIs. Used by the core game loop and AI modules. |
-| `ai` | Pluggable AI driver loader. Loads AI modules from `ai/modules/` and forwards events and action requests. |
-| `metrics` | Metrics exporter that exposes runtime counters and histograms over a local HTTP `/metrics` endpoint. Configurable via `metrics.port`. |
+| Tool / Subsystem | Description |
+|------------------|-------------|
+| V8 Subsystem (V8 v13.0.245.25) | Embedded JavaScript runtime for game logic and hot-reloadable systems. Integrated with Chrome DevTools for debugging. |
+| DaemonEngine (Engine/) | C++ game engine foundation providing Core, Entity, Camera, Rendering, and Resource management subsystems. |
+| Entity API / EntityScriptInterface | C++ ↔ JS bindings for entity management. Includes `EntityStateBuffer` double-buffering for lock-free state exchange. |
+| Camera API / CameraScriptInterface | C++ ↔ JS bindings for camera control with `CameraStateBuffer`. |
+| Rendering (DirectX) | DirectX-based renderer implemented in the engine (Engine/Renderer/). |
+| Audio (FMOD) | FMOD integration for audio playback and mixing. |
+| Hot-Reload System | Watches `Run/Data/Scripts/` and reloads JS modules without C++ recompilation. |
+| DevTools Integration | Chrome DevTools connection for JavaScript debugging at runtime. |
 
 Configuration
 -------------
-Configuration files and locations:
-- `config/daemon-agent.yml` — primary YAML config used by the daemon at startup.
-- `config/daemon.json` — alternate JSON config (supported for local tooling).
-- `.env` — environment overrides for runtime-sensitive settings.
-- `kadi.yml` — kadi run definitions and tool registrations.
-- `package.json` — Node build and lifecycle hooks.
+Primary runtime configuration now lives under the Run/Data tree and engine/project files:
 
-Common configuration fields (keys present in `config/daemon-agent.yml`):
-- `agentId` (string) — Unique identifier for this daemon (e.g., `daemon-1`).
-- `logLevel` (string) — `debug|info|warn|error` (default: `info`).
-- `logPath` (string) — Path to the log file (default: `logs/daemon.log`).
-- `ipcPath` (string) — Unix socket or named pipe path for IPC (default: `/tmp/daemon-agent.sock`).
-- `port` (integer) — HTTP/metrics port (default: `8081`).
-- `gameTickMs` (integer) — Milliseconds per game tick (default: `50`).
-- `maxPlayers` (integer) — Maximum concurrent players this daemon supports (default: `64`).
-- `aiEnabled` (boolean) — Enable the AI loader (default: `true`).
-- `aiConfig.path` (string) — Path to AI modules (default: `ai/modules/`).
-- `metrics.port` (integer) — Port used by the metrics exporter (default: `9090`).
+- `Run/Data/GameConfig.xml` — primary runtime configuration for the application (game-specific settings).
+- `Run/Data/Scripts/` — JavaScript game logic and hot-reloadable modules.
+- `Run/Data/` — assets (models, shaders, textures, audio) and other data files.
+- `DaemonAgent.sln` — Visual Studio solution and build configuration.
+- `Code/Game/` — C++ game application sources that reference the external `Engine/` repository.
 
-Example (conceptual) values in `config/daemon-agent.yml`:
-- `agentId: "daemon-1"`
-- `logLevel: "debug"`
-- `ipcPath: "/tmp/daemon-agent.sock"`
-- `gameTickMs: 33`
+Common runtime settings are configured in `Run/Data/GameConfig.xml` and per-script configuration may be present inside `Run/Data/Scripts/`. Hot-reload and debugging behavior are controlled by runtime flags and `GameConfig.xml`.
 
-Files and important paths:
-- `src/main.cpp` — application entry point (parses config, initializes tools, starts loop).
-- `src/daemon.cpp` — main daemon lifecycle and supervisor.
-- `src/game_engine.cpp` — core tick loop and game state updates.
-- `src/agent_worker.cpp` — per-connection worker handling IPC messages.
-- `include/*.h` — public headers for modules and plugins.
-- `CMakeLists.txt` — build configuration for the C++ project.
-- `kadi.yml` — declares `start`, `stop`, `build`, and any tool registrations.
-- `package.json` — contains Node lifecycle hooks (preinstall/postinstall) if needed.
+Files and important paths
+-------------------------
+- `DaemonAgent.sln` — Visual Studio solution (entry point for development).
+- `Code/Game/` — main application sources (C++). Look for `App.cpp` / `App` entry points that drive the main loop.
+- `Engine/` — external engine library containing:
+  - `Engine/Entity/` — `EntityAPI`, `EntityScriptInterface`, `EntityStateBuffer`
+  - `Engine/Renderer/` — `CameraAPI`, `CameraScriptInterface`, `CameraStateBuffer`
+  - `Engine/Core/` — shared `StateBuffer` template and core utilities
+- `Run/Data/Scripts/` — JavaScript game logic, including `test_scripts.js`.
+- `Run/Data/` — assets and configuration (`GameConfig.xml`).
+- `Docs/` — extended project documentation and technical design notes (e.g., async architecture documents).
+- `Run/` — runtime output folder containing build artifacts and packaged binaries after a successful build.
 
 Architecture
 ------------
-High level data flow and components:
+DaemonAgent implements a dual-language, frame-based parallel runtime where C++ rendering and JavaScript game logic run on separate threads and communicate via lock-free, double-buffered state buffers.
 
-- CLI / Orchestrator (kadi)
-  - Starts the daemon using the `kadi run start` definition.
-  - Provides environment and tool lifecycle.
+Runtime execution flow (high level)
+- Main thread (C++ / App.cpp):
+  - BeginFrame()
+  - Update() -> reads front buffers (EntityStateBuffer) and executes C++ systems
+  - Render() -> stable 60 FPS rendering on DirectX
+  - EndFrame() -> brief buffer swap with the worker thread (<1ms lock)
+- Worker thread (JavaScript / JSGameLogicJob):
+  - Runs V8::Execute to perform JS update/render logic
+  - Writes to back buffers (EntityStateBuffer / CameraStateBuffer)
+  - Submits render commands via a lock-free RenderCommandQueue
+- Communication:
+  - Double-buffered state buffers (EntityStateBuffer, CameraStateBuffer) provide N/N+1 frame isolation
+  - Render command queue and minimal, brief synchronization points avoid blocking the main render thread
 
-- Daemon bootstrap (`src/main.cpp`, `config/daemon-agent.yml`)
-  - Loads configuration and sets process-wide parameters (logging, IPC path, metrics port).
-  - Initializes registered tools (`logger`, `ipc`, `metrics`, `game-state`, `ai`).
-
-- IPC layer (`src/agent_worker.cpp`, tool `ipc`)
-  - Listens on `ipcPath` and accepts inbound agent connections.
-  - Frames messages (JSON-RPC style) and dispatches commands to the command router.
-
-- Command Router / Worker
-  - Validates and routes incoming commands to either the game engine, AI modules, or persistence layer.
-  - Runs command handlers on worker threads (thread pool managed by the daemon).
-
-- Game Engine Core (`src/game_engine.cpp`, tool `game-state`)
-  - Runs a deterministic tick loop at `gameTickMs` intervals.
-  - Applies state changes, produces events, and emits snapshots.
-  - Exposes synchronous APIs for read-only queries and asynchronous APIs for state mutation.
-
-- AI Modules (`ai/modules/*`, tool `ai`)
-  - Loaded dynamically from `aiConfig.path`.
-  - Subscribe to events and request actions through the command router.
-  - Can be enabled/disabled via `aiEnabled`.
-
-- Metrics and Logging (`metrics`, `logger`)
-  - Metrics exporter exposes counters and histograms on `metrics.port`.
-  - Logger writes structured logs to `logPath` and supports `logLevel` runtime changes.
-
-Key runtime interactions:
-- Incoming IPC message -> agent_worker -> command router -> game_engine or ai -> state change -> game_engine emits events -> metrics/logger record results -> optional persistence.
+Key components
+- EntityScriptInterface / CameraScriptInterface: C++ bindings exposed to JavaScript for manipulating entities and cameras.
+- State buffers: lock-free, double-buffered structures for safe cross-thread state exchange.
+- Hot-reload: V8 script watcher that can reload JS modules at runtime without C++ rebuild.
+- DevTools: Chrome DevTools integration for JS inspection and breakpointing.
 
 Development
 -----------
-Build and test steps (native C++ build using CMake):
-- Install Node deps: `npm install`
-- Install kadi tools: `kadi install`
-- Configure environment: copy `config/daemon-agent.yml.example` to `config/daemon-agent.yml` and edit fields.
-- Build native binaries:
-  - `mkdir -p build && cd build`
-  - `cmake ..`
-  - `cmake --build . --config Release`
-- Run unit tests:
-  - `ctest --output-on-failure` (from `build`)
+Recommended workflow
+1. Open `DaemonAgent.sln` in Visual Studio 2022.
+2. Build the solution (`Debug|x64` or `Release|x64`).
+3. Edit C++ code under `Code/Game/` and engine code under `Engine/` (if working with the engine repo).
+4. Edit JavaScript logic under `Run/Data/Scripts/` and use hot-reload to iterate quickly.
 
-Development notes:
-- Code layout:
-  - Public headers: `include/`
-  - Sources: `src/`
-  - AI modules: `ai/modules/`
-  - Tests: `test/`
-- Style and tooling:
-  - Use `clang-format` for C++ sources (project includes `.clang-format` rules).
-  - Run static analysis via `clang-tidy` as part of CI (configured in `build/`).
-- Hot reload:
-  - AI modules support hot reload by touching a module file; the `ai` tool watches `aiConfig.path` by default.
-- Debugging:
-  - Start with `kadi run start --env DEBUG=true` or set `logLevel: debug` in config.
-  - IPC socket path is `ipcPath` — interact using `socat`, `nc`, or the AGENTS test harness.
+Coding standards and notes
+- C++: C++20 standard, RAII patterns, SOLID-based modular design. The project emphasizes Dependency Inversion: application code depends on `EntityAPI`/`CameraAPI` abstractions.
+- JavaScript: ES6+ modules and class-based systems optimized for hot-reload compatibility.
+- Debugging: Use Visual Studio for native debugging and Chrome DevTools for JS runtime debugging.
+
+Testing & QA
+- Manual integration testing for dual-language interactions and hot-reload workflows.
+- JavaScript test scripts located at `Run/Data/Scripts/test_scripts.js`.
+- Performance profiling and interop latency testing are part of the development checklist.
 
 Packaging & Deployment
-- Binaries are produced into `build/bin/`.
-- Use `kadi` to manage deployments: `kadi run deploy` (deployment steps provided in `kadi.yml`).
-- When packaging a release, include:
-  - `build/bin/daemon-agent` binary
-  - `config/daemon-agent.yml` example
-  - `ai/modules/` if bundling AI
-  - `kadi.yml` for runtime orchestration
+----------------------
+- Build artifacts are produced by Visual Studio / MSBuild into the `Run/` or configured output directories.
+- Packaged releases should include:
+  - Built executable(s) from `Run/` (e.g., `DaemonAgent_*.exe`)
+  - `Run/Data/GameConfig.xml`
+  - `Run/Data/Scripts/` (JS modules) and critical assets
+  - `Docs/` (usage and architecture notes) as needed for researchers or integrators
 
 Contributing
 ------------
 - Follow the repository branching and PR guidelines.
-- Run `npm test` and native tests (`ctest`) before submitting a PR.
-- Add documentation for any added config fields or tools in `docs/`.
+- Document any added engine interfaces, JS APIs, or config fields in `Docs/`.
+- Run native tests and validate JS hot-reload scenarios before submitting PRs.
+- If contributing engine-side changes, ensure compatibility with the interop bindings: `EntityScriptInterface`, `CameraScriptInterface`, and `StateBuffer` semantics.
 
 License and Contacts
 --------------------
-- See `LICENSE` in the repository root for license terms.
-- For platform integration questions, consult the AGENTS developer guide or open an issue in the repository.
+- See `LICENSE` in the repository root for license terms (project uses Apache 2.0 as indicated in Docs).
+- For architecture or integration questions consult `Docs/` (including async architecture and design notes) or open an issue in the repository.
+
+References
+----------
+- Code/Game/CLAUDE.md — Game module documentation and design notes
+- Docs/async-architecture-technical-document.md — Asynchronous architecture and frame-based parallelism details
+- Engine/ — External DaemonEngine repository (Entity, Camera, Core subsystems)
+
+If any AGENTS/platform-specific orchestration (kadi/npm) integration is still required for your deployment, mention it in an issue — the project currently focuses on a native Windows + Visual Studio workflow and the dual-language engine integration documented above.
