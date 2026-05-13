@@ -62,7 +62,7 @@ Files and important paths
 - `DaemonAgent.sln` — Visual Studio solution (entry point for development).
 - `Code/Game/` — main application sources (C++). Look for `App.cpp` / `App` entry points that drive the main loop. Notable files:
   - `Code/Game/EngineBuildPreferences.hpp` — game-specific engine build preference flags (defines `ENGINE_DEBUG_RENDER`, `CONSOLE_HANDLER`, and `ENGINE_SCRIPTING_ENABLED` by default; `ENGINE_DISABLE_AUDIO` may be uncommented to disable audio).
-  - `Code/Game/Framework/App.hpp` — application lifecycle methods: `Startup()`, `Shutdown()`, `RunFrame()`, and `RunMainLoop()`. Uses `EntityStateBuffer` and `AudioStateBuffer`. The App class contains the per-process quitting state (`static bool m_isQuitting`) and exposes frame-phase methods (`BeginFrame()`, `Update()`, `Render()`, `EndFrame()`). It also declares a static `OnPrint` callback used with the engine's `EventSystem`.
+  - `Code/Game/Framework/App.hpp` — application lifecycle methods: `Startup()`, `Shutdown()`, `RunFrame()`, and `RunMainLoop()`. Uses `EntityStateBuffer` and `AudioStateBuffer`. The `App` class declares per-process quitting state (`static bool m_isQuitting`) and exposes frame-phase methods (`BeginFrame()`, `Update()`, `Render()`, `EndFrame()`). It also declares static callbacks used with the engine's `EventSystem`, including `static std::any OnPrint(std::vector<std::any> const& args)`, `static bool OnCloseButtonClicked(EventArgs& args)`, and `static void RequestQuit()`. 
   - `Code/Game/Framework/GameScriptInterface.hpp` — scriptable bridge derived from `IScriptableObject` that registers and exposes methods to JS. Current callable methods include:
     - ExecuteAppRequestQuit
     - ExecuteJavaScriptCommand
@@ -70,7 +70,7 @@ Files and important paths
     - ExecuteCreateScriptFile / ExecuteReadScriptFile / ExecuteDeleteScriptFile (KADI file operations)
     - ExecuteInjectKeyPress / ExecuteInjectKeyHold / ExecuteKeyHoldSequence (key-hold sequence accepts a JSON string) / ExecuteGetKeyHoldStatus / ExecuteCancelKeyHold / ExecuteListActiveKeyHolds (input injection and key-hold management)
     - ExecuteAddWatchedFile / ExecuteRemoveWatchedFile (file-watcher management)
-  - `Code/Game/Framework/JSGameLogicJob.hpp` — worker-thread job for JavaScript execution (uses `JobSystem` primitives and thread synchronization). The JS worker is implemented around an abstract `IJSGameLogicContext` and coordinates with callback/command queues. The header forwards `IJSGameLogicContext` and `CallbackQueue` (Phase 2.3) and uses `std::mutex` + `std::condition_variable` for frame coordination.
+  - `Code/Game/Framework/JSGameLogicJob.hpp` — worker-thread job for JavaScript execution (uses `JobSystem` primitives and thread synchronization). The JS worker is implemented around an abstract `IJSGameLogicContext` and coordinates with callback/command queues. The header documents a continuous worker-thread design using `std::mutex` + `std::condition_variable` for frame coordination and mentions V8 thread-safety via `v8::Locker`.
   - `Code/Game/Framework/GameCommon.hpp` — common helpers and globals (`g_app`, `g_game`) and utilities such as the `GAME_SAFE_RELEASE` macro.
 - `Engine/` — external engine library containing:
   - `Engine/Entity/` — `EntityAPI`, `EntityScriptInterface`, `EntityStateBuffer`
@@ -81,5 +81,16 @@ Files and important paths
   - `main.js` — ES6 entry point (creates `CommandQueue`, sets `globalThis.CommandQueueAPI`, initializes `JSEngine`/`JSGame`); contains hot-reload cleanup logic for prior JS game instances (destroys old prop/player/camera game objects on the C++ side before re-creating).
   - `JSEngine.js` — core JS framework for system registration, priority execution, hot-reload handling, and event-bus integration (`Event/EventBus.js`).
   - `JSGame.js` — JS-side game orchestration (imported by `main.js`) that wires up subsystems such as input and audio.
-  - `Interface/CommandQueue.js` — CommandQueue facade exposed to JS for engine interactions. `main.js` creates an instance and exposes it as `globalThis.CommandQueueAPI`.
-  - `InputSystem
+  - `Interface/CommandQueue.js` — CommandQueue facade exposed to JS for engine interactions. `main.js` creates an instance and exposes it as `globalThis.CommandQueueAPI` (the CommandQueue provides runtime availability checks such as `isAvailable()`).
+  - `InputSystemCommon.js` — shared key code constants used by input-related systems.
+  - `InputSystem.js`, `AudioSystem.js` — concrete JS subsystems imported/used by `JSGame.js`.
+  - Utility / gameplay systems imported by `JSGame`/`main.js`: `CppBridgeSystem.js`, `CubeSpawner.js`, `PropMover.js`, `CameraShaker.js` (examples of JS subsystems that interact with the C++ engine via the CommandQueue/Script interfaces).
+  - `Event/EventBus.js` — JS event bus used by `JSEngine` and subsystems for decoupled communication.
+
+Input, audio, and other systems are registered with `JSEngine` and execute each frame in priority order. Hot-reload replaces modified subsystem instances and `main.js` performs safe cleanup of previously-created C++ side objects on reload.
+
+Notes, tips & internals
+-----------------------
+- Hot-reload behavior:
+  - `main.js` implements a hot-reload cleanup sequence that attempts to call `.destroy()` on previously-created prop/player/camera game objects (these `.destroy()` calls are bridged to the C++ side).
+  - The JS framework (`JSEngine
